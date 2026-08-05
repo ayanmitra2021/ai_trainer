@@ -1,7 +1,7 @@
 """
 Scenario tests — Step 0.4: Agent framework.
 
-All three scenarios use the stub Claude client and an in-memory SQLite database,
+All scenarios use the stub Claude client and an in-memory SQLite database,
 so they are fast, free, and deterministic.
 
 Scenarios
@@ -22,7 +22,25 @@ Scenarios
    Given an agent with no MCP server configured,
    When it runs,
    Then no MCP subprocess is spawned (verified by asserting beta.* is never
-   accessed on the stub client).
+   called on the stub client).
+
+4. A transient error is retried and succeeds on a later attempt
+   Given a stub that raises a transient error on the first call and returns a
+   valid response on the second,
+   When the agent runs (with zero back-off delay for test speed),
+   Then the return value is correct, the stub was called exactly twice, and
+   agent_runs records status 'success'.
+
+5. A non-transient error is not retried
+   Given a stub that raises a plain (non-transient) exception,
+   When the agent runs,
+   Then the stub is called exactly once and agent_runs records status 'error'.
+
+6. Exhausting all retries records the final error in agent_runs
+   Given a stub that always raises a transient error,
+   And the agent is configured with max_retries=2 (3 total attempts),
+   When the agent runs (with zero back-off delay),
+   Then the stub is called exactly 3 times and agent_runs records status 'error'.
 """
 
 from __future__ import annotations
@@ -62,6 +80,24 @@ class _GreetingAgent(Agent[_GreetingInput, _GreetingOutput]):
         return [{"role": "user", "content": f"Greet: {input.subject}"}]
 
 
+# ── Retry-test helpers ────────────────────────────────────────────────────────
+# We define a local exception class so tests never have to construct a real
+# anthropic.RateLimitError (which requires an httpx.Response). The agent
+# subclass below maps this to its _transient_errors tuple.
+
+class _FakeTransientError(Exception):
+    """Stand-in for anthropic transient errors in retry scenario tests."""
+
+
+class _RetryableGreetingAgent(_GreetingAgent):
+    """Same as _GreetingAgent, but with a test-friendly transient error type
+    and zero back-off so retry tests complete instantly."""
+
+    _transient_errors = (_FakeTransientError,)  # type: ignore[assignment]
+    max_retries = 2           # 3 total attempts — enough to cover all retry paths
+    retry_base_delay_s = 0.0  # no actual sleeping in tests
+
+
 # ── Scenario 1 ─────────────────────────────────────────────────────────────────
 
 class TestSuccessfulRunPersistsAgentRunRow:
@@ -72,7 +108,7 @@ class TestSuccessfulRunPersistsAgentRunRow:
             and the stub returns data matching the _GreetingOutput schema
           When the agent runs
           Then an agent_runs row exists with status 'success'
-            and latency_ms is not null (and > 0)
+            and latency_ms is not null (and >= 0)
             and output matches the expected schema fields
             and tokens_input and tokens_output are populated by the stub
         """
@@ -166,3 +202,107 @@ class TestAgentWithNoMcpNeverTouchesMcpMachinery:
             "stub.beta was called — the agent unexpectedly touched MCP machinery"
         )
         assert beta_mock.call_count == 0
+
+
+# ── Scenario 4 ─────────────────────────────────────────────────────────────────
+
+class TestTransientErrorIsRetriedAndSucceeds:
+    async def test_retry_on_transient_error_succeeds(self, db_session: AsyncSession):
+        """
+        Scenario: A transient error is retried and succeeds on a later attempt
+          Given a stub that raises _FakeTransientError on the first call
+            and returns a valid response on the second call
+            and the agent has zero back-off delay (tests run instantly)
+          When the agent runs
+          Then the return value is correct
+            and the stub was called exactly twice (one failure + one success)
+            and agent_runs records status 'success' (not the intermediate error)
+        """
+        # Given — first call raises transient error; second call returns valid data
+        stub = StubClaudeClient(
+            side_effects=[_FakeTransientError("rate limited")],
+            response_data={"greeting": "Retry worked!", "confidence": 0.7},
+        )
+        agent = _RetryableGreetingAgent(client=stub, db_session=db_session)
+
+        # When
+        result = await agent.run(_GreetingInput(subject="retry"))
+
+        # Then — the eventual output is correct
+        assert result.greeting == "Retry worked!"
+        assert result.confidence == pytest.approx(0.7)
+
+        # Then — stub was called twice (attempt 0 failed, attempt 1 succeeded)
+        assert stub.messages.call_count == 2
+
+        # Then — only one agent_runs row, and it records the successful outcome
+        rows = (await db_session.execute(select(AgentRun))).scalars().all()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.status == "success"
+        assert row.error_message is None
+        assert row.output is not None
+        assert row.output["greeting"] == "Retry worked!"
+
+
+# ── Scenario 5 ─────────────────────────────────────────────────────────────────
+
+class TestNonTransientErrorIsNotRetried:
+    async def test_non_transient_error_does_not_retry(self, db_session: AsyncSession):
+        """
+        Scenario: A non-transient error is not retried
+          Given a stub that raises a plain Exception (not in _transient_errors)
+          When the agent runs
+          Then the stub is called exactly once — no retry attempts
+            and agent_runs records status 'error'
+        """
+        # Given — plain RuntimeError is not in _transient_errors for any agent
+        non_transient = RuntimeError("authentication failed")
+        stub = StubClaudeClient(raise_exc=non_transient)
+        agent = _RetryableGreetingAgent(client=stub, db_session=db_session)
+
+        # When / Then — exception propagates to caller
+        with pytest.raises(RuntimeError, match="authentication failed"):
+            await agent.run(_GreetingInput(subject="anyone"))
+
+        # Then — called exactly once (no retry)
+        assert stub.messages.call_count == 1
+
+        # Then — error row is written
+        rows = (await db_session.execute(select(AgentRun))).scalars().all()
+        assert len(rows) == 1
+        assert rows[0].status == "error"
+        assert "authentication failed" in (rows[0].error_message or "")
+
+
+# ── Scenario 6 ─────────────────────────────────────────────────────────────────
+
+class TestExhaustedRetriesRecordsError:
+    async def test_all_retries_exhausted_records_error(self, db_session: AsyncSession):
+        """
+        Scenario: Exhausting all retries records the final error in agent_runs
+          Given a stub that always raises _FakeTransientError
+            and the agent is configured with max_retries=2 (3 total attempts)
+          When the agent runs (with zero back-off delay)
+          Then the stub is called exactly 3 times (attempts 0, 1, 2)
+            and the original exception propagates to the caller
+            and agent_runs records status 'error' with a message
+        """
+        # Given — always transient; _RetryableGreetingAgent has max_retries=2
+        stub = StubClaudeClient(raise_exc=_FakeTransientError("always failing"))
+        agent = _RetryableGreetingAgent(client=stub, db_session=db_session)
+
+        # When / Then — the transient error eventually propagates after all retries
+        with pytest.raises(_FakeTransientError, match="always failing"):
+            await agent.run(_GreetingInput(subject="never"))
+
+        # Then — called max_retries+1 times = 3 total attempts
+        assert stub.messages.call_count == agent.max_retries + 1
+
+        # Then — one agent_runs error row covering the full (failed) run
+        rows = (await db_session.execute(select(AgentRun))).scalars().all()
+        assert len(rows) == 1
+        row = rows[0]
+        assert row.status == "error"
+        assert row.error_message is not None and "always failing" in row.error_message
+        assert row.output is None

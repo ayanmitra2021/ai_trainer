@@ -17,6 +17,7 @@ Agents NEVER:
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -24,6 +25,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
+import anthropic
 import pydantic
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,21 +89,39 @@ class Agent(ABC, Generic[TInput, TOutput]):
     """Generic base for all nine agents.
 
     Subclasses must set:
-        name        — matches the prompt filename (prompts/<name>.md)
-        model       — Claude model ID to use (see docs/architecture.md)
+        name         — matches the prompt filename (prompts/<name>.md)
+        model        — Claude model ID to use (see docs/architecture.md)
         output_model — Pydantic model that defines the Structured Output schema
 
     And must implement:
         _build_messages(input) → list[dict]   (converts input → Claude messages)
 
     Optionally override:
-        max_tokens  — default 4096
+        max_tokens         — default 4096
+        max_retries        — transient-error retries; default 3 (4 total attempts)
+        retry_base_delay_s — first back-off delay in seconds; doubles each retry
+        _transient_errors  — exception types that trigger a retry
     """
 
     name: str
     model: str
     output_model: type[TOutput]
     max_tokens: int = 4096
+    max_retries: int = 3           # retries on transient errors (4 total attempts)
+    retry_base_delay_s: float = 1.0  # first back-off; doubles each retry
+
+    # Exception types that represent transient infrastructure failures and are
+    # safe to retry. Validation, auth, and bad-request errors are NOT here —
+    # they indicate a bug that won't resolve by itself.
+    #
+    # Subclasses may override this tuple. Tests typically substitute a simpler
+    # exception type rather than constructing a real anthropic.RateLimitError.
+    _transient_errors: tuple[type[BaseException], ...] = (
+        anthropic.RateLimitError,
+        anthropic.APITimeoutError,
+        anthropic.APIConnectionError,
+        anthropic.InternalServerError,
+    )
 
     def __init__(
         self,
@@ -116,43 +136,78 @@ class Agent(ABC, Generic[TInput, TOutput]):
     # ── Public API ────────────────────────────────────────────────────────
 
     async def run(self, input: TInput) -> TOutput:
-        """Execute the agent: call Claude, persist agent_runs, return typed output."""
+        """Execute the agent: call Claude, persist agent_runs, return typed output.
+
+        Retry policy
+        ------------
+        Transient errors (rate-limit, timeout, connection, 5xx) are retried up
+        to self.max_retries times with exponential back-off:
+
+            delay = retry_base_delay_s * 2^attempt
+
+        All other errors (validation, auth, bad request) are not retried — they
+        reflect a problem that won't resolve by itself.
+
+        A single agent_runs row is written, reflecting the *final* outcome only,
+        not each individual attempt. The latency_ms field covers the full wall
+        time including any back-off sleep.
+
+        Commit behaviour
+        ----------------
+        The agent commits its own audit row immediately on completion (success or
+        final failure). This makes each agent self-contained: in a multi-agent
+        workflow sharing one session, partial progress is visible in agent_runs
+        even if a later agent fails. The trade-off is that the workflow no longer
+        controls a single all-or-nothing transaction boundary for agent rows.
+        """
         started_at = datetime.now(UTC)
         start_ns = time.perf_counter_ns()
         run_id = str(uuid.uuid4())
+        last_exc: BaseException | None = None
 
-        try:
-            output, tokens_in, tokens_out = await self._call_claude(input)
-            latency_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
-            await self._persist_run(
-                run_id=run_id,
-                input=input,
-                output=output,
-                model_used=self.model,
-                tokens_input=tokens_in,
-                tokens_output=tokens_out,
-                latency_ms=latency_ms,
-                status="success",
-                error_message=None,
-                started_at=started_at,
-            )
-            return output
+        for attempt in range(self.max_retries + 1):
+            try:
+                output, tokens_in, tokens_out = await self._call_claude(input)
+                latency_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
+                await self._persist_run(
+                    run_id=run_id,
+                    input=input,
+                    output=output,
+                    model_used=self.model,
+                    tokens_input=tokens_in,
+                    tokens_output=tokens_out,
+                    latency_ms=latency_ms,
+                    status="success",
+                    error_message=None,
+                    started_at=started_at,
+                )
+                return output
 
-        except Exception as exc:
-            latency_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
-            await self._persist_run(
-                run_id=run_id,
-                input=input,
-                output=None,
-                model_used=self.model,
-                tokens_input=None,
-                tokens_output=None,
-                latency_ms=latency_ms,
-                status="error",
-                error_message=str(exc),
-                started_at=started_at,
-            )
-            raise
+            except Exception as exc:
+                last_exc = exc
+                is_transient = isinstance(exc, self._transient_errors)
+                if is_transient and attempt < self.max_retries:
+                    delay = self.retry_base_delay_s * (2 ** attempt)
+                    await asyncio.sleep(delay)
+                    continue  # next attempt
+                break  # non-transient error, or transient but retries exhausted
+
+        # All retries exhausted, or a non-transient error broke out of the loop.
+        assert last_exc is not None  # always set when we reach this point
+        latency_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
+        await self._persist_run(
+            run_id=run_id,
+            input=input,
+            output=None,
+            model_used=self.model,
+            tokens_input=None,
+            tokens_output=None,
+            latency_ms=latency_ms,
+            status="error",
+            error_message=str(last_exc),
+            started_at=started_at,
+        )
+        raise last_exc  # type: ignore[misc]
 
     # ── Subclass hooks ────────────────────────────────────────────────────
 
@@ -226,7 +281,13 @@ class Agent(ABC, Generic[TInput, TOutput]):
         error_message: str | None,
         started_at: datetime,
     ) -> None:
-        """Write an agent_runs row. Skipped if no db_session was provided."""
+        """Write and commit an agent_runs row. Skipped if no db_session was provided.
+
+        The agent commits its own row immediately (self-contained). In a workflow
+        that shares one session across multiple agents, each commit is independent —
+        so a later agent's failure won't roll back earlier agents' rows. This is
+        intentional: crash-recovery observability over all-or-nothing atomicity.
+        """
         if self._db is None:
             return
 
@@ -247,4 +308,4 @@ class Agent(ABC, Generic[TInput, TOutput]):
             completed_at=completed_at,
         )
         self._db.add(run)
-        await self._db.flush()  # write within the caller's transaction; they commit.
+        await self._db.commit()  # self-contained — agent owns its own audit row
