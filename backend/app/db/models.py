@@ -75,6 +75,15 @@ class Practitioner(Base):
     attempts: Mapped[list["Attempt"]] = relationship(
         back_populates="practitioner", cascade="all, delete-orphan"
     )
+    usage_events: Mapped[list["UsageEvent"]] = relationship(
+        back_populates="practitioner", cascade="all, delete-orphan"
+    )
+    correlation_snapshots: Mapped[list["CorrelationSnapshot"]] = relationship(
+        back_populates="practitioner", cascade="all, delete-orphan"
+    )
+    nudges: Mapped[list["Nudge"]] = relationship(
+        back_populates="practitioner", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Practitioner id={self.id!r} email={self.email!r}>"
@@ -106,6 +115,10 @@ class Skill(Base):
         back_populates="skill"
     )
     skill_profile_snapshots: Mapped[list["SkillProfileSnapshot"]] = relationship(
+        back_populates="skill"
+    )
+    usage_events: Mapped[list["UsageEvent"]] = relationship(back_populates="skill")
+    correlation_snapshots: Mapped[list["CorrelationSnapshot"]] = relationship(
         back_populates="skill"
     )
 
@@ -263,7 +276,7 @@ class WorkflowRun(Base):
 
     __table_args__ = (
         sa.CheckConstraint(
-            "status IN ('running','completed','failed')",
+            "status IN ('running','completed','failed','partial')",
             name="ck_workflow_runs_status",
         ),
     )
@@ -699,4 +712,229 @@ class Attempt(Base):
         return (
             f"<Attempt id={self.id!r} practitioner={self.practitioner_id!r} "
             f"score={self.score}>"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 3 — Adoption Pulse tables
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── usage_events (append-only) ────────────────────────────────────────────────
+
+class UsageEvent(Base):
+    """Adoption Pulse raw signal — normalized and append-only.
+
+    Written by the Usage-Signal Agent; never updated in place. The Correlation
+    Agent reads these alongside skill_profile_snapshots to compute gap scores.
+    """
+
+    __tablename__ = "usage_events"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    practitioner_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioners.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # claude_code_session | git_commit | other
+    signal_type: Mapped[str] = mapped_column(sa.String(50), nullable=False)
+    # Nullable — inferred from MCP mapping; null means ambiguous / unmapped
+    skill_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("skills.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Pointer back to source record — we store the ref, not the raw payload
+    raw_ref: Mapped[str] = mapped_column(sa.String(500), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, index=True
+    )
+    ingested_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False,
+        server_default=sa.text("now()"), default=_now_utc,
+    )
+
+    practitioner: Mapped["Practitioner"] = relationship(back_populates="usage_events")
+    skill: Mapped["Skill | None"] = relationship(back_populates="usage_events")
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "signal_type IN ('claude_code_session','git_commit','other')",
+            name="ck_usage_events_signal_type",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<UsageEvent id={self.id!r} type={self.signal_type!r} "
+            f"skill={self.skill_id!r}>"
+        )
+
+
+# ── correlation_snapshots (derived, append-only history) ──────────────────────
+
+class CorrelationSnapshot(Base):
+    """Correlation Agent output: trained vs. adopted, per practitioner × skill.
+
+    Unlike skill_profile_snapshots (which has a composite PK — one row per
+    practitioner × skill), correlation_snapshots keep history: each nightly run
+    appends new rows rather than upsert. This lets the Trend Dashboard (Phase 4)
+    show how gaps evolve over time.
+    """
+
+    __tablename__ = "correlation_snapshots"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    practitioner_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioners.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    skill_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("skills.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Score from skill_profile_snapshots at computation time
+    trained_score: Mapped[float] = mapped_column(sa.Numeric(4, 3), nullable=False)
+    # 0–1 estimate derived from usage_events recency/density
+    adoption_score: Mapped[float] = mapped_column(sa.Numeric(4, 3), nullable=False)
+    # Meaningful only when trained_score >= 0.5; low mastery is a training need, not a gap
+    gap_score: Mapped[float] = mapped_column(sa.Numeric(4, 3), nullable=False)
+    has_adoption_gap: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    # Agent's reasoning — human-readable, kept for debugging and review
+    reasoning: Mapped[str | None] = mapped_column(sa.Text)
+    computed_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False,
+        server_default=sa.text("now()"), default=_now_utc,
+    )
+
+    practitioner: Mapped["Practitioner"] = relationship(back_populates="correlation_snapshots")
+    skill: Mapped["Skill"] = relationship(back_populates="correlation_snapshots")
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "trained_score >= 0 AND trained_score <= 1",
+            name="ck_correlation_trained_score",
+        ),
+        sa.CheckConstraint(
+            "adoption_score >= 0 AND adoption_score <= 1",
+            name="ck_correlation_adoption_score",
+        ),
+        sa.CheckConstraint(
+            "gap_score >= 0 AND gap_score <= 1",
+            name="ck_correlation_gap_score",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CorrelationSnapshot practitioner={self.practitioner_id!r} "
+            f"skill={self.skill_id!r} gap={self.gap_score} at={self.computed_at}>"
+        )
+
+
+# ── nudges ────────────────────────────────────────────────────────────────────
+
+class Nudge(Base):
+    """Individual nudge drafted by the Nudge Composer Agent.
+
+    Nothing auto-sends. Status starts at 'drafted'; a human approves to 'approved'
+    before any delivery mechanism marks it 'sent'. See docs/human-in-the-loop.md.
+    """
+
+    __tablename__ = "nudges"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    practitioner_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioners.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # gap_alert | encouragement | reminder
+    nudge_type: Mapped[str] = mapped_column(sa.String(30), nullable=False)
+    # email | in_app
+    channel: Mapped[str] = mapped_column(sa.String(30), nullable=False, default="in_app")
+    # The actual message text — drafted by the agent; reviewed before approval
+    content: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # drafted → approved → sent
+    status: Mapped[str] = mapped_column(sa.String(20), nullable=False, default="drafted")
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False,
+        server_default=sa.text("now()"), default=_now_utc,
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    # Agent reasoning — kept for human review before approval
+    composer_reasoning: Mapped[str | None] = mapped_column(sa.Text)
+
+    practitioner: Mapped["Practitioner"] = relationship(back_populates="nudges")
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "nudge_type IN ('gap_alert','encouragement','reminder')",
+            name="ck_nudges_type",
+        ),
+        sa.CheckConstraint(
+            "channel IN ('email','in_app')",
+            name="ck_nudges_channel",
+        ),
+        sa.CheckConstraint(
+            "status IN ('drafted','approved','sent')",
+            name="ck_nudges_status",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<Nudge id={self.id!r} practitioner={self.practitioner_id!r} "
+            f"type={self.nudge_type!r} status={self.status!r}>"
+        )
+
+
+# ── rollups ───────────────────────────────────────────────────────────────────
+
+class Rollup(Base):
+    """Leadership-facing aggregate — never keyed to an individual.
+
+    The min_cohort_size_met boolean is a structural privacy control, not a
+    display-layer check. If False, metrics and narrative are not populated.
+    See docs/human-in-the-loop.md for the policy rationale.
+    """
+
+    __tablename__ = "rollups"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    # team | practice
+    scope: Mapped[str] = mapped_column(sa.String(30), nullable=False)
+    # Identifies which team or practice (not an individual FK — by design)
+    scope_ref: Mapped[str] = mapped_column(sa.String(255), nullable=False, index=True)
+    period_start: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    period_end: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    # Populated only when min_cohort_size_met is True
+    metrics: Mapped[dict | None] = mapped_column(sa.JSON, nullable=True)
+    narrative: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Structural privacy gate — if False, metrics/narrative are withheld
+    min_cohort_size_met: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False,
+        server_default=sa.text("now()"), default=_now_utc,
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "scope IN ('team','practice')",
+            name="ck_rollups_scope",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<Rollup id={self.id!r} scope={self.scope!r} ref={self.scope_ref!r} "
+            f"cohort_met={self.min_cohort_size_met}>"
         )

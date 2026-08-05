@@ -33,12 +33,12 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 2.8 Learning-path orchestrator workflow + API
 
 **Phase 3 — Adoption Pulse (signal loop)**
-- [ ] 3.1 Usage-Signal Agent
-- [ ] 3.2 Correlation Agent 👤
-- [ ] 3.3 Nudge Composer Agent 👤
-- [ ] 3.4 Rollup Reporter Agent 👤
-- [ ] 3.5 Nightly Pulse orchestrator workflow
-- [ ] 3.6 API routes for the pulse loop
+- [x] 3.1 Usage-Signal Agent
+- [x] 3.2 Correlation Agent 👤
+- [x] 3.3 Nudge Composer Agent 👤
+- [x] 3.4 Rollup Reporter Agent 👤
+- [x] 3.5 Nightly Pulse orchestrator workflow
+- [x] 3.6 API routes for the pulse loop
 
 **Phase 4 — Frontend**
 - [ ] 4.1 App shell, routing, typed API client

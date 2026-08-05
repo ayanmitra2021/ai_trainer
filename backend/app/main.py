@@ -40,3 +40,8 @@ app.include_router(practitioners.router, prefix="/api/v1")
 app.include_router(skills.router, prefix="/api/v1")
 app.include_router(certifications.router, prefix="/api/v1")
 app.include_router(learning_paths.router, prefix="/api/v1")
+
+# ── Phase 3 routes ────────────────────────────────────────────────────────────
+from app.api.routes import pulse
+
+app.include_router(pulse.router, prefix="/api/v1")
