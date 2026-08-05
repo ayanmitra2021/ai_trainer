@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mastery-pulse-backend"
+version = "0.1.0"
+description = "Mastery Pulse — backend API, agents, and workflows"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+
+    # Database
+    "sqlalchemy[asyncio]>=2.0",
+    "alembic>=1.13",
+    "asyncpg>=0.29",        # async Postgres driver for the app
+    "psycopg2-binary>=2.9", # sync driver used only by alembic
+
+    # Config & validation
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "python-dotenv>=1.0",
+
+    # Anthropic + MCP
+    "anthropic[mcp]>=0.40",
+    "mcp>=1.0",
+
+    # Utilities
+    "faker>=26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    "black>=24.0",
+    "aiosqlite>=0.20",  # SQLite async driver for agent unit tests
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "integration: marks tests that require a running Postgres container (deselect with -m 'not integration')",
+    "live: marks tests that call the real Anthropic API (never run on CI)",
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]

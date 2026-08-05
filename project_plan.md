@@ -13,10 +13,10 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 ## Step index
 
 **Phase 0 — Foundations**
-- [ ] 0.1 Repo scaffolding & tooling
-- [ ] 0.2 Database schema v1 + migrations
-- [ ] 0.3 Synthetic seed data generator
-- [ ] 0.4 Agent framework 👤
+- [x] 0.1 Repo scaffolding & tooling
+- [x] 0.2 Database schema v1 + migrations
+- [x] 0.3 Synthetic seed data generator
+- [x] 0.4 Agent framework 👤
 
 **Phase 1 — MCP Adapters**
 - [ ] 1.1 `mcp-learning-portal` MCP server

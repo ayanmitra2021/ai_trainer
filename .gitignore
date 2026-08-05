@@ -1,14 +1,35 @@
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Secrets — your API key lives in a gitignored .env (never committed).
-# A bare ".env" with no slash ignores it in every folder, root or per-exercise.
 .env
 key.env
 *.local
-**/node_modules
 
-# Local environments / cruft
+# Frontend
+**/node_modules
+dist/
+.next/
+
+# Python virtual environments
 .venv/
+venv/
+env/
+
+# Local dev cruft
 .ipynb_checkpoints/
 .DS_Store
 outputs/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Playwright test results
+frontend/test-results/
+frontend/playwright-report/
+
+# IDE
+.vscode/
+.idea/
