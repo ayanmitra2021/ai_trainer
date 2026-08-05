@@ -5,6 +5,7 @@ __pycache__/
 
 # Secrets — your API key lives in a gitignored .env (never committed).
 .env
+.env.example
 key.env
 *.local
 
