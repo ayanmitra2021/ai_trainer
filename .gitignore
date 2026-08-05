@@ -1,0 +1,14 @@
+__pycache__/
+
+# Secrets — your API key lives in a gitignored .env (never committed).
+# A bare ".env" with no slash ignores it in every folder, root or per-exercise.
+.env
+key.env
+*.local
+**/node_modules
+
+# Local environments / cruft
+.venv/
+.ipynb_checkpoints/
+.DS_Store
+outputs/
