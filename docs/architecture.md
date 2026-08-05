@@ -130,7 +130,6 @@ mastery-pulse/
 │   ├── data-model.md
 │   ├── coding-guidelines.md
 │   └── human-in-the-loop.md
-├── docker-compose.yml            # Postgres for local dev
 ├── backend/
 │   ├── pyproject.toml
 │   ├── alembic/                  # migrations

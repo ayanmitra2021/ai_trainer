@@ -85,12 +85,13 @@ class TestMigrationDowngrade:
           Given the migration has been applied (upgrade head)
           When alembic downgrade base runs
           Then none of this migration's tables remain in the database
+
+        Note: alembic uses settings.database_url (mastery_pulse), NOT mastery_pulse_test.
+        We verify against the same DB alembic actually ran against.
         """
-        import os
-        test_url = os.environ.get(
-            "TEST_DATABASE_URL",
-            "postgresql+asyncpg://mastery:mastery@localhost:5432/mastery_pulse_test",
-        )
+        # alembic env.py reads settings.database_url — use that for verification too.
+        from app.config import settings as app_settings
+        alembic_db_url = app_settings.database_url  # e.g. asyncpg://…/mastery_pulse
 
         # Ensure we're at head first
         result_up = _alembic("upgrade", "head")
@@ -104,8 +105,8 @@ class TestMigrationDowngrade:
             f"alembic downgrade base failed:\n{result_down.stderr}"
         )
 
-        # Verify tables are gone
-        engine = create_async_engine(test_url, echo=False)
+        # Verify tables are gone — check the SAME database alembic ran against
+        engine = create_async_engine(alembic_db_url, echo=False)
         try:
             async with engine.connect() as conn:
                 existing_tables = await conn.run_sync(

@@ -5,29 +5,35 @@ skill profiling, personalized learning paths with a trap-reveal quiz mechanic)
 and **Adoption Pulse** (usage signals, trained-vs-adopted gap analysis, nudges,
 leadership rollups). The two halves share a skill graph and close a feedback loop.
 
+## Prerequisites
+
+- **PostgreSQL 14+** installed and running locally on port 5432
+- Create two databases (once, as a superuser):
+  ```sql
+  CREATE USER mastery WITH PASSWORD 'mastery';
+  CREATE DATABASE mastery_pulse OWNER mastery;
+  CREATE DATABASE mastery_pulse_test OWNER mastery;
+  ```
+- **Python 3.11+** (invoke as `py` on Windows)
+- **Node.js 18+**
+
 ## Quick start
 
-> Read `CLAUDE.md` for the full project context and conventions.  
-> Read `project_plan.md` for the step-by-step build plan.
-
 ```bash
-# 1. Start Postgres
-docker compose up -d
-
-# 2. Install backend deps (Python 3.11+)
+# 1. Install backend deps
 cd backend
 py -m pip install -e ".[dev]"
 
-# 3. Run migrations
-alembic upgrade head
+# 2. Run migrations
+py -m alembic upgrade head
 
-# 4. Seed the database
+# 3. Seed the database
 py -m seed.generate
 
-# 5. Start the API
+# 4. Start the API
 uvicorn app.main:app --reload
 
-# 6. Install & run the frontend (separate terminal)
+# 5. Install & run the frontend (separate terminal)
 cd frontend
 npm install
 npm run dev
@@ -39,11 +45,22 @@ npm run dev
 cd backend
 
 # Unit tests (no Postgres required — uses in-memory SQLite)
-py -m pytest -m "not integration"
+py -m pytest -m "not integration" -v
 
-# Integration tests (requires docker compose up -d)
-py -m pytest -m integration
+# Integration tests (requires mastery_pulse_test database)
+py -m pytest -m integration -v
+
+# Everything at once
+py -m pytest -v
 ```
+
+> **Note:** the migration downgrade test (`test_downgrade_reverses_cleanly`) leaves
+> `mastery_pulse` empty. Run `py -m alembic upgrade head` again afterward to restore it.
+
+## Environment
+
+Copy `.env.example` to `.env` and fill in your `ANTHROPIC_API_KEY`. All other
+values have sensible defaults for local development.
 
 ## Docs
 

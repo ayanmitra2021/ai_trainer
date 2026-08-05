@@ -1,8 +1,9 @@
 """Shared pytest fixtures.
 
-Unit tests (agent framework etc.) use an in-memory SQLite database — no Docker
+Unit tests (agent framework etc.) use an in-memory SQLite database — no Postgres
 required. Integration tests (migrations, seed) are marked @pytest.mark.integration
-and require a running Postgres container.
+and require a locally running Postgres instance with the mastery_pulse_test database
+(see README.md for setup).
 """
 
 from __future__ import annotations

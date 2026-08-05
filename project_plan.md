@@ -19,18 +19,18 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 0.4 Agent framework 👤
 
 **Phase 1 — MCP Adapters**
-- [ ] 1.1 `mcp-learning-portal` MCP server
-- [ ] 1.2 `mcp-usage-signals` MCP server 👤
+- [x] 1.1 `mcp-learning-portal` MCP server
+- [x] 1.2 `mcp-usage-signals` MCP server 👤
 
 **Phase 2 — Mastery Mesh (learning loop)**
-- [ ] 2.1 Skill graph & practitioner profile API
-- [ ] 2.2 Certification catalog + seed data
-- [ ] 2.3 Certification Advisor Agent 👤
-- [ ] 2.4 Skill Profiler Agent
-- [ ] 2.5 Curriculum Planner Agent
-- [ ] 2.6 Item-Writer Agent 👤
-- [ ] 2.7 Grader Agent 👤
-- [ ] 2.8 Learning-path orchestrator workflow + API
+- [x] 2.1 Skill graph & practitioner profile API
+- [x] 2.2 Certification catalog + seed data
+- [x] 2.3 Certification Advisor Agent 👤
+- [x] 2.4 Skill Profiler Agent
+- [x] 2.5 Curriculum Planner Agent
+- [x] 2.6 Item-Writer Agent 👤
+- [x] 2.7 Grader Agent 👤
+- [x] 2.8 Learning-path orchestrator workflow + API
 
 **Phase 3 — Adoption Pulse (signal loop)**
 - [ ] 3.1 Usage-Signal Agent
@@ -68,11 +68,12 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - Folder structure exactly as laid out in `docs/architecture.md`.
 - `backend/pyproject.toml` — FastAPI, SQLAlchemy, Alembic, Pydantic v2, ruff, black, pytest, pytest-asyncio, httpx.
 - `frontend/package.json` — Vite + React + TypeScript, TanStack Query, Playwright.
-- `docker-compose.yml` with a Postgres service (`pgvector/pgvector` image so the extension is available later).
 - `.env.example`, `.gitignore` (`node_modules`, `.venv`, `__pycache__`, `.env`), a `README.md` stub pointing at `CLAUDE.md` and this file.
 
+**Precondition:** PostgreSQL 14+ installed locally; `mastery_pulse` and `mastery_pulse_test` databases created (see `README.md`).
+
 **Scenario tests:** none yet — this step is scaffolding, not behavior.
-**Definition of done:** `docker compose up -d` brings up Postgres; `cd backend && pytest` runs cleanly with zero tests; `cd frontend && npm run build` succeeds on the default template.
+**Definition of done:** `cd backend && pytest` runs cleanly with zero tests; `cd frontend && npm run build` succeeds on the default template.
 
 ---
 
@@ -87,7 +88,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - *Running migrations twice is safe* — Given a fresh database, when `alembic upgrade head` runs twice in a row, then the second run makes no changes and exits cleanly.
 - *Downgrade reverses cleanly* — Given the migration has been applied, when `alembic downgrade base` runs, then none of this migration's tables remain.
 
-**Definition of done:** both scenarios pass; `alembic upgrade head` runs clean on a fresh `docker compose` Postgres.
+**Definition of done:** both scenarios pass; `alembic upgrade head` runs clean against the local `mastery_pulse` database.
 
 ---
 
@@ -486,7 +487,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - *Practitioner journey* — get a certification recommendation, accept it, request a path targeting it, attempt an item, see it reflected on the radar.
 - *Leadership journey* — view a rollup, see an approved nudge's effect reflected the next time correlation runs.
 
-**Definition of done:** both journeys pass against a full local stack (`docker compose` + seeded data).
+**Definition of done:** both journeys pass against a full local stack (local Postgres + seeded data).
 
 ---
 
@@ -526,7 +527,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 **Goal:** the whole stack runnable by someone who isn't you, from a clean checkout.
 **Preconditions:** everything.
-**Build:** Dockerfiles for backend/frontend, a complete `docker-compose.yml`, a filled-in `.env.example`, a README with setup steps.
+**Build:** Dockerfiles for backend and frontend (the app services — Postgres is expected as an external managed service), a filled-in `.env.example`, a README with setup steps.
 
 **Scenario tests:**
 - *A clean checkout comes up fully following the documented steps exactly* — ideally verified by actually doing it, not just trusting the README.

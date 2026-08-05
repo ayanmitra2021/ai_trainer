@@ -33,7 +33,10 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# Phase 2+ routes are registered here as they are built.
-# from app.api.routes import practitioners, skills
-# app.include_router(practitioners.router, prefix="/api/v1")
-# app.include_router(skills.router, prefix="/api/v1")
+# ── Phase 2 routes ────────────────────────────────────────────────────────────
+from app.api.routes import practitioners, skills, certifications, learning_paths
+
+app.include_router(practitioners.router, prefix="/api/v1")
+app.include_router(skills.router, prefix="/api/v1")
+app.include_router(certifications.router, prefix="/api/v1")
+app.include_router(learning_paths.router, prefix="/api/v1")

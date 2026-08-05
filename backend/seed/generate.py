@@ -13,19 +13,27 @@ Produces:
   with a two-level hierarchy inside each category
 - ~200 skill_profile_events spread across all four sources:
   certification | self_assessment | quiz_attempt | project_history
+- Certification catalog: 4 Anthropic + 2 AWS + 2 Google Cloud + 2 Microsoft entries
 """
 
 import asyncio
 import random
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from faker import Faker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy import delete, select
 
 from app.config import settings
-from app.db.models import Practitioner, Skill, SkillProfileEvent
+from app.db.models import (
+    Certification,
+    CertificationProvider,
+    CertificationSkill,
+    Practitioner,
+    Skill,
+    SkillProfileEvent,
+)
 
 fake = Faker()
 random.seed(42)
@@ -86,6 +94,248 @@ SENIORITY_LEVELS = ["junior", "mid", "senior", "lead", "principal"]
 
 SEED_EMAIL_DOMAIN = "mastery.example"
 
+# ── Certification catalog ─────────────────────────────────────────────────────
+# Source: docs/data-model.md § Seed catalog (Step 2.2)
+# last_verified_at is set to today's date at seed time — update when re-verifying.
+
+CERTIFICATION_PROVIDERS = [
+    {
+        "name": "Anthropic",
+        "website": "https://www.anthropic.com/partners",
+        "notes": (
+            "Partner Network certifications — registration requires a partner-org email. "
+            "Contact your Anthropic partner representative to access exam portals."
+        ),
+    },
+    {
+        "name": "AWS",
+        "website": "https://aws.amazon.com/certification/",
+        "notes": "Amazon Web Services certifications via AWS Training and Certification.",
+    },
+    {
+        "name": "Google Cloud",
+        "website": "https://cloud.google.com/certification",
+        "notes": "Google Cloud certifications via Google Cloud Skills Boost.",
+    },
+    {
+        "name": "Microsoft",
+        "website": "https://learn.microsoft.com/en-us/certifications/",
+        "notes": "Microsoft Azure certifications via Microsoft Learn.",
+    },
+]
+
+# Each entry maps to a provider by name (resolved at seed time).
+# skill_names: list of skill names from SKILL_TREE; weights sum guidance only.
+CERTIFICATIONS_SEED = [
+    # ── Anthropic ────────────────────────────────────────────────────────
+    {
+        "provider": "Anthropic",
+        "code": "CCAO-F",
+        "name": "Claude Certified Associate – Foundations",
+        "level": "foundational",
+        "requires_coding_background": False,
+        "typical_audience": (
+            "Business users, consultants, and productivity-focused practitioners "
+            "who use Claude conversationally — not developers or agentic builders."
+        ),
+        "focus_area": "Effective use of Claude for business tasks; prompt fundamentals; AI ethics.",
+        "exam_format": "Multiple-choice and short-response; no coding required.",
+        "eligibility_notes": "Requires Anthropic Partner Network org email.",
+        "external_url": None,
+        "skill_weights": {
+            "AI Foundations": 0.9,
+            "Prompt Engineering": 0.9,
+            "AI Ethics & Safety": 0.8,
+            "Evaluating LLM Output": 0.6,
+        },
+    },
+    {
+        "provider": "Anthropic",
+        "code": "CCDV-F",
+        "name": "Claude Certified Developer – Foundations",
+        "level": "foundational",
+        "requires_coding_background": True,
+        "typical_audience": "Software developers building Claude-powered applications.",
+        "focus_area": "Claude API integration; tool use; structured outputs; basic agent patterns.",
+        "exam_format": "Multiple-choice and coding exercises.",
+        "eligibility_notes": "Requires Anthropic Partner Network org email.",
+        "external_url": None,
+        "skill_weights": {
+            "Claude API": 0.9,
+            "Structured Outputs": 0.9,
+            "Tool Use & Function Calling": 0.8,
+            "Prompt Engineering": 0.7,
+            "Context & Caching": 0.6,
+        },
+    },
+    {
+        "provider": "Anthropic",
+        "code": "CCAF",
+        "name": "Claude Certified Architect – Foundations",
+        "level": "foundational",
+        "requires_coding_background": True,
+        "typical_audience": "Technical architects designing Claude-powered systems at scale.",
+        "focus_area": (
+            "System design with Claude; agentic patterns; MCP; "
+            "observability; multi-agent orchestration."
+        ),
+        "exam_format": "Scenario-based design questions; no live coding required.",
+        "eligibility_notes": (
+            "Technical background recommended. Requires Anthropic Partner Network org email."
+        ),
+        "external_url": None,
+        "skill_weights": {
+            "Agentic AI": 0.9,
+            "MCP Servers": 0.9,
+            "Orchestration Patterns": 0.9,
+            "Agent Observability": 0.8,
+            "Claude API": 0.7,
+            "Structured Outputs": 0.7,
+        },
+    },
+    {
+        "provider": "Anthropic",
+        "code": "CCAR-P",
+        "name": "Claude Certified Architect – Professional",
+        "level": "professional",
+        "requires_coding_background": True,
+        "typical_audience": (
+            "Senior architects with hands-on production experience building "
+            "complex Claude-powered systems."
+        ),
+        "focus_area": (
+            "Advanced multi-agent design; security and compliance; cost optimisation; "
+            "large-scale deployment patterns."
+        ),
+        "exam_format": "Scenario-based deep dives; architecture review exercises.",
+        "eligibility_notes": (
+            "CCAF recommended as prerequisite. Requires Anthropic Partner Network org email."
+        ),
+        "external_url": None,
+        "skill_weights": {
+            "Agentic AI": 1.0,
+            "Orchestration Patterns": 1.0,
+            "Agent Observability": 0.9,
+            "MCP Servers": 0.9,
+            "MLOps": 0.7,
+            "Model Deployment": 0.7,
+        },
+    },
+    # ── AWS ──────────────────────────────────────────────────────────────
+    {
+        "provider": "AWS",
+        "code": "AIF-C01",
+        "name": "AWS Certified AI Practitioner",
+        "level": "foundational",
+        "requires_coding_background": False,
+        "typical_audience": (
+            "Business stakeholders, project managers, and non-technical practitioners "
+            "working with AWS AI/ML services."
+        ),
+        "focus_area": "AWS AI/ML service landscape; responsible AI; basic ML concepts.",
+        "exam_format": "65 questions; 90 minutes; Pearson VUE or testing centre.",
+        "eligibility_notes": None,
+        "external_url": "https://aws.amazon.com/certification/certified-ai-practitioner/",
+        "skill_weights": {
+            "AI Foundations": 0.9,
+            "AI Ethics & Safety": 0.7,
+            "Evaluating LLM Output": 0.5,
+        },
+    },
+    {
+        "provider": "AWS",
+        "code": "MLA-C01",
+        "name": "AWS Certified Machine Learning Engineer – Associate",
+        "level": "associate",
+        "requires_coding_background": True,
+        "typical_audience": "ML engineers building, deploying, and monitoring models on AWS.",
+        "focus_area": "SageMaker; MLOps pipelines; model deployment; monitoring.",
+        "exam_format": "65 questions; 130 minutes; Pearson VUE or testing centre.",
+        "eligibility_notes": "Recommended: 1+ year hands-on ML on AWS.",
+        "external_url": "https://aws.amazon.com/certification/certified-machine-learning-engineer-associate/",
+        "skill_weights": {
+            "MLOps": 0.9,
+            "Model Deployment": 0.9,
+            "Monitoring & Drift Detection": 0.8,
+            "CI/CD for ML": 0.8,
+        },
+    },
+    # ── Google Cloud ──────────────────────────────────────────────────────
+    {
+        "provider": "Google Cloud",
+        "code": "GCGAIL",
+        "name": "Google Cloud Generative AI Leader",
+        "level": "foundational",
+        "requires_coding_background": False,
+        "typical_audience": (
+            "Business leaders, strategists, and non-technical practitioners "
+            "evaluating generative AI for their organisations."
+        ),
+        "focus_area": "GenAI strategy; responsible AI; Google Cloud AI product landscape.",
+        "exam_format": "Multiple-choice; no coding.",
+        "eligibility_notes": None,
+        "external_url": "https://cloud.google.com/certification/generative-ai-leader",
+        "skill_weights": {
+            "AI Foundations": 0.8,
+            "AI Ethics & Safety": 0.7,
+        },
+    },
+    {
+        "provider": "Google Cloud",
+        "code": "GCPMLE",
+        "name": "Professional Machine Learning Engineer",
+        "level": "professional",
+        "requires_coding_background": True,
+        "typical_audience": "ML engineers designing, building, and productionising ML models on GCP.",
+        "focus_area": "Vertex AI; MLOps on GCP; model monitoring; feature engineering.",
+        "exam_format": "60 questions; 120 minutes; Pearson VUE or testing centre.",
+        "eligibility_notes": "Recommended: 3+ years industry experience, 1+ year on GCP.",
+        "external_url": "https://cloud.google.com/certification/machine-learning-engineer",
+        "skill_weights": {
+            "MLOps": 0.9,
+            "Model Deployment": 0.9,
+            "Monitoring & Drift Detection": 0.9,
+            "CI/CD for ML": 0.8,
+        },
+    },
+    # ── Microsoft ─────────────────────────────────────────────────────────
+    {
+        "provider": "Microsoft",
+        "code": "AI-900",
+        "name": "Azure AI Fundamentals",
+        "level": "foundational",
+        "requires_coding_background": False,
+        "typical_audience": (
+            "Non-technical practitioners new to AI and Azure AI services."
+        ),
+        "focus_area": "Azure Cognitive Services; responsible AI; basic ML concepts.",
+        "exam_format": "40–60 questions; 45 minutes; Pearson VUE.",
+        "eligibility_notes": None,
+        "external_url": "https://learn.microsoft.com/en-us/certifications/azure-ai-fundamentals/",
+        "skill_weights": {
+            "AI Foundations": 0.8,
+            "AI Ethics & Safety": 0.6,
+        },
+    },
+    {
+        "provider": "Microsoft",
+        "code": "AI-102",
+        "name": "Azure AI Engineer Associate",
+        "level": "associate",
+        "requires_coding_background": True,
+        "typical_audience": "Developers building Azure AI solutions using Cognitive Services and Azure OpenAI.",
+        "focus_area": "Azure OpenAI integration; Cognitive Services; AI solution design.",
+        "exam_format": "40–60 questions; 120 minutes; Pearson VUE.",
+        "eligibility_notes": "Recommended: AI-900 or equivalent experience.",
+        "external_url": "https://learn.microsoft.com/en-us/certifications/azure-ai-engineer/",
+        "skill_weights": {
+            "Claude API": 0.6,
+            "Tool Use & Function Calling": 0.7,
+            "AI Foundations": 0.7,
+        },
+    },
+]
+
 
 def _seed_email(name: str) -> str:
     slug = name.lower().replace(" ", ".")
@@ -114,6 +364,31 @@ async def seed(session: AsyncSession) -> None:
     """Clear existing seed data and insert fresh rows."""
     print("Clearing existing seed data...")
 
+    # Delete in FK-safe order
+    # certification_skills → certifications → providers (keyed by known provider names)
+    provider_names = [p["name"] for p in CERTIFICATION_PROVIDERS]
+    provider_ids_result = await session.execute(
+        select(CertificationProvider.id).where(CertificationProvider.name.in_(provider_names))
+    )
+    provider_ids = [r[0] for r in provider_ids_result]
+    if provider_ids:
+        cert_ids_result = await session.execute(
+            select(Certification.id).where(Certification.provider_id.in_(provider_ids))
+        )
+        cert_ids = [r[0] for r in cert_ids_result]
+        if cert_ids:
+            await session.execute(
+                delete(CertificationSkill).where(
+                    CertificationSkill.certification_id.in_(cert_ids)
+                )
+            )
+        await session.execute(
+            delete(Certification).where(Certification.provider_id.in_(provider_ids))
+        )
+    await session.execute(
+        delete(CertificationProvider).where(CertificationProvider.name.in_(provider_names))
+    )
+
     # Delete in FK-safe order (events → practitioners / skills)
     await session.execute(
         delete(SkillProfileEvent).where(
@@ -130,7 +405,6 @@ async def seed(session: AsyncSession) -> None:
         )
     )
     # Skills are identified by name + category; delete in reverse hierarchy
-    all_skill_names = [s["name"] for s in SKILL_TREE]
     # Delete children first, then parents
     child_names = [s["name"] for s in SKILL_TREE if s["parent"] is not None]
     parent_names = [s["name"] for s in SKILL_TREE if s["parent"] is None]
@@ -231,10 +505,64 @@ async def seed(session: AsyncSession) -> None:
             session.add(event)
             events_added += 1
 
+    print("Inserting certification catalog...")
+    verified_date = date.today()
+
+    # Build providers
+    provider_by_name: dict[str, CertificationProvider] = {}
+    for pspec in CERTIFICATION_PROVIDERS:
+        provider = CertificationProvider(
+            id=str(uuid.uuid4()),
+            name=pspec["name"],
+            website=pspec.get("website"),
+            notes=pspec.get("notes"),
+        )
+        session.add(provider)
+        provider_by_name[pspec["name"]] = provider
+
+    await session.flush()
+
+    # Build certifications and skill mappings
+    cert_count = 0
+    for cspec in CERTIFICATIONS_SEED:
+        provider = provider_by_name[cspec["provider"]]
+        cert = Certification(
+            id=str(uuid.uuid4()),
+            provider_id=provider.id,
+            code=cspec["code"],
+            name=cspec["name"],
+            level=cspec["level"],
+            requires_coding_background=cspec["requires_coding_background"],
+            typical_audience=cspec.get("typical_audience"),
+            focus_area=cspec.get("focus_area"),
+            exam_format=cspec.get("exam_format"),
+            eligibility_notes=cspec.get("eligibility_notes"),
+            external_url=cspec.get("external_url"),
+            is_active=True,
+            last_verified_at=verified_date,
+        )
+        session.add(cert)
+        await session.flush()
+
+        # Map to skills by name
+        for skill_name, weight in cspec["skill_weights"].items():
+            skill = skill_by_name.get(skill_name)
+            if skill is None:
+                print(f"  WARNING: skill '{skill_name}' not found for {cspec['code']}, skipping")
+                continue
+            cs = CertificationSkill(
+                certification_id=cert.id,
+                skill_id=skill.id,
+                weight=round(weight, 3),
+            )
+            session.add(cs)
+        cert_count += 1
+
     await session.commit()
     print(
         f"Done. Inserted {len(practitioners)} practitioners, "
-        f"{len(all_skills)} skills, {events_added} events."
+        f"{len(all_skills)} skills, {events_added} events, "
+        f"{len(CERTIFICATION_PROVIDERS)} providers, {cert_count} certifications."
     )
 
 
