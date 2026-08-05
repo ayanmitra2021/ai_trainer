@@ -41,13 +41,13 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 3.6 API routes for the pulse loop
 
 **Phase 4 — Frontend**
-- [ ] 4.1 App shell, routing, typed API client
-- [ ] 4.2 Certification Advisor questionnaire UI
-- [ ] 4.3 Skill Radar dashboard
-- [ ] 4.4 Quiz Runner (trap-reveal) 👤
-- [ ] 4.5 Adoption trend dashboard
-- [ ] 4.6 Leadership rollup view
-- [ ] 4.7 Full-journey Playwright suite
+- [x] 4.1 App shell, routing, typed API client
+- [x] 4.2 Certification Advisor questionnaire UI
+- [x] 4.3 Skill Radar dashboard
+- [x] 4.4 Quiz Runner (trap-reveal) 👤
+- [x] 4.5 Adoption trend dashboard
+- [x] 4.6 Leadership rollup view
+- [x] 4.7 Full-journey Playwright suite
 
 **Phase 5 — Hardening & Packaging**
 - [ ] 5.1 Observability

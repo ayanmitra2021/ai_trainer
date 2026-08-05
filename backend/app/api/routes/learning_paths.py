@@ -1,8 +1,9 @@
-"""Learning paths and attempts API.
+"""Learning paths, items, and attempts API.
 
 Routes:
   POST /learning-paths/generate          trigger generate_learning_path workflow
   GET  /practitioners/{id}/learning-paths  list paths for a practitioner
+  GET  /items?skill_id=                  list items for a skill (Phase 4 QuizRunner)
   POST /attempts                          submit an attempt (triggers Grader)
   GET  /attempts/{attempt_id}             fetch a scored attempt
 """
@@ -10,7 +11,7 @@ Routes:
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,7 +19,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.db.models import Attempt, Item, LearningPath, Practitioner
 from app.db.session import get_db
-from app.schemas.items import AttemptCreate, AttemptRead, GraderInput, GraderOutput
+from app.schemas.items import AttemptCreate, AttemptRead, GraderInput, GraderOutput, ItemRead
 from app.schemas.learning_paths import (
     GenerateLearningPathRequest,
     GenerateLearningPathResponse,
@@ -72,6 +73,23 @@ async def list_learning_paths(
     )
     paths = result.scalars().all()
     return [LearningPathRead.model_validate(p) for p in paths]
+
+
+# ── Items ─────────────────────────────────────────────────────────────────────
+
+
+@router.get("/items", response_model=list[ItemRead])
+async def list_items_by_skill(
+    skill_id: str = Query(..., description="Filter items by skill ID"),
+    db: AsyncSession = Depends(get_db),
+) -> list[ItemRead]:
+    """Return all items for a given skill, newest first. Used by the QuizRunner."""
+    result = await db.execute(
+        select(Item)
+        .where(Item.skill_id == skill_id)
+        .order_by(Item.created_at.desc())
+    )
+    return [ItemRead.model_validate(i) for i in result.scalars().all()]
 
 
 # ── Attempts ───────────────────────────────────────────────────────────────────
