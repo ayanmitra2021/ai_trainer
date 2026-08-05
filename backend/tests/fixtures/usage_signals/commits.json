@@ -1,0 +1,36 @@
+{
+  "practitioner-alice": [
+    {
+      "commit_hash": "a1b2c3d",
+      "repo": "internal-rag-pipeline",
+      "committed_at": "2024-05-01T15:00:00Z",
+      "message": "Add vector embeddings module for document retrieval",
+      "files_changed": [
+        "src/retrieval.py",
+        "src/embeddings.py",
+        "tests/test_retrieval.py"
+      ]
+    },
+    {
+      "commit_hash": "e4f5g6h",
+      "repo": "data-tooling",
+      "committed_at": "2024-05-02T16:30:00Z",
+      "message": "Fix null pointer exception in CSV parser",
+      "files_changed": [
+        "src/csv_parser.py"
+      ]
+    }
+  ],
+  "practitioner-bob": [
+    {
+      "commit_hash": "i7j8k9l",
+      "repo": "prompt-template-library",
+      "committed_at": "2024-05-03T11:00:00Z",
+      "message": "Add system prompt templates for summarisation use case",
+      "files_changed": [
+        "templates/summarise.md",
+        "templates/README.md"
+      ]
+    }
+  ]
+}

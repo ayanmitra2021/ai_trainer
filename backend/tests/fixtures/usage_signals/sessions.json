@@ -1,0 +1,33 @@
+{
+  "practitioner-alice": [
+    {
+      "session_id": "sess-001",
+      "started_at": "2024-05-01T10:00:00Z",
+      "ended_at": "2024-05-01T11:30:00Z",
+      "project_type": "rag-pipeline",
+      "description": "Building a retrieval pipeline for document search using embeddings",
+      "duration_minutes": 90,
+      "tool_calls_made": 45
+    },
+    {
+      "session_id": "sess-002",
+      "started_at": "2024-05-02T14:00:00Z",
+      "ended_at": "2024-05-02T14:30:00Z",
+      "project_type": "general",
+      "description": "Fixing a data formatting bug in the CSV parser utility",
+      "duration_minutes": 30,
+      "tool_calls_made": 8
+    }
+  ],
+  "practitioner-bob": [
+    {
+      "session_id": "sess-003",
+      "started_at": "2024-05-03T09:00:00Z",
+      "ended_at": "2024-05-03T10:00:00Z",
+      "project_type": "prompt-template-library",
+      "description": "Designing reusable system prompt templates for the team",
+      "duration_minutes": 60,
+      "tool_calls_made": 22
+    }
+  ]
+}

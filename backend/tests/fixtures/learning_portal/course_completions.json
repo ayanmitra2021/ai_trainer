@@ -1,0 +1,30 @@
+{
+  "practitioner-alice": [
+    {
+      "course_name": "Introduction to Prompt Engineering",
+      "platform": "Internal Learning Portal",
+      "covered_skills": ["prompt_engineering"],
+      "completed_at": "2024-02-10",
+      "score": 0.92,
+      "duration_hours": 4.0
+    },
+    {
+      "course_name": "Claude API Deep Dive",
+      "platform": "Internal Learning Portal",
+      "covered_skills": ["claude_api_usage", "agent_building"],
+      "completed_at": "2024-04-22",
+      "score": 0.87,
+      "duration_hours": 6.5
+    }
+  ],
+  "practitioner-bob": [
+    {
+      "course_name": "RAG Fundamentals",
+      "platform": "Internal Learning Portal",
+      "covered_skills": ["rag_fundamentals", "prompt_engineering"],
+      "completed_at": "2024-05-01",
+      "score": 0.79,
+      "duration_hours": 3.0
+    }
+  ]
+}

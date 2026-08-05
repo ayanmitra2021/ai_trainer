@@ -41,6 +41,10 @@ dev = [
     "aiosqlite>=0.20",  # SQLite async driver for agent unit tests
 ]
 
+[project.scripts]
+mcp-learning-portal = "app.mcp_servers.learning_portal.server:main"
+mcp-usage-signals = "app.mcp_servers.usage_signals.server:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 
@@ -50,6 +54,7 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
     "integration: marks tests that require a running Postgres container (deselect with -m 'not integration')",
     "live: marks tests that call the real Anthropic API (never run on CI)",
+    "mcp_roundtrip: marks tests that spawn a real MCP server subprocess (slower than unit tests)",
 ]
 testpaths = ["tests"]
 

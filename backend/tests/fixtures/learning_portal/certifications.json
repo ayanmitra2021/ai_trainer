@@ -1,0 +1,33 @@
+{
+  "practitioner-alice": [
+    {
+      "certification_name": "Claude AI Fundamentals",
+      "provider": "Anthropic",
+      "certification_code": "CCAF",
+      "covered_skills": ["prompt_engineering", "claude_api_usage", "responsible_ai"],
+      "completed_at": "2024-03-15",
+      "status": "passed",
+      "score": 0.88
+    }
+  ],
+  "practitioner-bob": [
+    {
+      "certification_name": "AWS Certified AI Practitioner",
+      "provider": "AWS",
+      "certification_code": "AIF-C01",
+      "covered_skills": ["ml_fundamentals", "aws_ai_services", "responsible_ai"],
+      "completed_at": "2024-01-20",
+      "status": "passed",
+      "score": 0.82
+    },
+    {
+      "certification_name": "Claude AI Developer",
+      "provider": "Anthropic",
+      "certification_code": "CCDV-F",
+      "covered_skills": ["claude_api_usage", "agent_building", "prompt_engineering"],
+      "completed_at": "2024-06-01",
+      "status": "passed",
+      "score": 0.91
+    }
+  ]
+}

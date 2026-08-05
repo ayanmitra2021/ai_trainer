@@ -1,0 +1,24 @@
+{
+  "practitioner-alice": [
+    {
+      "skill_name": "prompt_engineering",
+      "self_rated_level": "intermediate",
+      "assessed_at": "2024-04-01",
+      "notes": "Comfortable with chain-of-thought and few-shot prompting; still learning system prompt design."
+    },
+    {
+      "skill_name": "claude_api_usage",
+      "self_rated_level": "beginner",
+      "assessed_at": "2024-04-01",
+      "notes": "Used the API for a couple of projects but not deeply familiar with all parameters."
+    }
+  ],
+  "practitioner-bob": [
+    {
+      "skill_name": "rag_fundamentals",
+      "self_rated_level": "advanced",
+      "assessed_at": "2024-05-10",
+      "notes": "Built several RAG systems in production; confident with chunking strategies and retrieval tuning."
+    }
+  ]
+}
