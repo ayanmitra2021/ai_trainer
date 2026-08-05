@@ -20,6 +20,28 @@ Who the system is about.
 The skill graph both halves of the product share. Mastery Mesh measures against it; Adoption Pulse measures usage against it.
 - `id`, `name`, `category`, `parent_skill_id` (self-FK, nullable — hierarchy), `description`
 
+### `certification_providers`
+Any certifying body — Anthropic, AWS, Google Cloud, Microsoft, or one added later. Nothing about the schema below assumes Anthropic specifically.
+- `id`, `name`, `website` (nullable), `notes` (nullable)
+
+### `certifications`
+One row per credential, regardless of provider.
+- `id`, `provider_id` (FK), `code` (e.g. `CCAO-F`, `AIF-C01`), `name`, `level` (`foundational` | `associate` | `professional` | `specialty` | `expert` — a normalized set that spans providers even though each names its own tiers differently), `requires_coding_background` (boolean), `typical_audience` (text, e.g. "business/productivity users, not developers"), `focus_area` (text), `exam_format` (text — length, question count, delivery), `eligibility_notes` (nullable text — e.g. a partner-network requirement), `external_url` (nullable), `is_active` (boolean), `last_verified_at` (date)
+
+`last_verified_at` exists because this space moves fast — see the seed list below and the freshness note at the end of this doc.
+
+### `certification_skills`
+What a given certification actually covers, in terms of the skill graph above. This is what lets the Curriculum Planner weight a learning path toward a chosen certification instead of treating every skill as equally relevant.
+- `certification_id` (FK), `skill_id` (FK), `weight` (numeric — how central this skill is to that exam)
+
+### `practitioner_certification_goals`
+A practitioner's history with a certification — recommended, chosen, in progress, or achieved. One practitioner can have several over a career; this is why it's a table and not a column on `practitioners`.
+- `id`, `practitioner_id` (FK), `certification_id` (FK), `status` (`recommended` | `selected` | `in_progress` | `achieved` | `abandoned`), `recommended_at`, `selected_at` (nullable), `achieved_at` (nullable)
+
+### `certification_advisor_responses`
+The raw answers to the targeted questionnaire (Step 2.3), kept rather than discarded after the recommendation is made — useful both for re-running the advisor later as the catalog grows, and for reviewing whether the questions themselves are working.
+- `id`, `practitioner_id` (FK), `responses` (jsonb), `created_at`
+
 ### `skill_profile_events` (append-only)
 Raw evidence of what a practitioner knows, from any source.
 - `id`, `practitioner_id` (FK), `skill_id` (FK), `source` (`certification` | `self_assessment` | `quiz_attempt` | `project_history`), `signal_strength` (0–1), `occurred_at`, `metadata` (jsonb — e.g. which cert, which attempt id)
@@ -62,12 +84,16 @@ Every agent invocation, full stop.
 - `id`, `agent_name`, `workflow_run_id` (nullable FK), `input` (jsonb), `output` (jsonb), `model_used`, `tokens_input`, `tokens_output`, `latency_ms`, `status` (`success` | `error`), `error_message` (nullable), `started_at`, `completed_at`
 
 ### `workflow_runs`
-- `id`, `workflow_name` (`generate_learning_path` | `nightly_pulse`), `triggered_by`, `status` (`running` | `completed` | `failed`), `started_at`, `completed_at`
+- `id`, `workflow_name` (`recommend_certification` | `generate_learning_path` | `nightly_pulse`), `triggered_by`, `status` (`running` | `completed` | `failed`), `started_at`, `completed_at`
 
 ## Relationships at a glance
 
 ```
-practitioners ─┬─< skill_profile_events >─ skills
+certification_providers ─< certifications ─< certification_skills >─ skills
+
+practitioners ─┬─< certification_advisor_responses
+               ├─< practitioner_certification_goals >─ certifications
+               ├─< skill_profile_events >─ skills
                ├─< skill_profile_snapshots >─ skills
                ├─< learning_paths >─< learning_path_items >─ skills
                ├─< attempts >─ items ─ skills
@@ -78,6 +104,24 @@ practitioners ─┬─< skill_profile_events >─ skills
 workflow_runs ─< agent_runs
 rollups            (aggregated — no direct practitioner FK by design)
 ```
+
+## Seed catalog (Step 2.2)
+
+A starting set, verified against current sources rather than assumed — spans four providers on purpose, so the advisor logic in Step 2.3 has real variety to reason over rather than a single-provider list that only looks agnostic.
+
+**Anthropic** (Claude Partner Network — registration needs a partner-org email; note this in `eligibility_notes`):
+| Code | Name | Level | Coding required? |
+|---|---|---|---|
+| `CCAO-F` | Claude Certified Associate – Foundations | foundational | No — explicitly not aimed at developers or agentic builders |
+| `CCDV-F` | Claude Certified Developer – Foundations | foundational | Yes |
+| `CCAF` | Claude Certified Architect – Foundations | foundational | Technical background recommended |
+| `CCAR-P` | Claude Certified Architect – Professional | professional | Yes |
+
+**AWS** (illustrative): `AIF-C01` AWS Certified AI Practitioner (foundational, no coding) · AWS Certified Machine Learning Engineer – Associate (associate, coding required).
+**Google Cloud** (illustrative): Generative AI Leader (foundational, no coding) · Professional Machine Learning Engineer (professional, coding required).
+**Microsoft** (illustrative): Azure AI Fundamentals — AI-900 (foundational, no coding) · Azure AI Engineer Associate — AI-102 (associate, coding required).
+
+The AWS/Google/Microsoft rows are a credible starting point, not a guarantee of what's live by the time you read this — this market moved fast enough in the months before this doc was written (AWS retired its ML Specialty exam and split it into an Associate-level engineering track and a separate Generative AI Developer track in the same window) that treating any fixed list as permanent would be a mistake. That's what `last_verified_at` is for: re-check a row before recommending it if that date is more than a few months old, rather than trusting the seed data forever.
 
 ## What's deliberately not here yet
 

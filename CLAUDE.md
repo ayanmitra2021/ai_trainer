@@ -2,7 +2,7 @@
 
 ## What this is
 
-One app built from two ideas that share a skill graph. **Mastery Mesh** profiles a practitioner's skills, builds a personalized learning path, and writes/grades practice items (with a trap-reveal mechanic for common misconceptions). **Adoption Pulse** watches real usage signals (Claude Code activity, commit patterns) to see whether that mastery shows up in actual work, and turns the gap into individual nudges and leadership rollups. The two halves close a loop — Adoption Pulse's findings feed back into what the Curriculum Planner prioritizes next.
+One app built from two ideas that share a skill graph. **Mastery Mesh** starts by helping a practitioner pick the right certification for their background and goals — Anthropic, AWS, Google Cloud, Microsoft, or anything else in the catalog, not Anthropic-only — then profiles their skills, builds a personalized learning path targeting it, and writes/grades practice items (with a trap-reveal mechanic for common misconceptions). **Adoption Pulse** watches real usage signals (Claude Code activity, commit patterns) to see whether that mastery shows up in actual work, and turns the gap into individual nudges and leadership rollups. The two halves close a loop — Adoption Pulse's findings feed back into what the Curriculum Planner prioritizes next.
 
 "Mastery Pulse" is a working title. Rename freely — it's a find-and-replace, not a decision.
 
@@ -10,7 +10,7 @@ Built mostly via Claude Code, with a few parts (marked 👤 in `project_plan.md`
 
 ## Tech stack
 
-Python 3.11+ / FastAPI / SQLAlchemy / Alembic · Postgres (+ `pgvector`) · React + TypeScript (Vite) · eight Claude-API-backed agents orchestrated by plain async Python (no LangGraph/Temporal) · custom local MCP servers for internal data sources.
+Python 3.11+ / FastAPI / SQLAlchemy / Alembic · Postgres (+ `pgvector`) · React + TypeScript (Vite) · nine Claude-API-backed agents orchestrated by plain async Python (no LangGraph/Temporal) · custom local MCP servers for internal data sources.
 
 ## Repo map
 
@@ -40,14 +40,14 @@ Work through `project_plan.md` one step at a time, in order — each step only a
 
 ## Where Ayan is in the loop
 
-Nine steps across the plan need a human judgment call — a prompt's pedagogy, a grading rubric, a privacy threshold, a UI beat — not just code. They're flagged 👤 inline in `project_plan.md`; full rationale in `docs/human-in-the-loop.md`. If a task looks like it's drifting into one of those without having been flagged, stop and ask rather than guessing.
+Ten steps across the plan need a human judgment call — a prompt's pedagogy, a grading rubric, a privacy threshold, a UI beat — not just code. They're flagged 👤 inline in `project_plan.md`; full rationale in `docs/human-in-the-loop.md`. If a task looks like it's drifting into one of those without having been flagged, stop and ask rather than guessing.
 
 ## Reference docs (read on demand, not all at once)
 
-- `docs/architecture.md` — the eight agents, orchestration, MCP strategy, model selection.
-- `docs/data-model.md` — the Postgres schema.
+- `docs/architecture.md` — the nine agents, orchestration, MCP strategy, model selection.
+- `docs/data-model.md` — the Postgres schema, including the certification catalog.
 - `docs/coding-guidelines.md` — conventions, prompt-file pattern, testing approach in full.
-- `docs/human-in-the-loop.md` — the nine 👤 steps, with reasoning.
+- `docs/human-in-the-loop.md` — the ten 👤 steps, with reasoning.
 
 `project_plan.md` names which of these to open for each step — no need to load them all every session.
 

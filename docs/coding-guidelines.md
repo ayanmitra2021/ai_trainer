@@ -14,12 +14,16 @@ Reference doc. Read the relevant section before writing code in that area; you d
 
 Each agent's system prompt is a separate file — `backend/app/agents/prompts/<agent_name>.md` — loaded at runtime, not an inline Python string. Two reasons this matters here specifically: it's the part of this system you (Ayan) most want to hand-tune directly without touching Python, and it makes prompt changes visible in `git diff` as prose edits instead of buried in code. See `docs/human-in-the-loop.md` — most of the flagged steps are really "own the prompt file for this agent," not "own the Python."
 
+## Reference data goes in the prompt as context, not as knowledge
+
+The certification catalog changes on a timescale of months, not years — providers retire exams, rename tiers, and add new ones. So the Certification Advisor's prompt says, in effect, "here is the current catalog, reason over it," and the current catalog rows are injected into the call every time — never "here's what Anthropic/AWS/Google/Microsoft certifications exist" written into the prompt as if it were a stable fact. The same principle applies anywhere else an agent's job depends on data that goes stale faster than the codebase does: pass it as data, don't write it into the prompt as knowledge.
+
 ## TypeScript / React (frontend)
 
 - Strict mode, no `any`. Functional components + hooks, no class components.
 - Server state (skill scores, learning paths, rollups) via a typed API client + a query cache (e.g. TanStack Query) — not ad hoc `useEffect` fetching.
 - No browser storage (`localStorage`/`sessionStorage`) for anything that matters — React state or the backend, per the artifact/environment constraints that apply project-wide.
-- Read `/mnt/skills/public/frontend-design/SKILL.md` before building any new component — it covers the design-token and styling constraints for this environment and keeps the four dashboards (Skill Radar, Quiz Runner, Trend Dashboard, Rollup View) visually coherent instead of each looking like a separate tutorial.
+- Read `/mnt/skills/public/frontend-design/SKILL.md` before building any new component — it covers the design-token and styling constraints for this environment and keeps the five surfaces (Certification Advisor questionnaire, Skill Radar, Quiz Runner, Trend Dashboard, Rollup View) visually coherent instead of each looking like a separate tutorial.
 
 ## Testing: scenario-driven, not unit-driven
 

@@ -4,30 +4,47 @@ Reference doc. Read this before building any agent, workflow, or MCP server. Pai
 
 ## The product in one paragraph
 
-Mastery Pulse is one app built from two ideas that share a skill graph. **Mastery Mesh** is the front stage: it profiles a practitioner's skills, builds a personalized learning path, writes and grades practice items (with a trap-reveal mechanic for common misconceptions), and tracks mastery over time. **Adoption Pulse** is the back stage: it watches real usage signals (Claude Code activity, commit patterns) to see whether mastery earned in the front stage shows up in actual work, surfaces the gap, and turns it into individual nudges and leadership rollups. The two halves close a loop: Adoption Pulse's gaps feed back into what the Curriculum Planner prioritizes next.
+Mastery Pulse is one app built from two ideas that share a skill graph. **Mastery Mesh** is the front stage: it starts by helping a practitioner pick the right certification for their background and goals — Anthropic, AWS, Google Cloud, Microsoft, or whatever else is in the catalog — then profiles their skills, builds a personalized learning path targeting it, and writes and grades practice items (with a trap-reveal mechanic for common misconceptions). **Adoption Pulse** is the back stage: it watches real usage signals (Claude Code activity, commit patterns) to see whether mastery earned in the front stage shows up in actual work, surfaces the gap, and turns it into individual nudges and leadership rollups. The two halves close a loop: Adoption Pulse's gaps feed back into what the Curriculum Planner prioritizes next.
 
-## The eight agents
+Nothing about the design is Anthropic-specific. The certification catalog (`docs/data-model.md`) is provider-agnostic by construction, and the Certification Advisor agent reasons over whatever's in that catalog rather than having any one provider's exams baked into its prompt.
+
+## The nine agents
 
 Each agent is a single-purpose, typed unit: one input contract, one output contract (a Pydantic model, enforced via Structured Outputs — see below), one row in `agent_runs` per call. An agent never decides on its own to call another agent; a **workflow** (plain Python, not a framework) sequences them. This keeps every agent independently testable and keeps the control flow visible in code instead of hidden inside a graph the human has to reconstruct mentally.
 
 | # | Agent | Job | Reads | Writes |
 |---|---|---|---|---|
-| 1 | Skill Profiler | Turn raw signals into a current mastery estimate | `skill_profile_events`, MCP: `mcp-learning-portal` | `skill_profile_snapshots` |
-| 2 | Curriculum Planner | Pick what a practitioner should work on next | `skill_profile_snapshots`, `correlation_snapshots` | `learning_paths`, `learning_path_items` |
-| 3 | Item-Writer | Generate/calibrate practice items, incl. trap-reveal | `items`, `attempts` (calibration stats) | `items` |
-| 4 | Grader | Score an attempt, incl. free-text, with rationale | `items`, submitted response | `attempts` |
-| 5 | Usage-Signal | Ingest real usage evidence, map it to skill nodes | MCP: `mcp-usage-signals` | `usage_events` |
-| 6 | Correlation | Compare "trained" vs. "adopting" per skill | `skill_profile_snapshots`, `usage_events` | `correlation_snapshots` |
-| 7 | Nudge Composer | Draft an individual, tone-checked nudge | `correlation_snapshots` | `nudges` (status: `drafted`) |
-| 8 | Rollup Reporter | Aggregate, privacy-safe leadership narrative | `correlation_snapshots` (aggregated) | `rollups` |
+| 1 | Certification Advisor | Match a short questionnaire to a best-fit certification | `certifications`, `certification_providers`, `certification_skills` | `certification_advisor_responses`, `practitioner_certification_goals` (status `recommended`) |
+| 2 | Skill Profiler | Turn raw signals into a current mastery estimate | `skill_profile_events`, MCP: `mcp-learning-portal` | `skill_profile_snapshots` |
+| 3 | Curriculum Planner | Pick what a practitioner should work on next | `skill_profile_snapshots`, `correlation_snapshots`, `practitioner_certification_goals` (if set) | `learning_paths`, `learning_path_items` |
+| 4 | Item-Writer | Generate/calibrate practice items, incl. trap-reveal | `items`, `attempts` (calibration stats) | `items` |
+| 5 | Grader | Score an attempt, incl. free-text, with rationale | `items`, submitted response | `attempts` |
+| 6 | Usage-Signal | Ingest real usage evidence, map it to skill nodes | MCP: `mcp-usage-signals` | `usage_events` |
+| 7 | Correlation | Compare "trained" vs. "adopting" per skill | `skill_profile_snapshots`, `usage_events` | `correlation_snapshots` |
+| 8 | Nudge Composer | Draft an individual, tone-checked nudge | `correlation_snapshots` | `nudges` (status: `drafted`) |
+| 9 | Rollup Reporter | Aggregate, privacy-safe leadership narrative | `correlation_snapshots` (aggregated) | `rollups` |
 
-Two workflows compose them:
-- **`generate_learning_path`**: Skill Profiler → Curriculum Planner → Item-Writer (Phase 2)
+Three workflows compose them:
+- **`recommend_certification`**: Certification Advisor alone (Phase 2) — the actual front door for a new practitioner.
+- **`generate_learning_path`**: Skill Profiler → Curriculum Planner → Item-Writer (Phase 2) — reads the practitioner's active certification goal if `recommend_certification` has already run, but doesn't require it.
 - **`nightly_pulse`**: Usage-Signal → Correlation → Nudge Composer → Rollup Reporter (Phase 3)
+
+## Certification Advisor: the entry point
+
+The questionnaire is short on purpose — a handful of targeted questions, not a long intake form:
+
+1. Which certification body are you most interested in — Anthropic, AWS, Google Cloud, Microsoft, or no preference?
+2. Do you write code as part of your role, or plan to?
+3. Is your day-to-day focus closer to advising/business use, building applications, or designing/architecting systems?
+4. How much hands-on experience do you already have in this area — new to it, some exposure, or experienced?
+
+The agent's job is to match these answers against the current catalog and return a primary recommendation plus a short rationale (and, where relevant, one alternative with the trade-off named — e.g. "Architect Foundations has no hard prerequisite, but Developer Foundations is a gentler ramp if you're newer to building"). The catalog is passed to the agent as structured context on every call, not baked into the prompt as static knowledge — this is what lets a newly-added provider or a newly-retired exam take effect immediately instead of waiting for a prompt rewrite. See `docs/data-model.md` for the current seed catalog and why it's dated (`last_verified_at`) rather than assumed permanent.
+
+The actual weighting — what to recommend when the answers don't cleanly point to one certification — is flagged 👤 in `docs/human-in-the-loop.md`.
 
 ## Agent contract
 
-Every agent implements the same shape (built once, in Step 0.4, then reused seven times):
+Every agent implements the same shape (built once, in Step 0.4, then reused nine times):
 
 ```python
 class Agent(Generic[TInput, TOutput]):
@@ -39,7 +56,7 @@ class Agent(Generic[TInput, TOutput]):
         ...  # builds prompt, calls Claude, persists an agent_runs row, returns typed output
 ```
 
-Agents that need external data reach it via MCP tools (below), not by importing another agent's code or hitting the database directly for facts outside their own tables — that boundary is what keeps eight agents from turning into a tangle.
+Agents that need external data reach it via MCP tools (below), not by importing another agent's code or hitting the database directly for facts outside their own tables — that boundary is what keeps nine agents from turning into a tangle.
 
 ## Structured output, not string parsing
 
@@ -82,7 +99,7 @@ This is still genuinely "multi-agent orchestration with MCP servers and tool cal
 
 ## Orchestration: hand-rolled, on purpose
 
-No LangGraph/Temporal for v1. A `workflows/` module with plain async functions that call agents in sequence, writing a `workflow_runs` row at start and a status at the end. For a solo-maintained system, "read the Python function top to bottom" beats "reconstruct what a graph framework is doing" every time you need to debug a 2am nightly-job failure. Revisit only if a workflow needs branching complex enough that a hand-rolled sequence becomes the harder-to-read option — none of the two current workflows are there.
+No LangGraph/Temporal for v1. A `workflows/` module with plain async functions that call agents in sequence, writing a `workflow_runs` row at start and a status at the end. For a solo-maintained system, "read the Python function top to bottom" beats "reconstruct what a graph framework is doing" every time you need to debug a 2am nightly-job failure. Revisit only if a workflow needs branching complex enough that a hand-rolled sequence becomes the harder-to-read option — none of the three current workflows are there.
 
 ## Model selection
 
@@ -90,6 +107,7 @@ Default to **Claude Sonnet 5** (`claude-sonnet-5`) unless a row below says other
 
 | Agent | Default | Why |
 |---|---|---|
+| Certification Advisor | Sonnet 5 | Matching + explaining against structured catalog context — moderate reasoning, not the highest stakes |
 | Skill Profiler | Sonnet 5 | Structured extraction across a few signal sources — moderate reasoning |
 | Curriculum Planner | Sonnet 5 | Sequencing/planning, moderate complexity |
 | Item-Writer | Sonnet 5 (escalate to **Opus 5** for the hardest trap items) | Pedagogical judgment; most items don't need the top tier |
@@ -123,21 +141,21 @@ mastery-pulse/
 │       ├── api/routes/            # REST endpoints per resource
 │       ├── agents/
 │       │   ├── base.py            # Agent contract (Step 0.4)
-│       │   ├── skill_profiler.py, curriculum_planner.py, item_writer.py,
-│       │   │   grader.py, usage_signal.py, correlation.py,
+│       │   ├── certification_advisor.py, skill_profiler.py, curriculum_planner.py,
+│       │   │   item_writer.py, grader.py, usage_signal.py, correlation.py,
 │       │   │   nudge_composer.py, rollup_reporter.py
 │       │   └── prompts/           # one .md per agent — see coding-guidelines.md
 │       ├── mcp_servers/
 │       │   ├── learning_portal/
 │       │   └── usage_signals/
-│       ├── workflows/             # generate_learning_path.py, nightly_pulse.py
+│       ├── workflows/             # recommend_certification.py, generate_learning_path.py, nightly_pulse.py
 │       └── schemas/                # Pydantic I/O contracts
 │   ├── seed/                       # synthetic seed data generator
 │   └── tests/scenarios/            # Given/When/Then tests — see coding-guidelines.md
 └── frontend/
     ├── package.json
     ├── src/
-    │   ├── pages/, components/ (SkillRadar/, QuizRunner/, TrendDashboard/, RollupView/)
+    │   ├── pages/, components/ (CertAdvisor/, SkillRadar/, QuizRunner/, TrendDashboard/, RollupView/)
     │   ├── api/                    # typed client
     │   └── hooks/
     └── tests/                       # Playwright scenarios

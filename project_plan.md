@@ -24,11 +24,13 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 **Phase 2 — Mastery Mesh (learning loop)**
 - [ ] 2.1 Skill graph & practitioner profile API
-- [ ] 2.2 Skill Profiler Agent
-- [ ] 2.3 Curriculum Planner Agent
-- [ ] 2.4 Item-Writer Agent 👤
-- [ ] 2.5 Grader Agent 👤
-- [ ] 2.6 Learning-path orchestrator workflow + API
+- [ ] 2.2 Certification catalog + seed data
+- [ ] 2.3 Certification Advisor Agent 👤
+- [ ] 2.4 Skill Profiler Agent
+- [ ] 2.5 Curriculum Planner Agent
+- [ ] 2.6 Item-Writer Agent 👤
+- [ ] 2.7 Grader Agent 👤
+- [ ] 2.8 Learning-path orchestrator workflow + API
 
 **Phase 3 — Adoption Pulse (signal loop)**
 - [ ] 3.1 Usage-Signal Agent
@@ -40,11 +42,12 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 **Phase 4 — Frontend**
 - [ ] 4.1 App shell, routing, typed API client
-- [ ] 4.2 Skill Radar dashboard
-- [ ] 4.3 Quiz Runner (trap-reveal) 👤
-- [ ] 4.4 Adoption trend dashboard
-- [ ] 4.5 Leadership rollup view
-- [ ] 4.6 Full-journey Playwright suite
+- [ ] 4.2 Certification Advisor questionnaire UI
+- [ ] 4.3 Skill Radar dashboard
+- [ ] 4.4 Quiz Runner (trap-reveal) 👤
+- [ ] 4.5 Adoption trend dashboard
+- [ ] 4.6 Leadership rollup view
+- [ ] 4.7 Full-journey Playwright suite
 
 **Phase 5 — Hardening & Packaging**
 - [ ] 5.1 Observability
@@ -105,7 +108,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ### Step 0.4 — Agent framework 👤
 
-**Goal:** the base `Agent` class every one of the other seven agents extends — Claude client wrapper, Structured Outputs handling, `agent_runs` persistence, retry/error behavior.
+**Goal:** the base `Agent` class every one of the other nine agents extends — Claude client wrapper, Structured Outputs handling, `agent_runs` persistence, retry/error behavior.
 **Preconditions:** 0.2 (needs `agent_runs`).
 **Context to load:** `docs/architecture.md` (Agent contract + Structured output sections), `docs/coding-guidelines.md`, `docs/human-in-the-loop.md`.
 **Build:** `backend/app/agents/base.py` (the generic `Agent[TInput, TOutput]` class), the `agents/prompts/` convention, a stub Claude client interface for testing.
@@ -117,7 +120,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 **Definition of done:** all three pass.
 
-> 👤 **Human-in-the-loop:** review this file yourself before building on it — every other agent inherits this contract, so a wrong call here is a wrong call eight times over. See `docs/human-in-the-loop.md`.
+> 👤 **Human-in-the-loop:** review this file yourself before building on it — every other agent inherits this contract, so a wrong call here is a wrong call nine times over. See `docs/human-in-the-loop.md`.
 
 ---
 
@@ -173,7 +176,40 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 2.2 — Skill Profiler Agent
+### Step 2.2 — Certification catalog + seed data
+
+**Goal:** the provider-agnostic certification catalog — the thing that makes the advisor in the next step possible at all.
+**Preconditions:** 2.1 (certifications map onto the skill graph).
+**Context to load:** `docs/data-model.md` (Seed catalog section).
+**Build:** `certification_providers`, `certifications`, `certification_skills` tables/migration; seed script populating the four verified Anthropic certifications (CCAO-F, CCDV-F, CCAF, CCAR-P) plus illustrative AWS, Google Cloud, and Microsoft entries — see the seed list in `docs/data-model.md` rather than re-deriving it here.
+
+**Scenario tests:**
+- *The seeded catalog spans more than one provider* — Given a freshly seeded database, when querying `certifications` joined to `certification_providers`, then at least four distinct providers are represented.
+- *Every certification maps to at least one skill* — Given the seeded catalog, when checking `certification_skills`, then no certification is orphaned with zero mapped skills (an advisor recommendation with nothing to build a learning path from is a dead end).
+
+**Definition of done:** both pass; re-run `docs/data-model.md`'s seed list against current sources if `last_verified_at` on any row is more than a few months old by the time you build this.
+
+---
+
+### Step 2.3 — Certification Advisor Agent 👤
+
+**Goal:** the actual front door — a short questionnaire that recommends a best-fit certification from the catalog, regardless of provider.
+**Preconditions:** 2.2.
+**Context to load:** `docs/architecture.md` (Certification Advisor section), `docs/human-in-the-loop.md`.
+**Build:** `backend/app/agents/certification_advisor.py` + `prompts/certification_advisor.md`, and an API route that accepts questionnaire answers and returns a recommendation. 👤 The four questions in `docs/architecture.md` are a starting point — finalize the wording and the recommendation weighting yourself.
+
+**Scenario tests:**
+- *A non-coder interested in Anthropic gets pointed at Associate, not Architect or Developer* — Given answers indicating no coding background, a business/advising focus, and an Anthropic preference, when the agent runs, then the recommendation is `CCAO-F`, not one of the coding-required tracks.
+- *An experienced architect with no provider preference gets a rationale that names the trade-off, not just a pick* — Given answers indicating strong technical experience, an architecting focus, and no provider preference, when the agent runs, then the response includes a primary recommendation and a short rationale referencing at least one alternative.
+- *Answers are persisted even when the recommendation is later ignored* — Given a completed questionnaire, when the agent runs, then a `certification_advisor_responses` row and a `practitioner_certification_goals` row (status `recommended`) both exist, independent of whether the practitioner ever acts on it.
+
+**Definition of done:** all three pass against the stub Claude client.
+
+> 👤 **Human-in-the-loop:** the question set and the recommendation logic are yours to own — see `docs/human-in-the-loop.md`.
+
+---
+
+### Step 2.4 — Skill Profiler Agent
 
 **Goal:** turn `skill_profile_events` (plus live data from `mcp-learning-portal`) into `skill_profile_snapshots`.
 **Preconditions:** 0.4, 2.1, 1.1.
@@ -189,22 +225,23 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 2.3 — Curriculum Planner Agent
+### Step 2.5 — Curriculum Planner Agent
 
-**Goal:** turn a skill profile into a learning path.
-**Preconditions:** 2.2.
+**Goal:** turn a skill profile into a learning path — weighted toward the practitioner's active certification goal when one exists, and toward general skill gaps when it doesn't.
+**Preconditions:** 2.4 (required); 2.3 (optional — enables certification-goal-aware prioritization if a goal has been selected).
 **Context to load:** `docs/architecture.md`, `docs/data-model.md`.
 **Build:** `backend/app/agents/curriculum_planner.py` + prompt.
 
 **Scenario tests:**
 - *A practitioner with one weak skill gets a path prioritizing it* — the resulting `learning_path_items` sequence places that skill first.
+- *A practitioner with an active certification goal gets a path weighted toward that certification's skills* — Given a `practitioner_certification_goals` row with status `selected` and that certification's `certification_skills` weights, when the agent runs, then the path prioritizes those skills over equally-weak skills outside the certification's scope.
 - *A fully-mastered practitioner gets an empty or maintenance-only path, not an error.*
 
-**Definition of done:** both pass.
+**Definition of done:** all three pass.
 
 ---
 
-### Step 2.4 — Item-Writer Agent 👤
+### Step 2.6 — Item-Writer Agent 👤
 
 **Goal:** generate and calibrate practice items, including the trap-reveal mechanic.
 **Preconditions:** 2.1.
@@ -221,10 +258,10 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 2.5 — Grader Agent 👤
+### Step 2.7 — Grader Agent 👤
 
 **Goal:** score attempts, including free text, with a rationale.
-**Preconditions:** 2.4.
+**Preconditions:** 2.6.
 **Context to load:** `docs/architecture.md`, `docs/human-in-the-loop.md`.
 **Build:** `backend/app/agents/grader.py` + `prompts/grader.md` — 👤 write the rubric, especially partial-credit rules for free text.
 
@@ -239,10 +276,10 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 2.6 — Learning-path orchestrator workflow + API
+### Step 2.8 — Learning-path orchestrator workflow + API
 
-**Goal:** wire 2.2 → 2.3 → 2.4 into the `generate_learning_path` workflow; expose it and attempt submission over the API. This is the first true end-to-end milestone — treat it as proof that Mastery Mesh's core loop works.
-**Preconditions:** 2.2, 2.3, 2.4, 2.5.
+**Goal:** wire 2.4 → 2.5 → 2.6 into the `generate_learning_path` workflow; expose it and attempt submission over the API. This is the first true end-to-end milestone — treat it as proof that Mastery Mesh's core loop works.
+**Preconditions:** 2.4, 2.5, 2.6, 2.7.
 **Context to load:** `docs/architecture.md` (Orchestration section).
 **Build:** `backend/app/workflows/generate_learning_path.py`; routes for requesting a path and submitting an attempt.
 
@@ -275,7 +312,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 ### Step 3.2 — Correlation Agent 👤
 
 **Goal:** compute trained-vs-adopted gap scores.
-**Preconditions:** 2.2, 3.1.
+**Preconditions:** 2.4, 3.1.
 **Context to load:** `docs/architecture.md`, `docs/human-in-the-loop.md`.
 **Build:** `backend/app/agents/correlation.py` + `prompts/correlation.md` — 👤 design the methodology and the correlation-not-causation framing into the prompt itself, not just a code comment.
 
@@ -368,10 +405,24 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 4.2 — Skill Radar dashboard
+### Step 4.2 — Certification Advisor questionnaire UI
+
+**Goal:** the actual entry screen — the four-question form and the recommendation result.
+**Preconditions:** 4.1, 2.3.
+**Build:** `components/CertAdvisor/`.
+
+**Scenario tests (Playwright):**
+- *Completing the questionnaire displays a primary recommendation with its rationale.*
+- *A practitioner can accept a recommendation, moving its goal status from `recommended` to `selected`.*
+
+**Definition of done:** both pass.
+
+---
+
+### Step 4.3 — Skill Radar dashboard
 
 **Goal:** the individual skill-radar view.
-**Preconditions:** 4.1, 2.2.
+**Preconditions:** 4.1, 2.4.
 **Build:** `components/SkillRadar/`.
 
 **Scenario tests (Playwright):**
@@ -382,10 +433,10 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 4.3 — Quiz Runner (trap-reveal) 👤
+### Step 4.4 — Quiz Runner (trap-reveal) 👤
 
 **Goal:** the interactive quiz UI, including the trap-reveal moment.
-**Preconditions:** 4.1, 2.4, 2.5.
+**Preconditions:** 4.1, 2.6, 2.7.
 **Context to load:** `docs/human-in-the-loop.md`.
 **Build:** `components/QuizRunner/` — 👤 design the reveal interaction/animation yourself once the plumbing works.
 
@@ -399,7 +450,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 4.4 — Adoption trend dashboard
+### Step 4.5 — Adoption trend dashboard
 
 **Goal:** visualize correlation gaps over time.
 **Preconditions:** 4.1, 3.2.
@@ -412,7 +463,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 4.5 — Leadership rollup view
+### Step 4.6 — Leadership rollup view
 
 **Goal:** display team/practice rollups.
 **Preconditions:** 4.1, 3.4.
@@ -425,14 +476,14 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 4.6 — Full-journey Playwright suite
+### Step 4.7 — Full-journey Playwright suite
 
 **Goal:** string together the practitioner and leadership journeys end-to-end against the full running stack.
 **Preconditions:** all of Phase 4.
 **Build:** `tests/scenarios/practitioner-journey.spec.ts`, `leadership-journey.spec.ts`.
 
 **Scenario tests:**
-- *Practitioner journey* — request a path, attempt an item, see it reflected on the radar.
+- *Practitioner journey* — get a certification recommendation, accept it, request a path targeting it, attempt an item, see it reflected on the radar.
 - *Leadership journey* — view a rollup, see an approved nudge's effect reflected the next time correlation runs.
 
 **Definition of done:** both journeys pass against a full local stack (`docker compose` + seeded data).
