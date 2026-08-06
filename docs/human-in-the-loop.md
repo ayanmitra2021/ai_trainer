@@ -15,7 +15,7 @@ The pattern across all ten: **it's almost never "write the Python yourself" — 
 | 3.3 Nudge Composer prompt | Tone and wording of anything a real practitioner will read about themselves | Nudges land in someone's inbox. A tone-deaf nudge (or a technically-accurate-but-demoralizing one) does real damage to how this tool is received internally — worth more scrutiny than any other copy in the product. |
 | 3.4 Rollup Reporter | The minimum-cohort-size policy before a rollup is shown to leadership | This is a privacy decision with a number attached (`rollups.min_cohort_size_met`). Pick the number deliberately; don't let a default slip in. |
 | 4.4 Quiz Runner (trap-reveal UI) | The interaction/animation at the moment of reveal | The mechanic's *effect* on the practitioner lives as much in the UI beat as in the copy. Worth a personal design pass once the plumbing works. |
-| 5.2 Auth & access control | Who can see individual-level data vs. only aggregates, before any real usage | Get this wrong before real practitioners are in the system and it's a trust problem, not a bug report. |
+| 5.2 Auth & access control | ~~Who can see individual-level data vs. only aggregates, before any real usage~~ **Policy decided.** Two roles: practitioner (session cookie, no password — email + name + org level on landing page) and admin/leadership (bcrypt password, forced change from "welcome" on first login). See `docs/architecture.md` §Auth & sessions for the full design. Implementation is mechanical from here. | ~~Get this wrong before real practitioners are in the system and it's a trust problem, not a bug report.~~ Already decided — Claude Code can implement without further input. |
 
 ## What this deliberately doesn't include
 

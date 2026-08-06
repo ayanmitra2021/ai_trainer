@@ -101,6 +101,9 @@ practitioners ─┬─< certification_advisor_responses
                ├─< correlation_snapshots >─ skills
                └─< nudges
 
+admin_users ─< sessions
+practitioners ─< sessions   (sessions is polymorphic via identity_type)
+
 workflow_runs ─< agent_runs
 rollups            (aggregated — no direct practitioner FK by design)
 ```
@@ -123,6 +126,22 @@ A starting set, verified against current sources rather than assumed — spans f
 
 The AWS/Google/Microsoft rows are a credible starting point, not a guarantee of what's live by the time you read this — this market moved fast enough in the months before this doc was written (AWS retired its ML Specialty exam and split it into an Associate-level engineering track and a separate Generative AI Developer track in the same window) that treating any fixed list as permanent would be a mistake. That's what `last_verified_at` is for: re-check a row before recommending it if that date is more than a few months old, rather than trusting the seed data forever.
 
+## Auth tables (Step 5.2)
+
+Two roles. Two login paths. One session table.
+
+### `admin_users`
+Leadership and admin accounts. Entirely separate from `practitioners` — these roles see individual and aggregate data; they do not take quizzes or receive learning paths.
+- `id`, `name`, `email` (unique), `role` (`admin` | `leadership`), `password_hash` (bcrypt, one-way — never reversible), `must_change_password` (boolean, default `true` — set to `false` only after a successful password change), `created_at`, `last_login_at` (nullable)
+
+Every new admin account ships with password `"welcome"` and `must_change_password = true`. The first successful login goes to a forced change-password screen before the user reaches any data. Passwords can be changed at any time from the account settings page.
+
+### `sessions`
+Server-side sessions for both role types. The session token (a UUID) lives only in an HTTP-only cookie — never in `localStorage` or `sessionStorage`.
+- `id` (uuid — the opaque cookie value), `identity_type` (`practitioner` | `admin`), `practitioner_id` (nullable FK → `practitioners` — populated when `identity_type = practitioner`), `admin_user_id` (nullable FK → `admin_users` — populated when `identity_type = admin`), `created_at`, `last_seen_at`
+
+Practitioner sessions are long-lived (no hard expiry — every request updates `last_seen_at`). Admin sessions expire after inactivity (a reasonable timeout, e.g. 8 hours, configured in `settings`).
+
 ## What's deliberately not here yet
 
-Auth/user-role tables (Step 5.2), any table for storing raw usage-log payloads (we store pointers via `raw_ref`, not the payloads themselves — keep sensitive logs where they already live), and anything for the frontend to cache client-side (React state only, per `docs/coding-guidelines.md`).
+Any table for storing raw usage-log payloads (we store pointers via `raw_ref`, not the payloads themselves — keep sensitive logs where they already live), and anything for the frontend to cache client-side (React state only, per `docs/coding-guidelines.md`).

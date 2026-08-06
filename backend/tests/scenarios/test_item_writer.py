@@ -71,11 +71,9 @@ class TestItemWriterScenarios:
 
         # Then
         assert result.item_type == "mcq"
-        options = result.answer_key.get("options", [])
-        correct_index = result.answer_key.get("correct_index")
-        # Exactly one correct option — correct_index is a valid index
-        assert isinstance(correct_index, int)
-        assert 0 <= correct_index < len(options)
+        # answer_key is now a typed MCQAnswerKey (not a raw dict)
+        assert isinstance(result.answer_key.correct_index, int)
+        assert 0 <= result.answer_key.correct_index < len(result.answer_key.options)
         # Trap explanation is non-null and non-empty
         assert result.trap_explanation is not None
         assert len(result.trap_explanation.strip()) > 0

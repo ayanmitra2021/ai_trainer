@@ -224,7 +224,8 @@ async def _run_steps(
             skill_id=path_item.skill_id,
             item_type=writer_output.item_type,
             prompt=writer_output.prompt,
-            answer_key=writer_output.answer_key,
+            # answer_key is now a typed Pydantic model; serialize to dict for JSONB storage.
+            answer_key=writer_output.answer_key.model_dump(),
             trap_explanation=writer_output.trap_explanation,
             difficulty=writer_output.difficulty,
             calibration_stats={"attempt_count": 0, "total_score": 0.0, "trap_selection_count": 0},

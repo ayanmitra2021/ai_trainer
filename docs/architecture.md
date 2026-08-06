@@ -119,6 +119,56 @@ Default to **Claude Sonnet 5** (`claude-sonnet-5`) unless a row below says other
 
 For the nightly `nightly_pulse` workflow specifically: it's not latency-sensitive, so route it through the **Message Batches API** (structured outputs are fully compatible with it, and it runs at a 50% discount) instead of the synchronous Messages API. That's a real cost lever for a workflow that runs on every practitioner, every night.
 
+## Auth & sessions (Step 5.2)
+
+Two roles, two login paths, one cookie — no JWT, no external identity provider.
+
+### Practitioner login
+The landing page shows a form: **name**, **email**, **org level** (free text, e.g. "Senior Consultant"). No password. On submit:
+1. Backend looks up the practitioner by email in `practitioners`.
+2. If not found, creates a new row with the supplied name/email/level.
+3. If found, the name and level fields are updated (overwrite with what was entered — "save and override" semantics so relaunching with the same email always reflects the current org state).
+4. A session row is created in `sessions` (`identity_type = practitioner`) and the UUID is returned as an HTTP-only cookie.
+
+This means a practitioner who relaunches the app and re-enters their email gets back to their existing skill snapshots, learning paths, attempts, and certification goals automatically — no account setup, no password.
+
+### Admin / Leadership login
+Same landing page. A **"I'm an admin / leadership member"** checkbox (or toggle) reveals a second field: **password**. On submit:
+1. Backend looks up the email in `admin_users` (not `practitioners` — completely separate table).
+2. Verifies the bcrypt hash against the supplied password.
+3. If `must_change_password = true`, creates the session but returns a redirect flag — the frontend sends the user to a forced password-change screen before they reach any data view.
+4. On successful first-login password change, sets `must_change_password = false` and `last_login_at`.
+
+Every new `admin_users` row is seeded with password `"welcome"` and `must_change_password = true`. Admins can change their own password at any time from a settings page.
+
+`role` in `admin_users` is either `admin` (full access including individual practitioner detail) or `leadership` (aggregates + rollups only — cannot see individual raw attempts). Both share the same login flow; the distinction is enforced in route middleware, not at login time.
+
+### Session mechanics
+- Sessions live in `sessions` (server-side). The browser holds only the opaque UUID in an **HTTP-only** cookie. No `localStorage`, no `sessionStorage` — per `docs/coding-guidelines.md`.
+- A FastAPI dependency (`get_session`) reads the cookie on every protected route, loads the session row, and attaches a typed `Session` object to `request.state`. If the cookie is missing or the session row doesn't exist, the dependency returns 401.
+- Route-level role guards: practitioner routes return 403 for admin sessions and vice versa; rollup and nudge-approval routes require `admin` or `leadership`.
+- Admin sessions expire after inactivity (configurable via `settings.admin_session_timeout_hours`, default 8). Practitioner sessions do not expire — every request updates `last_seen_at`.
+
+### What each role can see
+
+| View | Practitioner | Leadership | Admin |
+|---|---|---|---|
+| Own skill radar, quiz, adoption trends | ✓ | — | — |
+| Other practitioners' individual data | — | — | ✓ (read-only) |
+| Rollups (aggregated, privacy-gated) | — | ✓ | ✓ |
+| Nudge drafts — approve | — | — | ✓ |
+| Nudge drafts — view | — | ✓ | ✓ |
+| Observability dashboard (agent_runs) | — | — | ✓ |
+
+### Folder additions for Step 5.2
+- `backend/app/api/routes/auth.py` — `POST /auth/practitioner-login`, `POST /auth/admin-login`, `POST /auth/logout`, `POST /auth/change-password`
+- `backend/app/api/deps/session.py` — `get_session` dependency, `require_practitioner`, `require_admin`, `require_admin_or_leadership`
+- `frontend/src/pages/LoginPage.tsx` — landing page with practitioner/admin toggle
+- `frontend/src/pages/ChangePasswordPage.tsx` — forced first-login password change for admins
+- `frontend/src/context/SessionContext.tsx` — React context holding `{ identityType, firstName, practitionerId?, adminRole? }`; populated from `GET /auth/me` on app load; drives the nav bar greeting ("Hi, Ayan") and route guards
+
+---
+
 ## Folder structure
 
 ```

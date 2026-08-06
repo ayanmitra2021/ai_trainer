@@ -43,9 +43,13 @@ TOutput = TypeVar("TOutput", bound=BaseModel)
 
 
 class ParsedResponse(Protocol[TOutput]):
-    """Minimal shape of what client.messages.parse() returns."""
+    """Minimal shape of what client.messages.parse() returns.
 
-    parsed: TOutput
+    The real Anthropic SDK (>=0.100) returns a ParsedMessage where the parsed
+    output lives on each content block as `block.parsed_output`.  Test stubs
+    use a simpler structure with a top-level `parsed` attribute.  _extract_parsed
+    handles both so neither path breaks.
+    """
 
     class usage:
         input_tokens: int
@@ -97,7 +101,7 @@ class Agent(ABC, Generic[TInput, TOutput]):
         _build_messages(input) → list[dict]   (converts input → Claude messages)
 
     Optionally override:
-        max_tokens         — default 4096
+        max_tokens         — default 8192
         max_retries        — transient-error retries; default 3 (4 total attempts)
         retry_base_delay_s — first back-off delay in seconds; doubles each retry
         _transient_errors  — exception types that trigger a retry
@@ -106,7 +110,7 @@ class Agent(ABC, Generic[TInput, TOutput]):
     name: str
     model: str
     output_model: type[TOutput]
-    max_tokens: int = 4096
+    max_tokens: int = 8192
     max_retries: int = 3           # retries on transient errors (4 total attempts)
     retry_base_delay_s: float = 1.0  # first back-off; doubles each retry
 
@@ -243,20 +247,25 @@ class Agent(ABC, Generic[TInput, TOutput]):
             output_format=self.output_model,
         )
 
+        raw = self._extract_parsed(response)
+        if raw is None:
+            raise ValueError(
+                f"Agent '{self.name}': no parsed output found in response. "
+                f"Content types: {[getattr(b, 'type', '?') for b in getattr(response, 'content', [])]}"
+            )
+
         # Validate the parsed output against our schema.
         # With the real SDK this is a no-op (already validated); with stubs it
         # catches bad test fixtures early rather than silently returning garbage.
-        if not isinstance(response.parsed, self.output_model):
+        if not isinstance(raw, self.output_model):
             try:
                 validated = self.output_model.model_validate(
-                    response.parsed
-                    if isinstance(response.parsed, dict)
-                    else response.parsed.model_dump()
+                    raw if isinstance(raw, dict) else raw.model_dump()
                 )
             except pydantic.ValidationError:
                 raise
         else:
-            validated = response.parsed
+            validated = raw
 
         # Extract token counts (may be None on stubs).
         try:
@@ -266,6 +275,23 @@ class Agent(ABC, Generic[TInput, TOutput]):
             tokens_in = tokens_out = None
 
         return validated, tokens_in, tokens_out
+
+    @staticmethod
+    def _extract_parsed(response: Any) -> Any:
+        """Extract the parsed model instance from a parse() response.
+
+        Handles two shapes:
+        - Real Anthropic SDK >=0.100: ParsedMessage with content blocks where
+          each text block carries a `parsed_output` attribute.
+        - Test stub (_FakeParsedResponse): simple object with a `parsed` attr.
+        """
+        # Real SDK path: iterate content blocks for parsed_output
+        for block in getattr(response, "content", []):
+            value = getattr(block, "parsed_output", None)
+            if value is not None:
+                return value
+        # Stub / legacy fallback
+        return getattr(response, "parsed", None)
 
     async def _persist_run(
         self,

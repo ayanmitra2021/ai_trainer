@@ -1,7 +1,7 @@
 /** QuizRunner — interactive quiz with trap-reveal mechanic. */
 
-import { useState } from "react";
-import { useItemsBySkill, useLearningPaths, useSubmitAttempt } from "../../hooks";
+import { useMemo, useState } from "react";
+import { useItemsBySkill, useLearningPaths, useSkills, useSubmitAttempt } from "../../hooks";
 import type { Attempt, Item, MCQAnswerKey } from "../../api/types";
 
 interface Props {
@@ -131,6 +131,17 @@ function MCQItem({
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const key = item.answer_key as MCQAnswerKey;
+
+  // Guard: answer_key may be empty ({}) on items written before the schema fix.
+  // Hooks must all be called before this early return to satisfy Rules of Hooks.
+  if (!key?.options || key.options.length === 0) {
+    return (
+      <div className="empty-state">
+        Answer options unavailable for this item. Regenerate your learning path
+        to replace it with a fresh question.
+      </div>
+    );
+  }
 
   const optionStyle = (i: number): React.CSSProperties => {
     if (!attempt) {
@@ -363,7 +374,15 @@ function SkillItemQuiz({
 
 export default function QuizRunner({ practitionerId }: Props) {
   const { data: paths, isLoading: pathsLoading } = useLearningPaths(practitionerId);
+  const { data: allSkills } = useSkills();
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+
+  // Build a fast id→name lookup from the global skill list.
+  const skillNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    allSkills?.forEach((s) => map.set(s.id, s.name));
+    return map;
+  }, [allSkills]);
 
   if (pathsLoading) {
     return (
@@ -383,11 +402,16 @@ export default function QuizRunner({ practitionerId }: Props) {
     );
   }
 
-  // Deduplicate skills from path items (show each skill once)
+  // Deduplicate skills from path items (show each skill once).
+  // Use the global skill list for display names; fall back to a short UUID
+  // slice only if the skill isn't in the catalog (shouldn't happen in practice).
   const pathSkills = activePath.items.reduce<{ id: string; name: string }[]>(
     (acc, item) => {
       if (!acc.find((s) => s.id === item.skill_id)) {
-        acc.push({ id: item.skill_id, name: `Skill ${item.skill_id.slice(0, 8)}` });
+        acc.push({
+          id: item.skill_id,
+          name: skillNameById.get(item.skill_id) ?? `Skill ${item.skill_id.slice(0, 8)}`,
+        });
       }
       return acc;
     },

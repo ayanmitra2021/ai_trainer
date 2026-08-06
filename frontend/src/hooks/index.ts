@@ -115,10 +115,16 @@ export const useGenerateLearningPath = (practitioner_id: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => learningPaths.generate(practitioner_id),
-    onSuccess: () =>
+    onSuccess: () => {
+      // The workflow re-runs Skill Profiler as its first step, so both the
+      // skill-profile snapshot and the learning-path list need to be refreshed.
       qc.invalidateQueries({
         queryKey: ["practitioners", practitioner_id, "learning-paths"],
-      }),
+      });
+      qc.invalidateQueries({
+        queryKey: ["practitioners", practitioner_id, "skill-profile"],
+      });
+    },
   });
 };
 

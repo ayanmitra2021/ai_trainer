@@ -291,6 +291,8 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 **Definition of done:** all three pass.
 
+> **Design note — Skill Radar refresh cadence:** Submitting a quiz attempt writes a `skill_profile_event` of type `quiz_attempt`. The Skill Radar is *not* automatically re-profiled after each attempt — that would trigger an LLM call on every answer, which is unnecessary and expensive. Instead, practitioners complete their quizzes and then click "Regenerate learning path" to re-run the full Skill Profiler → Curriculum Planner → Item-Writer pipeline, updating the radar with all accumulated evidence at once. This is deliberate; do not add background re-profiling without explicit approval.
+
 ---
 
 # Phase 3 — Adoption Pulse (signal loop)
@@ -506,20 +508,49 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ---
 
-### Step 5.2 — Auth & access control 👤
+### Step 5.2 — Auth & access control
 
-**Goal:** role-based access — practitioners see their own data; leadership sees aggregates only.
+**Goal:** session-based auth for two roles. Practitioners: cookie session, no password. Admins/leadership: bcrypt password, forced change on first login. Each role sees only what it's entitled to.
+
 **Preconditions:** every route that exposes data.
-**Context to load:** `docs/human-in-the-loop.md`.
-**Build:** auth middleware, role checks on routes — 👤 decide the actual policy before writing the checks.
+**Context to load:** `docs/architecture.md` (Auth & sessions section), `docs/data-model.md` (auth tables).
+
+**Policy is already decided** — see `docs/architecture.md` §Auth & sessions for the full design. No 👤 judgment call remains; implement from spec.
+
+**Build:**
+
+*Backend:*
+- Migration: `admin_users` and `sessions` tables (see `docs/data-model.md` §Auth tables).
+- `backend/app/api/routes/auth.py`:
+  - `POST /auth/practitioner-login` — body: `{ name, email, org_level }`. Upserts practitioner by email (name/level overwritten on re-entry). Creates session. Sets HTTP-only cookie. Returns `{ identity_type: "practitioner", first_name, practitioner_id }`.
+  - `POST /auth/admin-login` — body: `{ email, password }`. Checks `admin_users`. Returns `{ identity_type: "admin", first_name, role, must_change_password }`. Sets HTTP-only cookie. Does NOT redirect — that's the frontend's job.
+  - `POST /auth/logout` — clears the cookie and deletes the session row.
+  - `POST /auth/change-password` — admin only; verifies current password, updates hash, sets `must_change_password = false`.
+  - `GET /auth/me` — returns current session identity (used by frontend on page load to restore session context without re-login).
+- `backend/app/api/deps/session.py`:
+  - `get_session` — reads cookie, loads session row, attaches to `request.state`; returns 401 if missing/expired.
+  - `require_practitioner` — calls `get_session`, 403 if `identity_type != practitioner`.
+  - `require_admin` — calls `get_session`, 403 if `identity_type != admin` or `role != admin`.
+  - `require_admin_or_leadership` — 403 if not an admin-type session.
+- Apply the right dependency to every existing route (practitioners routes → `require_practitioner` with self-only enforcement; rollup/nudge routes → `require_admin_or_leadership`).
+- Seed one starter admin: email `admin@example.com`, password `"welcome"`, `role = admin`, `must_change_password = true`.
+
+*Frontend:*
+- `frontend/src/pages/LoginPage.tsx` — landing page. Default state: practitioner form (name, email, org level). Checkbox "I'm an admin / leadership member" toggles to admin form (email, password). Submits to the right endpoint.
+- `frontend/src/pages/ChangePasswordPage.tsx` — shown to admins when `must_change_password = true`. Blocks all other navigation until complete.
+- `frontend/src/context/SessionContext.tsx` — React context, populated from `GET /auth/me` on app load. Holds `{ identityType, firstName, practitionerId?, adminRole? }`. Nav bar shows "Hi, [firstName]".
+- Route guards: practitioner pages redirect to login if no session or wrong role; admin pages do the same.
+- The existing "pick a practitioner" home page is replaced — a logged-in practitioner lands directly on their own tabs (Skill Radar, Certifications, Quiz, Trends).
 
 **Scenario tests:**
+- *A practitioner logs in by email and is routed directly to their own dashboard — no other practitioners' data is visible.*
+- *Relaunching the app and re-entering the same email restores the same practitioner's learning history (paths, attempts, skill scores).*
 - *A practitioner cannot fetch another practitioner's individual profile* — 403, not the data.
-- *A leadership-role user can view a rollup but not an individual's raw attempts* — 403.
+- *A leadership-role admin can view rollups and nudges but not an individual practitioner's raw attempts* — 403.
+- *An admin with `must_change_password = true` is blocked from any data view until they change their password.*
+- *An admin cannot log in with the wrong password* — 401.
 
-**Definition of done:** both pass.
-
-> 👤 **Human-in-the-loop:** get this wrong before real practitioners are in the system and it's a trust problem, not a bug report. Decide the policy yourself. See `docs/human-in-the-loop.md`.
+**Definition of done:** all six scenario tests pass; the starter admin account exists in seed; `GET /auth/me` returns the right shape for both identity types.
 
 ---
 

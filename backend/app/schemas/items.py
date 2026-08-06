@@ -56,7 +56,10 @@ class ItemWriterOutput(BaseModel):
 
     item_type: str
     prompt: str
-    answer_key: dict  # MCQAnswerKey or FreeTextAnswerKey serialised
+    # Typed union so the Structured Outputs JSON Schema includes required fields.
+    # bare `dict` generates `{"type": "object"}` with no constraints, which lets
+    # the model return {} and pass validation.
+    answer_key: MCQAnswerKey | FreeTextAnswerKey
     trap_explanation: str | None = None
     difficulty: float = Field(..., ge=0.0, le=1.0)
     rationale: str  # Why this difficulty / why this trap
