@@ -79,6 +79,12 @@ export interface QuestionnaireAnswers {
   writes_code: boolean;
   focus_area: "advising" | "building" | "architecting";
   experience_level: "new" | "some" | "experienced";
+  // Phase 6.2 optional fields
+  ai_experience_years?: "none" | "under_1" | "1_to_3" | "over_3" | null;
+  primary_job_role?: "developer" | "architect" | "consultant" | "manager" | "researcher" | "other" | null;
+  deploys_llms_in_production?: boolean | null;
+  prompt_engineering_familiarity?: "none" | "basic" | "intermediate" | "advanced" | null;
+  mentors_others_on_ai?: boolean | null;
 }
 
 export interface AdvisorOutput {
@@ -225,4 +231,158 @@ export interface NightlyPulseRequest {
   scope_ref: string;
   period_start: string;
   period_end: string;
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+
+export interface PractitionerLoginRequest {
+  name: string;
+  email: string;
+  org_level?: string;
+}
+
+export interface AdminLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface PractitionerLoginResponse {
+  identity_type: "practitioner";
+  first_name: string;
+  practitioner_id: string;
+}
+
+export interface AdminLoginResponse {
+  identity_type: "admin";
+  first_name: string;
+  role: "admin" | "leadership";
+  must_change_password: boolean;
+}
+
+export type LoginResponse = PractitionerLoginResponse | AdminLoginResponse;
+
+export interface MeResponse {
+  identity_type: "practitioner" | "admin";
+  first_name: string;
+  practitioner_id?: string;
+  admin_role?: "admin" | "leadership";
+  must_change_password: boolean;
+  active_profile_id?: string;
+  active_certification_code?: string;
+}
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+// ── Self Assessment ───────────────────────────────────────────────────────────
+
+export interface SkillAssessmentItem {
+  skill_id: string;
+  signal_strength: number; // 0.0–1.0
+}
+
+export interface SelfAssessmentRequest {
+  assessments: SkillAssessmentItem[];
+}
+
+export interface SelfAssessmentResponse {
+  events_written: number;
+}
+
+// ── Admin Users ───────────────────────────────────────────────────────────────
+
+export interface AdminUserResponse {
+  id: string;
+  email: string;
+  first_name: string;
+  role: "admin" | "leadership";
+  must_change_password: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+export interface AdminUserCreate {
+  email: string;
+  first_name: string;
+  role: "admin" | "leadership";
+  temporary_password: string;
+}
+
+// ── Observability ──────────────────────────────────────────────────────────────
+
+export interface AgentStats {
+  agent_name: string;
+  run_count: number;
+  error_count: number;
+  error_rate: number;
+  avg_latency_ms: number | null;
+  avg_tokens_input: number | null;
+  avg_tokens_output: number | null;
+}
+
+export interface RecentError {
+  id: string;
+  agent_name: string;
+  error_message: string | null;
+  workflow_run_id: string | null;
+  started_at: string;
+}
+
+export interface ObservabilityReport {
+  period_hours: number;
+  total_runs: number;
+  error_count: number;
+  error_rate: number;
+  avg_latency_ms: number | null;
+  by_agent: AgentStats[];
+  recent_errors: RecentError[];
+}
+
+// ── Profiles ──────────────────────────────────────────────────────────────────
+
+export interface ProfileSkillAssessment {
+  id: string;
+  profile_id: string;
+  skill_id: string;
+  signal_strength: number;
+  updated_at: string;
+}
+
+export interface PractitionerProfile {
+  id: string;
+  practitioner_id: string;
+  name: string;
+  is_active: boolean;
+  certification_id?: string;
+  certification_code?: string;
+  questionnaire_snapshot?: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  mastery_pct?: number;
+}
+
+export interface ProfileDetail extends PractitionerProfile {
+  skill_assessments: ProfileSkillAssessment[];
+}
+
+export interface ProfileCreate {
+  name: string;
+  questionnaire_snapshot?: Record<string, unknown>;
+  certification_id?: string;
+}
+
+export interface ProfileUpdate {
+  name?: string;
+  certification_id?: string;
+  questionnaire_snapshot?: Record<string, unknown>;
+}
+
+export interface ProfileSkillUpsert {
+  assessments: { skill_id: string; signal_strength: number }[];
+}
+
+export interface ProfileSkillUpsertResponse {
+  rows_written: number;
 }

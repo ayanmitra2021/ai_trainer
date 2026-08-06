@@ -3,6 +3,7 @@
 :root {
   --bg: #f8f9fa;
   --surface: #ffffff;
+  --surface-alt: #f3f4f6;
   --border: #dee2e6;
   --text: #212529;
   --text-muted: #6c757d;
@@ -20,6 +21,7 @@
   :root {
     --bg: #1a1b1e;
     --surface: #25262b;
+    --surface-alt: #2c2e33;
     --border: #373a40;
     --text: #e9ecef;
     --text-muted: #868e96;

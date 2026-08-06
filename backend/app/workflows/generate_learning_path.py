@@ -25,6 +25,7 @@ from app.db.models import (
     LearningPath,
     LearningPathItem,
     PractitionerCertificationGoal,
+    PractitionerProfile,
     Skill,
     SkillProfileEvent,
     SkillProfileSnapshot,
@@ -113,6 +114,38 @@ async def _run_steps(
         for e in events
     ]
 
+    # Check if the practitioner has an active profile with skill assessments.
+    # If so, inject those ratings as additional self_assessment events so the
+    # Skill Profiler naturally weights them higher than older events.
+    profile_result = await db.execute(
+        select(PractitionerProfile)
+        .options(selectinload(PractitionerProfile.skill_assessments))
+        .where(
+            PractitionerProfile.practitioner_id == practitioner_id,
+            PractitionerProfile.is_active.is_(True),
+        )
+    )
+    active_profile = profile_result.scalar_one_or_none()
+
+    if active_profile is not None and active_profile.skill_assessments:
+        # Profile skill ratings override loose self_assessment events for those skills.
+        # Remove any existing self_assessment events for skills the profile covers.
+        profile_skill_ids = {psa.skill_id for psa in active_profile.skill_assessments}
+        events_data = [
+            e for e in events_data
+            if not (e["source"] == "self_assessment" and e["skill_id"] in profile_skill_ids)
+        ]
+        # Add profile assessments as fresh self_assessment signals
+        profile_now = datetime.now(UTC).isoformat()
+        for psa in active_profile.skill_assessments:
+            events_data.append({
+                "skill_id": psa.skill_id,
+                "source": "self_assessment",
+                "signal_strength": float(psa.signal_strength),
+                "occurred_at": profile_now,
+                "metadata": {"source": "active_profile", "profile_id": active_profile.id},
+            })
+
     profiler_input = SkillProfilerInput(
         practitioner_id=practitioner_id,
         events=events_data,
@@ -122,39 +155,61 @@ async def _run_steps(
     )
     profiler_output = await profiler.run(profiler_input)
 
-    # Upsert skill snapshots
-    for score in profiler_output.skill_scores:
+    # ── 3. Curriculum Planner ──────────────────────────────────────────────
+    # Build skill score context from ALL skills in the catalog.
+    # Skills the profiler scored get their real scores; everything else
+    # defaults to mastery=0 / confidence=0 so the planner always has real
+    # skill IDs to choose from and never has to invent them.
+    all_skills_result = await db.execute(select(Skill))
+    all_skills: list[Skill] = list(all_skills_result.scalars().all())
+    valid_skill_ids: set[str] = {s.id for s in all_skills}
+
+    profiler_score_map = {s.skill_id: s for s in profiler_output.skill_scores}
+
+    skill_scores_context: list[SkillScoreContext] = []
+    for skill in all_skills:
+        if skill.id in profiler_score_map:
+            scored = profiler_score_map[skill.id]
+            skill_scores_context.append(
+                SkillScoreContext(
+                    skill_id=skill.id,
+                    skill_name=skill.name,
+                    mastery_score=scored.mastery_score,
+                    confidence=scored.confidence,
+                )
+            )
+        else:
+            # No profiler data yet — treat as completely unscored
+            skill_scores_context.append(
+                SkillScoreContext(
+                    skill_id=skill.id,
+                    skill_name=skill.name,
+                    mastery_score=0.0,
+                    confidence=0.0,
+                )
+            )
+
+    # Upsert snapshots for ALL skills in the catalog (not just profiler-scored
+    # ones). This ensures the Skill Radar always has data to display, even for
+    # brand-new practitioners who have no skill_profile_events yet.
+    now = datetime.now(UTC)
+    for skill_ctx in skill_scores_context:
         existing = await db.get(
-            SkillProfileSnapshot, (practitioner_id, score.skill_id)
+            SkillProfileSnapshot, (practitioner_id, skill_ctx.skill_id)
         )
         if existing is not None:
-            existing.mastery_score = score.mastery_score
-            existing.confidence = score.confidence
-            existing.last_computed_at = datetime.now(UTC)
+            existing.mastery_score = skill_ctx.mastery_score
+            existing.confidence = skill_ctx.confidence
+            existing.last_computed_at = now
         else:
-            snapshot = SkillProfileSnapshot(
+            db.add(SkillProfileSnapshot(
                 practitioner_id=practitioner_id,
-                skill_id=score.skill_id,
-                mastery_score=score.mastery_score,
-                confidence=score.confidence,
-                last_computed_at=datetime.now(UTC),
-            )
-            db.add(snapshot)
+                skill_id=skill_ctx.skill_id,
+                mastery_score=skill_ctx.mastery_score,
+                confidence=skill_ctx.confidence,
+                last_computed_at=now,
+            ))
     await db.flush()
-
-    # ── 3. Curriculum Planner ──────────────────────────────────────────────
-    # Build skill score context with names
-    skill_scores_context: list[SkillScoreContext] = []
-    for score in profiler_output.skill_scores:
-        skill = await db.get(Skill, score.skill_id)
-        skill_scores_context.append(
-            SkillScoreContext(
-                skill_id=score.skill_id,
-                skill_name=skill.name if skill else score.skill_id,
-                mastery_score=score.mastery_score,
-                confidence=score.confidence,
-            )
-        )
 
     # Check for active certification goal
     cert_goal_context: CertGoalContext | None = None
@@ -196,6 +251,24 @@ async def _run_steps(
     )
     planner_output = await planner.run(planner_input)
 
+    # Safety guard: drop any path items whose skill_id isn't in the DB.
+    # This prevents FK violations if the model ignores the "don't invent IDs" rule.
+    valid_path_items = [
+        item for item in planner_output.path_items
+        if item.skill_id in valid_skill_ids
+    ]
+    if len(valid_path_items) < len(planner_output.path_items):
+        invalid_ids = [
+            item.skill_id for item in planner_output.path_items
+            if item.skill_id not in valid_skill_ids
+        ]
+        import logging
+        logging.getLogger(__name__).warning(
+            "Curriculum Planner returned %d invalid skill IDs (dropped): %s",
+            len(invalid_ids), invalid_ids,
+        )
+        planner_output.path_items = valid_path_items
+
     # ── 4. Item-Writer (one starter item per path node) ───────────────────
     item_writer = ItemWriterAgent(
         client=claude_client, db_session=db, workflow_run_id=workflow_run_id
@@ -236,12 +309,23 @@ async def _run_steps(
     await db.flush()
 
     # ── 5. Persist learning path ───────────────────────────────────────────
+    # Mark any previously active paths as completed so there is exactly one
+    # active path at a time.
+    prev_paths_result = await db.execute(
+        select(LearningPath).where(
+            LearningPath.practitioner_id == practitioner_id,
+            LearningPath.status == "active",
+        )
+    )
+    for prev in prev_paths_result.scalars().all():
+        prev.status = "completed"
+
     learning_path_id = str(uuid.uuid4())
     learning_path = LearningPath(
         id=learning_path_id,
         practitioner_id=practitioner_id,
         generated_at=datetime.now(UTC),
-        status="draft",
+        status="active",
         workflow_run_id=workflow_run_id,
     )
     db.add(learning_path)

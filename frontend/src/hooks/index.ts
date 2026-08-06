@@ -11,13 +11,19 @@ import {
   items,
   learningPaths,
   practitioners,
+  profiles,
   pulse,
   skills,
 } from "../api";
 import type {
+  Attempt,
   AttemptCreate,
   PractitionerCreate,
+  ProfileCreate,
+  ProfileSkillUpsert,
+  ProfileUpdate,
   QuestionnaireAnswers,
+  SelfAssessmentRequest,
 } from "../api/types";
 
 // ── Practitioners ──────────────────────────────────────────────────────────────
@@ -38,6 +44,22 @@ export const useSkillProfile = (id: string) =>
     queryFn: () => practitioners.skillProfile(id),
     enabled: !!id,
   });
+
+export const useSubmitSelfAssessment = (practitioner_id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SelfAssessmentRequest) =>
+      practitioners.submitSelfAssessment(practitioner_id, body),
+    onSuccess: () => {
+      // The radar will update on the next "Regenerate path" click — no automatic
+      // re-profile per the design note in CLAUDE.md.
+      // Invalidate the skill-profile cache so stale data isn't shown after regen.
+      qc.invalidateQueries({
+        queryKey: ["practitioners", practitioner_id, "skill-profile"],
+      });
+    },
+  });
+};
 
 export const useCreatePractitioner = () => {
   const qc = useQueryClient();
@@ -139,14 +161,31 @@ export const useItemsBySkill = (skill_id: string) =>
 
 // ── Attempts ───────────────────────────────────────────────────────────────────
 
-export const useSubmitAttempt = () => {
+export const usePractitionerAttempts = (practitioner_id: string) =>
+  useQuery({
+    queryKey: ["practitioners", practitioner_id, "attempts"],
+    queryFn: () => attempts.listByPractitioner(practitioner_id),
+    enabled: !!practitioner_id,
+    // Keep previous data while refetching so quiz UI doesn't flash empty
+    placeholderData: (prev) => prev,
+  });
+
+export const useSubmitAttempt = (practitioner_id: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: AttemptCreate) => attempts.submit(body),
-    onSuccess: (data) => {
-      qc.invalidateQueries({
-        queryKey: ["practitioners", data.practitioner_id, "skill-profile"],
-      });
+    onSuccess: (newAttempt: Attempt) => {
+      // Append the new attempt into the cached list immediately — no round-trip
+      qc.setQueryData<Attempt[]>(
+        ["practitioners", practitioner_id, "attempts"],
+        (old = []) => {
+          // Replace any earlier attempt for the same item, then prepend the new one
+          const filtered = old.filter((a) => a.item_id !== newAttempt.item_id);
+          return [newAttempt, ...filtered];
+        },
+      );
+      // Skill profile will update after the user clicks "Regenerate path"
+      // (per the design note in CLAUDE.md — don't re-profile on every answer)
     },
   });
 };
@@ -188,3 +227,70 @@ export const useRollups = (params?: {
     queryKey: ["rollups", params],
     queryFn: () => pulse.rollups(params),
   });
+
+// ── Profiles ───────────────────────────────────────────────────────────────────
+
+export const useProfiles = (practitioner_id: string) =>
+  useQuery({
+    queryKey: ["practitioners", practitioner_id, "profiles"],
+    queryFn: () => profiles.list(practitioner_id),
+    enabled: !!practitioner_id,
+  });
+
+export const useProfile = (practitioner_id: string, profile_id: string) =>
+  useQuery({
+    queryKey: ["practitioners", practitioner_id, "profiles", profile_id],
+    queryFn: () => profiles.get(practitioner_id, profile_id),
+    enabled: !!practitioner_id && !!profile_id,
+  });
+
+export const useCreateProfile = (practitioner_id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ProfileCreate) => profiles.create(practitioner_id, body),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["practitioners", practitioner_id, "profiles"] }),
+  });
+};
+
+export const useUpdateProfile = (practitioner_id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ profile_id, body }: { profile_id: string; body: ProfileUpdate }) =>
+      profiles.update(practitioner_id, profile_id, body),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["practitioners", practitioner_id, "profiles"] }),
+  });
+};
+
+export const useActivateProfile = (practitioner_id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (profile_id: string) => profiles.activate(practitioner_id, profile_id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["practitioners", practitioner_id, "profiles"] });
+      qc.invalidateQueries({ queryKey: ["practitioners", practitioner_id, "skill-profile"] });
+    },
+  });
+};
+
+export const useDeleteProfile = (practitioner_id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (profile_id: string) => profiles.delete(practitioner_id, profile_id),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["practitioners", practitioner_id, "profiles"] }),
+  });
+};
+
+export const useUpsertProfileSkills = (practitioner_id: string, profile_id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ProfileSkillUpsert) =>
+      profiles.upsertSkillAssessments(practitioner_id, profile_id, body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["practitioners", practitioner_id, "profiles"] });
+      qc.invalidateQueries({ queryKey: ["practitioners", practitioner_id, "profiles", profile_id] });
+    },
+  });
+};

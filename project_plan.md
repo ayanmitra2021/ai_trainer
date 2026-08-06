@@ -50,10 +50,21 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 4.7 Full-journey Playwright suite
 
 **Phase 5 — Hardening & Packaging**
-- [ ] 5.1 Observability
-- [ ] 5.2 Auth & access control 👤
-- [ ] 5.3 Deployment packaging
-- [ ] 5.4 Full regression pass + demo script
+- [x] 5.1 Observability
+- [x] 5.2 Auth & access control 👤
+- [x] 5.3 Deployment packaging
+- [x] 5.4 Full regression pass + demo script
+- [x] 5.5 Bug fixes (pre-Phase 6 cleanup)
+
+**Phase 6 — Practitioner Profile Redesign**
+- [x] 6.1 Practitioner profile data model & API
+- [x] 6.2 Enhanced questionnaire 👤
+- [x] 6.3 "Build my profile" landing page
+- [x] 6.4 Profile questionnaire + certification selection wizard
+- [x] 6.5 Profile-linked skill assessment
+- [x] 6.6 Profile management & activation
+- [x] 6.7 Skill Radar enhancements
+- [x] 6.8 Quiz profile-awareness & navigation fix
 
 ---
 
@@ -575,3 +586,228 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 **Scenario tests:** re-run the full scenario suite from every phase — zero regressions.
 **Definition of done:** full suite green; the demo script runs start to finish without improvising.
+
+---
+
+### Step 5.5 — Bug fixes (pre-Phase 6 cleanup)
+
+**Goal:** clear three known defects in the running app before the Phase 6 redesign begins. These are self-contained fixes with no schema changes; each can be verified manually in the running app within minutes.
+
+**Preconditions:** 5.4 (app is running, seed data is present).
+
+**Bug 1 — Quiz "Next" button loops on the same question**
+Symptom: pressing "Next" after answering a question re-renders the same question instead of advancing to the next unanswered one. The item-selection index in `QuizRunner` is either not being incremented after a submission, or the items list is being re-fetched and resetting the index back to 0. Audit the interaction between `useItemsBySkill`, `useSubmitAttempt`, and whichever piece of state tracks "which item index is currently displayed."
+
+**Bug 2 — Skill name text is invisible in the "Rate your skills" panel**
+Symptom: skill names in `SelfAssessmentPanel` appear white-on-white in the skill rows (background `var(--surface-alt, #f9fafb)` is light, but `var(--text)` resolves to near-white in dark mode). The selected-state pill uses the hardcoded colour `"#111"` which also fails in dark mode. Fix: replace all hardcoded colour literals in `SelfAssessmentPanel` and its `LevelPicker` with CSS variables that honour both themes, and add a `@media (prefers-color-scheme: dark)` rule for `--surface-alt` so the row background is distinguishable in dark mode.
+
+**Bug 3 — Top skill gaps bar chart does not update after quiz + regenerate**
+Symptom: after submitting quiz attempts and clicking "Regenerate path", the radar polygon refreshes but the "Top skill gaps" progress bars in the side panel still show the old values. Both the radar and the bar chart read from the same `snapshots` data returned by `useSkillProfile` — if the radar is updating then the query key is being invalidated correctly. Investigate whether the bars are sorted from a stale copy of `snapshots` (e.g. a `useMemo` that doesn't depend on `snapshots`) or are rendering from a different, un-invalidated query.
+
+**Scenario tests:** none automated — verified manually:
+1. In the quiz, answer a question and confirm "Next" shows a different question.
+2. In "Rate your skills", confirm all skill names and pill labels are readable in both light and dark mode.
+3. After submitting quiz attempts and clicking "Regenerate path", confirm both the radar polygon *and* the top-gaps progress bars reflect the updated mastery scores.
+
+**Definition of done:** all three bugs are fixed and manually verified.
+
+---
+
+# Phase 6 — Practitioner Profile Redesign
+
+This phase replaces the ad-hoc "generate a path" flow with a deliberate, multi-profile practitioner experience. The central idea: a practitioner's **profile** is the union of their background answers, chosen certification goal, and self-rated skill levels. The Skill Radar and Quiz become read-driven views that consume the active profile; all authoring happens in the "Build my profile" flow. A practitioner can maintain multiple profiles (e.g. one for each cert they are considering), but only one is active at a time.
+
+---
+
+### Step 6.1 — Practitioner profile data model & API
+
+**Goal:** introduce the `practitioner_profiles` table and the `profile_skill_assessments` table; link the existing certification goal and questionnaire answer records to a profile; add the CRUD + activation API.
+
+**Preconditions:** 5.5.
+**Context to load:** `docs/data-model.md`, `docs/architecture.md`.
+
+**Build:**
+
+*Schema (new migration):*
+- `practitioner_profiles`: `id` (UUID PK), `practitioner_id` (FK → practitioners), `name` (text, user-chosen label e.g. "My AWS path"), `is_active` (bool, default false), `certification_id` (nullable FK → certifications), `questionnaire_snapshot` (JSONB — a verbatim copy of the questionnaire answers at save time), `created_at`, `updated_at`. Constraint: at most one row per `practitioner_id` may have `is_active = true` (enforced in application logic, not DB constraint, to keep the activation swap atomic).
+- `profile_skill_assessments`: `id` (UUID PK), `profile_id` (FK → practitioner_profiles, ON DELETE CASCADE), `skill_id` (FK → skills), `signal_strength` (float, 0.0–1.0), `updated_at`. Unique constraint on `(profile_id, skill_id)` — one row per skill per profile, upserted on re-save.
+- Add nullable `profile_id` (FK → practitioner_profiles) to `certification_advisor_responses` and `practitioner_certification_goals`. Existing rows are left null.
+
+*API routes (backend):*
+- `POST /practitioners/{id}/profiles` — create a profile with `name`, `questionnaire_snapshot`, and optional `certification_id`. Returns the new profile. Does not activate automatically.
+- `GET /practitioners/{id}/profiles` — list all profiles for the practitioner, ordered by `created_at` desc. Each item includes the certification code (if set) and the latest mastery aggregate % (computed from the last skill-profile snapshot).
+- `GET /practitioners/{id}/profiles/{profile_id}` — full detail: profile fields + `profile_skill_assessments` list.
+- `PATCH /practitioners/{id}/profiles/{profile_id}` — update `name`, `certification_id`, or `questionnaire_snapshot`.
+- `PATCH /practitioners/{id}/profiles/{profile_id}/activate` — set `is_active = true` on this profile and `is_active = false` on all others for the same practitioner, atomically. Returns the updated profile.
+- `POST /practitioners/{id}/profiles/{profile_id}/skill-assessments` — upsert skill ratings (list of `{skill_id, signal_strength}`). Returns `{rows_written: N}`.
+
+*Skill Profiler integration:* when the Skill Profiler workflow runs, it should look up the practitioner's active profile. If one exists, its `profile_skill_assessments` rows are included as self-assessment signals alongside any `skill_profile_events` of other sources. If no profile exists, the existing fallback (loose `skill_profile_events` of type `self_assessment`) continues to work.
+
+**Scenario tests:**
+- *A practitioner can have many profiles but only one active at a time* — activating a second profile atomically deactivates the first; a third `GET /profiles` confirms exactly one `is_active = true` row.
+- *The Skill Profiler uses the active profile's skill assessments as input* — Given an active profile with `signal_strength = 0.75` on skill X and no other signals, when the profiler runs, skill X's mastery score in the snapshot is materially above zero.
+- *Switching the active profile and re-profiling produces a different radar* — Given two profiles with different ratings on skill X (0.25 vs 0.75), activating each and running the profiler in sequence yields different `mastery_score` values in the snapshot.
+
+**Definition of done:** all three pass; migration runs clean against local DB; existing seeded data is not disrupted.
+
+---
+
+### Step 6.2 — Enhanced practitioner questionnaire 👤
+
+**Goal:** extend the four-question certification advisor form into a richer background questionnaire that both improves the recommendation quality and becomes the stored `questionnaire_snapshot` on the profile.
+
+**Preconditions:** 6.1.
+**Context to load:** `docs/architecture.md` (Certification Advisor section), `docs/human-in-the-loop.md`.
+
+**Build:**
+- Extend the questionnaire schema (backend Pydantic type + frontend TypeScript type) with additional optional fields covering: years of AI/ML experience (`none` / `under_1` / `1_to_3` / `over_3`), primary job role (`developer` / `architect` / `consultant` / `manager` / `researcher` / `other`), whether they currently deploy LLMs in production (`bool`), self-rated prompt-engineering familiarity (`none` / `basic` / `intermediate` / `advanced`), and whether they manage or mentor others on AI topics (`bool`).
+- Update the Certification Advisor agent prompt (`agents/prompts/certification_advisor.md`) to incorporate the new signals — e.g., a manager who mentors others, has no coding background, and rates their prompt-engineering as "basic" should trend toward CCAO-F even without an explicit provider preference.
+- Backward compatibility: the four original fields (`provider_preference`, `writes_code`, `focus_area`, `experience_level`) remain required; the new five fields are optional so stored responses from before this step don't break.
+- The questionnaire snapshot stored on the profile should include all fields (original + new).
+
+**Scenario tests:**
+- *A manager who mentors others and has no coding experience is recommended CCAO-F even without a provider preference* — the new signals push the advisor toward the non-coding track.
+- *All new questionnaire fields survive a round-trip* — POST a profile with all fields populated; GET the profile back; every field matches exactly.
+
+**Definition of done:** both pass.
+
+> 👤 **Human-in-the-loop:** review the final question wording and the updated advisor prompt before implementing. The questions only improve the recommendation if they are clearly worded; the prompt only uses them correctly if the weighting is deliberate. See `docs/human-in-the-loop.md`.
+
+---
+
+### Step 6.3 — "Build my profile" landing page
+
+**Goal:** replace the current post-login landing for practitioners with a page that surfaces their profiles and is the starting point for all profile creation and editing.
+
+**Preconditions:** 6.1.
+**Context to load:** `docs/architecture.md` (Frontend section).
+
+**Build:**
+- New page `frontend/src/pages/BuildProfilePage.tsx`, routed at `/profile`.
+- **Empty state** (no profiles yet): a prominent "Build your first profile" headline, a two-sentence explanation of what a profile is, and a single "Start" CTA that launches the profile wizard (Step 6.4).
+- **With profiles**: a responsive card grid — one card per profile. Each card shows: profile name, certification code + full name (or "No certification chosen"), last radar date, a mastery progress bar (aggregate % toward the cert's skills), and an "Active" badge on the currently active profile. Card actions: **Activate** (visible only on inactive profiles), **Edit** (re-enters the wizard with answers pre-populated), **Delete** (with a confirm dialog; disabled if it is the only profile).
+- A "New profile" button in the page header always launches the wizard from scratch.
+- Routing: practitioners land on `/profile` immediately after login (redirect from the root `/`). The nav bar gains a "My Profiles" link for practitioners.
+- The existing tabs (Skill Radar, Quiz, Certifications, Trends) remain accessible from the nav bar; this page is the default view after login, not a replacement for the tabs.
+
+**Scenario tests (Playwright):**
+- *A new practitioner lands on `/profile` after login and sees the empty-state CTA, not a broken chart.*
+- *A practitioner with two profiles sees two cards; the active one carries the "Active" badge.*
+
+**Definition of done:** both pass.
+
+---
+
+### Step 6.4 — Profile questionnaire + certification selection wizard
+
+**Goal:** the multi-step wizard that collects background answers, gets a certification recommendation, and lets the practitioner confirm or override the choice — producing a saved (but not yet active) profile by the end.
+
+**Preconditions:** 6.2, 6.3.
+
+**Build:**
+- Multi-step wizard component `frontend/src/components/ProfileBuilder/ProfileWizard.tsx`:
+  - **Step 1 — About you**: Profile name (free text) + all questionnaire fields from Step 6.2 (original four + new five). A progress indicator shows "Step 1 of 3".
+  - **Step 2 — Certification choice**: A "Get recommendation" button calls `POST /certification-advisor` with the questionnaire answers → displays the recommended certification with its rationale. Below the recommendation, shows the full list of available certifications (grouped by provider) so the practitioner can accept the recommendation or pick a different one. Selecting a certification highlights it; the CTA changes to "Continue with [cert code]".
+  - **Step 3 — Confirm**: A read-only summary card showing the chosen profile name and certification. A "Continue to skill rating →" CTA saves the profile to the backend (`POST /practitioners/{id}/profiles`) and navigates to Step 6.5 (skill assessment) with the new `profile_id` in the URL.
+- Back-navigation between wizard steps preserves all entered values (no data loss on pressing "Back").
+- When the wizard is entered via "Edit" on an existing profile card, all fields are pre-populated from the existing `questionnaire_snapshot` and `certification_id`; saving calls `PATCH /practitioners/{id}/profiles/{profile_id}`.
+
+**Scenario tests (Playwright):**
+- *Completing the wizard creates a profile with the chosen certification attached — the profile appears on `BuildProfilePage`.*
+- *Choosing a different certification than the recommendation saves the override correctly.*
+- *Pressing "Back" from Step 2 to Step 1 preserves the answers already entered.*
+
+**Definition of done:** all three pass.
+
+---
+
+### Step 6.5 — Profile-linked skill assessment
+
+**Goal:** after the wizard commits a certification choice, present a skills table weighted toward that certification's skills and save the ratings against the profile.
+
+**Preconditions:** 6.4.
+
+**Build:**
+- New page/view `frontend/src/pages/ProfileSkillAssessmentPage.tsx`, routed at `/profile/:profileId/skills`.
+- Skills are displayed in two tiers:
+  - **Tier 1 — Certification-relevant skills** (shown first, with a subtle cert-name badge next to the section header): all skills in `certification_skills` for the profile's chosen certification, sorted alphabetically within tier.
+  - **Tier 2 — All other catalog skills** (shown below a divider): the remaining skills, also sorted alphabetically.
+- For a brand-new profile, all skills default to "None". For an existing profile being edited, pre-populate from `profile_skill_assessments` rows.
+- The `SelfAssessmentPanel` component is refactored or replaced by a new `ProfileSkillRater` component that accepts `certificationId` and renders the two-tier layout.
+- "Save assessment" calls `POST /practitioners/{id}/profiles/{profile_id}/skill-assessments`. On first save of a profile that has no prior active profile, the backend also calls `PATCH /…/activate` to make this the active profile automatically. On subsequent saves it is an upsert only.
+- After saving: navigate back to `BuildProfilePage` with a "Profile saved and activated" toast.
+
+**Scenario tests:**
+- *Saving skill ratings creates exactly one `profile_skill_assessments` row per skill in the catalog (none duplicated).*
+- *Certification-relevant skills appear before non-certification skills in the rendered table.*
+- *Re-saving updated ratings upserts — row count stays the same, values update.*
+
+**Definition of done:** all three pass.
+
+---
+
+### Step 6.6 — Profile management & activation
+
+**Goal:** complete the profile-switching experience — practitioners can activate any profile from the list, and the rest of the app (Skill Radar, Quiz) immediately reads from the newly active one.
+
+**Preconditions:** 6.5.
+
+**Build:**
+- "Activate" button on profile cards (Step 6.3) calls `PATCH /practitioners/{id}/profiles/{profile_id}/activate`, then invalidates the profiles list query and the skill-profile snapshot query so both `BuildProfilePage` and the Skill Radar tab reflect the change without a full page reload.
+- The active profile's certification code is exposed on the `GET /auth/me` response (add `active_profile_id` and `active_certification_code` to the `MeResponse` schema) so any tab can read it without an extra round-trip.
+- The nav bar shows the active certification code as a small badge next to "My Profiles" (e.g. "My Profiles · CCAF") so the practitioner always knows which profile is driving their experience.
+- "Delete" on a profile card: disabled if it is the currently active profile or if it is the only profile. Shows a confirm dialog; on confirm calls `DELETE /practitioners/{id}/profiles/{profile_id}` (new endpoint — cascades to `profile_skill_assessments`).
+
+**Scenario tests:**
+- *Activating profile B from `BuildProfilePage` deactivates profile A — the Active badge moves, the Skill Radar and Quiz tabs now read from profile B's data.*
+- *Deleting a non-active profile removes it from the list without affecting the active profile.*
+
+**Definition of done:** both pass; verified manually in the running app.
+
+---
+
+### Step 6.7 — Skill Radar enhancements
+
+**Goal:** turn the Skill Radar tab into a clean, read-only dashboard that communicates certification progress and guides the practitioner toward their next action.
+
+**Preconditions:** 6.6.
+
+**Build:**
+- **Remove** the "✏ Rate your skills" toggle from the Skill Radar tab entirely — skill rating now lives in the Profile Builder. Replace it with a small "Edit profile →" link that navigates to `BuildProfilePage`.
+- **Aggregate mastery card**: a new card above (or to the side of) the radar showing `"Progress toward [cert code]: XX%"` — computed as `mean(mastery_score)` across the certification's skills in the active snapshot. Include a progress bar. If no certification is set on the active profile, omit this card and show the existing radar header unchanged.
+- **Guidance message** (below the aggregate card, driven by the aggregate %):
+  - **< 40 %**: "Keep building — take more quizzes and update your skill self-assessment to give the radar a fuller picture."
+  - **40 – 69 %**: "Good progress. Focus on the weakest skills shown above and keep answering quizzes in those areas."
+  - **70 – 89 %**: "You're getting close. Review the remaining gaps and aim for a practice run soon."
+  - **≥ 90 %**: "Strong profile — you look ready to schedule your certification exam."
+- The radar title becomes **"Skill profile — [cert code]"** when an active certification is set; falls back to **"Skill profile"** otherwise.
+- "Regenerate path" CTA remains; add a caption beneath it: *"Updates after you answer quizzes or edit your profile."*
+
+**Scenario tests (Playwright):**
+- *A practitioner with all mastery scores at 0 % sees the "< 40 %" guidance message.*
+- *A practitioner whose cert-relevant skills average above 90 % sees the "ready" message.*
+- *The "Rate your skills" toggle button is absent from this tab.*
+
+**Definition of done:** all three pass.
+
+---
+
+### Step 6.8 — Quiz profile-awareness & navigation fix
+
+**Goal:** quiz questions are drawn from the active profile's certification-relevant skills first; the Next button reliably advances to the next unanswered question.
+
+**Preconditions:** 6.6.
+
+**Build:**
+
+*Bug 1 fix (carry-over from 5.5 if not yet done) — Next button loops:* audit `QuizRunner`. The most likely cause is that `useItemsBySkill` re-fetches (resetting to the first item) each time an attempt is submitted, or the selected-item index is stored in a piece of state that the `onSuccess` callback inadvertently resets. Fix the index management so "Next" consistently advances to the next item in the fetched list and does not reset on submission.
+
+*Profile-aware skill ordering:* the skill selector in the Quiz tab reads the active profile's `certification_id` (available from the `MeResponse` added in Step 6.6). Certification-relevant skills are sorted to the top of the skill list with a `(cert)` tag; non-cert skills appear below. Default skill on tab open is the weakest cert-relevant skill by mastery score (same ordering as the learning path).
+
+*Fallback:* if no active profile or no certification set, the quiz behaves as before — all skills, weakest-first.
+
+**Scenario tests (Playwright):**
+- *Answering a question and pressing "Next" advances to a different question every time — the same question is never shown twice in a row.*
+- *A practitioner with an active certification profile sees that cert's skills listed first in the quiz skill selector, tagged "(cert)".*
+
+**Definition of done:** both pass.

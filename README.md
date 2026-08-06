@@ -62,13 +62,51 @@ py -m pytest -v
 Copy `.env.example` to `.env` and fill in your `ANTHROPIC_API_KEY`. All other
 values have sensible defaults for local development.
 
+## Auth
+
+Two login paths on the same landing page (`/login`):
+
+| Role | How to log in | Default credentials |
+|---|---|---|
+| **Practitioner** | Name + email (no password) | Any name + email — upserted on entry |
+| **Admin / Leadership** | Check "I'm an admin" toggle → email + password | `admin@example.com` / `welcome` (must change on first login) |
+
+Practitioners land directly on their own dashboard. Admins get the full practitioners list and admin nav (Rollups, Nudges, Admin Users, Observability).
+
+### Admin user management
+
+Full admins can add and remove admin/leadership accounts from **Admin Users** in the nav bar
+(`/admin-users`). Each new user is assigned a temporary password and must change it on first login.
+Leadership accounts see rollups and nudges but cannot access individual practitioner data or manage other admin users.
+
+| API endpoint | Who can call |
+|---|---|
+| `GET /api/v1/admin-users` | Admin only |
+| `POST /api/v1/admin-users` | Admin only |
+| `DELETE /api/v1/admin-users/{id}` | Admin only (cannot delete self) |
+
+## Docker
+
+```bash
+# Backend
+docker build -t mastery-pulse-backend ./backend
+docker run -p 8000:8000 --env-file .env mastery-pulse-backend
+
+# Frontend
+docker build -t mastery-pulse-frontend ./frontend
+docker run -p 80:80 mastery-pulse-frontend
+```
+
+Both containers expect Postgres as an external managed service (not included in the images).
+
 ## Docs
 
 | File | What it covers |
 |---|---|
 | `CLAUDE.md` | Codebase conventions, repo map, non-negotiables |
 | `project_plan.md` | Step-by-step build plan with DoD gates |
-| `docs/architecture.md` | Nine agents, orchestration, MCP strategy, model selection |
+| `docs/architecture.md` | Nine agents, orchestration, MCP strategy, model selection, auth design |
 | `docs/data-model.md` | Postgres schema and certification seed catalog |
 | `docs/coding-guidelines.md` | Python/TS conventions, testing philosophy |
 | `docs/human-in-the-loop.md` | The ten 👤 steps that need Ayan's judgment |
+| `docs/demo-script.md` | Step-by-step demo for the two core journeys |

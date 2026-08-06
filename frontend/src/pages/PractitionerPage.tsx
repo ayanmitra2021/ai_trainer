@@ -1,13 +1,11 @@
 import { Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { usePractitioner } from "../hooks";
-import CertAdvisor from "../components/CertAdvisor";
 import SkillRadar from "../components/SkillRadar";
 import QuizRunner from "../components/QuizRunner";
 import TrendDashboard from "../components/TrendDashboard";
 
 const TABS = [
   { path: "skills", label: "Skill Radar" },
-  { path: "certifications", label: "Certifications" },
   { path: "quiz", label: "Quiz" },
   { path: "trends", label: "Adoption Trends" },
 ] as const;
@@ -75,10 +73,6 @@ export default function PractitionerPage() {
       {/* Tab content */}
       <Routes>
         <Route path="skills" element={<SkillRadar practitionerId={id} />} />
-        <Route
-          path="certifications"
-          element={<CertAdvisor practitionerId={id} />}
-        />
         <Route path="quiz" element={<QuizRunner practitionerId={id} />} />
         <Route
           path="trends"

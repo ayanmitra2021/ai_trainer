@@ -57,7 +57,7 @@ class CertificationContext(BaseModel):
 
 
 class QuestionnaireAnswers(BaseModel):
-    """The four questionnaire answers — matches the architecture.md design."""
+    """Questionnaire answers — original four required fields + optional Phase 6.2 fields."""
 
     # Q1: which provider are they most interested in?
     provider_preference: str | None = Field(
@@ -75,6 +75,28 @@ class QuestionnaireAnswers(BaseModel):
     experience_level: str = Field(
         ...,
         description="new | some | experienced",
+    )
+
+    # ── Phase 6.2 optional enrichment fields ──────────────────────────────
+    ai_experience_years: str | None = Field(
+        None,
+        description="none | under_1 | 1_to_3 | over_3",
+    )
+    primary_job_role: str | None = Field(
+        None,
+        description="developer | architect | consultant | manager | researcher | other",
+    )
+    deploys_llms_in_production: bool | None = Field(
+        None,
+        description="Whether they currently deploy LLMs in production",
+    )
+    prompt_engineering_familiarity: str | None = Field(
+        None,
+        description="none | basic | intermediate | advanced",
+    )
+    mentors_others_on_ai: bool | None = Field(
+        None,
+        description="Whether they manage or mentor others on AI topics",
     )
 
 

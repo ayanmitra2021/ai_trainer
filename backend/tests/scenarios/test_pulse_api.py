@@ -70,16 +70,18 @@ async def small_rollup(db_session: AsyncSession) -> Rollup:
 
 
 @pytest_asyncio.fixture
-async def http_client(db_session: AsyncSession) -> AsyncClient:
-    """AsyncClient that wires the test db_session into the FastAPI app."""
+async def http_client(db_session: AsyncSession, admin_session_info) -> AsyncClient:
+    """AsyncClient that wires the test db_session into the FastAPI app with admin auth."""
     from httpx import ASGITransport
 
     from app.db.session import get_db
+    from tests.conftest import apply_admin_auth_overrides
 
     async def _override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = _override_get_db
+    apply_admin_auth_overrides(app, admin_session_info)
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://testserver"
     ) as client:

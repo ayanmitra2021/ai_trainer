@@ -15,25 +15,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.main import app
 from app.db.models import Skill
 from app.db.session import get_db
-
-
-# Override the DB dependency to use our test SQLite session
-async def override_get_db(db_session):
-    async def _override():
-        yield db_session
-    return _override
+from tests.conftest import apply_admin_auth_overrides, admin_session_info  # noqa: F401
 
 
 @pytest_asyncio.fixture
-async def client(db_session: AsyncSession):
-    """AsyncClient wired to the test SQLite DB."""
-    app.dependency_overrides[get_db] = lambda: db_session.__aiter__().__anext__()
-
-    # Simpler approach: override get_db to yield the existing session
+async def client(db_session: AsyncSession, admin_session_info):
+    """AsyncClient wired to the test SQLite DB with admin auth bypass."""
     async def _get_test_db():
         yield db_session
 
     app.dependency_overrides[get_db] = _get_test_db
+    apply_admin_auth_overrides(app, admin_session_info)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:

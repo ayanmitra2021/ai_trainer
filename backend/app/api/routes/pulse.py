@@ -7,6 +7,14 @@ Routes:
   POST /nudges/{id}/approve                      approve a drafted nudge
   GET  /rollups                                  list rollups
   GET  /rollups/{id}                             fetch a single rollup
+
+Step 5.2 — Auth applied:
+  - POST /pulse/run                         → require_admin
+  - GET  /practitioners/{id}/corr-snapshots → require_any_authenticated + self-enforcement
+  - GET  /nudges                            → require_admin_or_leadership
+  - POST /nudges/{id}/approve               → require_admin
+  - GET  /rollups                           → require_admin_or_leadership
+  - GET  /rollups/{id}                      → require_admin_or_leadership
 """
 
 from __future__ import annotations
@@ -17,6 +25,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps.session import (
+    SessionInfo,
+    enforce_self_or_admin,
+    require_admin,
+    require_admin_or_leadership,
+    require_any_authenticated,
+)
 from app.config import settings
 from app.db.models import CorrelationSnapshot, Nudge, Practitioner, Rollup
 from app.db.session import get_db
@@ -37,17 +52,9 @@ router = APIRouter(tags=["pulse"])
 async def trigger_nightly_pulse(
     body: NightlyPulseRequest,
     db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin),
 ) -> NightlyPulseResponse:
-    """Trigger the nightly_pulse workflow synchronously.
-
-    In production this would be a scheduled background job. The API endpoint
-    exists for manual triggering, admin use, and end-to-end tests.
-
-    Raw usage signals are fetched from mcp-usage-signals at the workflow level.
-    When running without a live MCP server (dev/test), signals default to empty
-    and only the Correlation and downstream steps run against existing DB data.
-    """
-    # Validate all practitioner IDs exist
+    """Trigger the nightly_pulse workflow. Admin only."""
     for pid in body.practitioner_ids:
         p = await db.get(Practitioner, pid)
         if p is None:
@@ -84,10 +91,12 @@ async def trigger_nightly_pulse(
 async def list_correlation_snapshots(
     practitioner_id: str,
     db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
     skill_id: str | None = Query(None, description="Filter by skill"),
     gaps_only: bool = Query(False, description="Return only rows with has_adoption_gap=True"),
 ) -> list[CorrelationSnapshotRead]:
     """Return correlation history for a practitioner, newest first."""
+    enforce_self_or_admin(session, practitioner_id)
     practitioner = await db.get(Practitioner, practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
@@ -112,10 +121,11 @@ async def list_correlation_snapshots(
 @router.get("/nudges", response_model=list[NudgeRead])
 async def list_nudges(
     db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin_or_leadership),
     practitioner_id: str | None = Query(None),
     status: str | None = Query(None, description="drafted | approved | sent"),
 ) -> list[NudgeRead]:
-    """List nudges, newest first. Filter by practitioner or status."""
+    """List nudges. Admin or leadership only."""
     query = select(Nudge).order_by(Nudge.created_at.desc())
     if practitioner_id:
         query = query.where(Nudge.practitioner_id == practitioner_id)
@@ -131,12 +141,9 @@ async def list_nudges(
 async def approve_nudge(
     nudge_id: str,
     db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin),
 ) -> NudgeRead:
-    """Approve a drafted nudge.
-
-    Moves status from 'drafted' → 'approved'. A separate delivery mechanism
-    (not this API) is responsible for actually sending it and setting sent_at.
-    """
+    """Approve a drafted nudge. Admin only."""
     nudge = await db.get(Nudge, nudge_id)
     if nudge is None:
         raise HTTPException(status_code=404, detail="Nudge not found")
@@ -157,10 +164,11 @@ async def approve_nudge(
 @router.get("/rollups", response_model=list[RollupRead])
 async def list_rollups(
     db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin_or_leadership),
     scope: str | None = Query(None, description="team | practice"),
     scope_ref: str | None = Query(None),
 ) -> list[RollupRead]:
-    """List rollups, newest first."""
+    """List rollups. Admin or leadership only."""
     query = select(Rollup).order_by(Rollup.created_at.desc())
     if scope:
         query = query.where(Rollup.scope == scope)
@@ -176,12 +184,11 @@ async def list_rollups(
 async def get_rollup(
     rollup_id: str,
     db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin_or_leadership),
 ) -> RollupRead:
-    """Fetch a single rollup.
+    """Fetch a single rollup. Admin or leadership only.
 
-    When min_cohort_size_met is False, metrics and narrative are null — this is
-    structural, not a display choice. The API returns the full row including the
-    boolean; the frontend should render the withheld state accordingly.
+    When min_cohort_size_met is False, metrics and narrative are null.
     """
     rollup = await db.get(Rollup, rollup_id)
     if rollup is None:

@@ -1,7 +1,8 @@
 /** QuizRunner — interactive quiz with trap-reveal mechanic. */
 
 import { useMemo, useState } from "react";
-import { useItemsBySkill, useLearningPaths, useSkills, useSubmitAttempt } from "../../hooks";
+import { useItemsBySkill, useCertifications, useLearningPaths, usePractitionerAttempts, useSkills, useSubmitAttempt } from "../../hooks";
+import { useSession } from "../../context/SessionContext";
 import type { Attempt, Item, MCQAnswerKey } from "../../api/types";
 
 interface Props {
@@ -291,12 +292,23 @@ function SkillItemQuiz({
   skillId: string;
   skillName: string;
 }) {
-  const { data: skillItems, isLoading } = useItemsBySkill(skillId);
-  const submitAttempt = useSubmitAttempt();
+  const { data: skillItems, isLoading: itemsLoading } = useItemsBySkill(skillId);
+  const { data: allAttempts, isLoading: attemptsLoading } = usePractitionerAttempts(practitionerId);
+  const submitAttempt = useSubmitAttempt(practitionerId);
   const [itemIndex, setItemIndex] = useState(0);
-  const [attempts, setAttempts] = useState<Record<string, Attempt>>({});
 
-  if (isLoading)
+  // Build item_id → most recent attempt from the server-persisted list.
+  // This survives navigation and page refreshes — no local state needed.
+  const attemptsByItemId = useMemo(() => {
+    const map: Record<string, Attempt> = {};
+    allAttempts?.forEach((a) => {
+      // Keep only the most recent per item (list is newest-first from server)
+      if (!map[a.item_id]) map[a.item_id] = a;
+    });
+    return map;
+  }, [allAttempts]);
+
+  if (itemsLoading || attemptsLoading)
     return <div style={{ textAlign: "center", padding: "2rem" }}><span className="spinner" /></div>;
 
   if (!skillItems || skillItems.length === 0)
@@ -308,15 +320,15 @@ function SkillItemQuiz({
     );
 
   const item = skillItems[itemIndex];
-  const attempt = attempts[item.id] ?? null;
+  const attempt = attemptsByItemId[item.id] ?? null;
 
   const handleSubmit = async (response: { selected_index: number } | { text: string }) => {
-    const result = await submitAttempt.mutateAsync({
+    await submitAttempt.mutateAsync({
       practitioner_id: practitionerId,
       item_id: item.id,
       response,
     });
-    setAttempts((prev) => ({ ...prev, [item.id]: result }));
+    // No local state update needed — useSubmitAttempt updates the query cache directly
   };
 
   return (
@@ -339,6 +351,7 @@ function SkillItemQuiz({
 
       {item.item_type === "mcq" ? (
         <MCQItem
+          key={item.id}
           item={item}
           attempt={attempt}
           onSubmit={(idx) => handleSubmit({ selected_index: idx })}
@@ -346,6 +359,7 @@ function SkillItemQuiz({
         />
       ) : (
         <FreeTextItem
+          key={item.id}
           item={item}
           attempt={attempt}
           onSubmit={(text) => handleSubmit({ text })}
@@ -357,7 +371,18 @@ function SkillItemQuiz({
         <button
           className="btn btn-outline"
           style={{ marginTop: "1.25rem" }}
-          onClick={() => setItemIndex((i) => i + 1)}
+          onClick={() => {
+            // Find the next unanswered item after the current index
+            const nextUnanswered = skillItems.findIndex(
+              (itm, idx) => idx > itemIndex && !attemptsByItemId[itm.id]
+            );
+            if (nextUnanswered !== -1) {
+              setItemIndex(nextUnanswered);
+            } else {
+              // All remaining items answered — advance to next item regardless
+              setItemIndex((i) => Math.min(i + 1, skillItems.length - 1));
+            }
+          }}
         >
           Next question →
         </button>
@@ -375,6 +400,8 @@ function SkillItemQuiz({
 export default function QuizRunner({ practitionerId }: Props) {
   const { data: paths, isLoading: pathsLoading } = useLearningPaths(practitionerId);
   const { data: allSkills } = useSkills();
+  const { data: certList } = useCertifications();
+  const { session } = useSession();
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
 
   // Build a fast id→name lookup from the global skill list.
@@ -383,6 +410,16 @@ export default function QuizRunner({ practitionerId }: Props) {
     allSkills?.forEach((s) => map.set(s.id, s.name));
     return map;
   }, [allSkills]);
+
+  // Determine cert skill IDs from the active certification code in session
+  const certSkillIds = useMemo(() => {
+    const ids = new Set<string>();
+    const certCode = session?.active_certification_code;
+    if (!certCode || !certList) return ids;
+    const cert = certList.find((c) => c.code === certCode);
+    cert?.certification_skills.forEach((cs) => ids.add(cs.skill_id));
+    return ids;
+  }, [certList, session?.active_certification_code]);
 
   if (pathsLoading) {
     return (
@@ -403,14 +440,14 @@ export default function QuizRunner({ practitionerId }: Props) {
   }
 
   // Deduplicate skills from path items (show each skill once).
-  // Use the global skill list for display names; fall back to a short UUID
-  // slice only if the skill isn't in the catalog (shouldn't happen in practice).
-  const pathSkills = activePath.items.reduce<{ id: string; name: string }[]>(
+  // Cert-relevant skills appear first (isCert: true), then others.
+  const rawPathSkills = activePath.items.reduce<{ id: string; name: string; isCert: boolean }[]>(
     (acc, item) => {
       if (!acc.find((s) => s.id === item.skill_id)) {
         acc.push({
           id: item.skill_id,
           name: skillNameById.get(item.skill_id) ?? `Skill ${item.skill_id.slice(0, 8)}`,
+          isCert: certSkillIds.has(item.skill_id),
         });
       }
       return acc;
@@ -418,7 +455,15 @@ export default function QuizRunner({ practitionerId }: Props) {
     [],
   );
 
-  const active = selectedSkillId ?? pathSkills[0]?.id ?? null;
+  // Sort: cert skills first, then others
+  const pathSkills = [
+    ...rawPathSkills.filter((s) => s.isCert),
+    ...rawPathSkills.filter((s) => !s.isCert),
+  ];
+
+  // Default to first cert-relevant skill; fall back to first skill overall
+  const defaultSkillId = (pathSkills.find((s) => s.isCert) ?? pathSkills[0])?.id ?? null;
+  const active = selectedSkillId ?? defaultSkillId;
 
   return (
     <div>
@@ -436,13 +481,32 @@ export default function QuizRunner({ practitionerId }: Props) {
             onClick={() => setSelectedSkillId(s.id)}
           >
             {s.name}
+            {s.isCert && (
+              <span
+                style={{
+                  marginLeft: "0.375rem",
+                  fontSize: "0.65rem",
+                  padding: "0.1rem 0.3rem",
+                  borderRadius: "999px",
+                  background: active === s.id ? "rgba(255,255,255,0.3)" : "var(--primary)",
+                  color: active === s.id ? "#fff" : "#fff",
+                  verticalAlign: "middle",
+                }}
+              >
+                cert
+              </span>
+            )}
           </button>
         ))}
       </div>
 
       {active && (
         <div className="card">
+          {/* key={active} ensures itemIndex resets to 0 when the user
+              switches to a different skill — without it, the index from
+              the previous skill carries over into the new skill's item list. */}
           <SkillItemQuiz
+            key={active}
             practitionerId={practitionerId}
             skillId={active}
             skillName={pathSkills.find((s) => s.id === active)?.name ?? active}

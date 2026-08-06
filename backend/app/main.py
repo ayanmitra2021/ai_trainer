@@ -45,3 +45,15 @@ app.include_router(learning_paths.router, prefix="/api/v1")
 from app.api.routes import pulse
 
 app.include_router(pulse.router, prefix="/api/v1")
+
+# ── Phase 5 routes ────────────────────────────────────────────────────────────
+from app.api.routes import auth, observability, admin_users
+
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(observability.router, prefix="/api/v1")
+app.include_router(admin_users.router, prefix="/api/v1")
+
+# ── Phase 6 routes ────────────────────────────────────────────────────────────
+from app.api.routes import profiles
+
+app.include_router(profiles.router, prefix="/api/v1")

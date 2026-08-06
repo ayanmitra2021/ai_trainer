@@ -2,20 +2,37 @@
 
 import { api } from "./client";
 import type {
+  AdminLoginRequest,
+  AdminLoginResponse,
+  AdminUserCreate,
+  AdminUserResponse,
   AdvisorResponse,
   Attempt,
   AttemptCreate,
   Certification,
   CertificationGoal,
+  ChangePasswordRequest,
   CorrelationSnapshot,
   GenerateLearningPathResponse,
   Item,
   LearningPath,
+  MeResponse,
   Nudge,
+  ObservabilityReport,
   Practitioner,
   PractitionerCreate,
+  PractitionerLoginRequest,
+  PractitionerLoginResponse,
+  ProfileCreate,
+  ProfileDetail,
+  ProfileSkillUpsert,
+  ProfileSkillUpsertResponse,
+  ProfileUpdate,
+  PractitionerProfile,
   QuestionnaireAnswers,
   Rollup,
+  SelfAssessmentRequest,
+  SelfAssessmentResponse,
   Skill,
   SkillSnapshot,
   SkillTreeNode,
@@ -30,6 +47,8 @@ export const practitioners = {
     api.post<Practitioner>("/practitioners", body),
   skillProfile: (id: string) =>
     api.get<SkillSnapshot[]>(`/practitioners/${id}/skill-profile`),
+  submitSelfAssessment: (id: string, body: SelfAssessmentRequest) =>
+    api.post<SelfAssessmentResponse>(`/practitioners/${id}/self-assessment`, body),
 };
 
 // ── Skills ─────────────────────────────────────────────────────────────────────
@@ -87,6 +106,8 @@ export const items = {
 export const attempts = {
   submit: (body: AttemptCreate) => api.post<Attempt>("/attempts", body),
   get: (attempt_id: string) => api.get<Attempt>(`/attempts/${attempt_id}`),
+  listByPractitioner: (practitioner_id: string) =>
+    api.get<Attempt[]>(`/practitioners/${practitioner_id}/attempts`),
 };
 
 // ── Pulse ──────────────────────────────────────────────────────────────────────
@@ -123,6 +144,56 @@ export const pulse = {
     return api.get<Rollup[]>(`/rollups${qs}`);
   },
   getRollup: (rollup_id: string) => api.get<Rollup>(`/rollups/${rollup_id}`),
+};
+
+// ── Profiles ───────────────────────────────────────────────────────────────────
+
+export const profiles = {
+  list: (practitioner_id: string) =>
+    api.get<PractitionerProfile[]>(`/practitioners/${practitioner_id}/profiles`),
+  create: (practitioner_id: string, body: ProfileCreate) =>
+    api.post<PractitionerProfile>(`/practitioners/${practitioner_id}/profiles`, body),
+  get: (practitioner_id: string, profile_id: string) =>
+    api.get<ProfileDetail>(`/practitioners/${practitioner_id}/profiles/${profile_id}`),
+  update: (practitioner_id: string, profile_id: string, body: ProfileUpdate) =>
+    api.patch<PractitionerProfile>(`/practitioners/${practitioner_id}/profiles/${profile_id}`, body),
+  activate: (practitioner_id: string, profile_id: string) =>
+    api.patch<PractitionerProfile>(`/practitioners/${practitioner_id}/profiles/${profile_id}/activate`, {}),
+  delete: (practitioner_id: string, profile_id: string) =>
+    api.delete<void>(`/practitioners/${practitioner_id}/profiles/${profile_id}`),
+  upsertSkillAssessments: (practitioner_id: string, profile_id: string, body: ProfileSkillUpsert) =>
+    api.post<ProfileSkillUpsertResponse>(`/practitioners/${practitioner_id}/profiles/${profile_id}/skill-assessments`, body),
+};
+
+// ── Auth ───────────────────────────────────────────────────────────────────────
+
+export const auth = {
+  practitionerLogin: (body: PractitionerLoginRequest) =>
+    api.post<PractitionerLoginResponse>("/auth/practitioner-login", body),
+  adminLogin: (body: AdminLoginRequest) =>
+    api.post<AdminLoginResponse>("/auth/admin-login", body),
+  logout: () => api.post<void>("/auth/logout", {}),
+  me: () => api.get<MeResponse>("/auth/me"),
+  changePassword: (body: ChangePasswordRequest) =>
+    api.post<void>("/auth/change-password", body),
+};
+
+// ── Admin Users ────────────────────────────────────────────────────────────────
+
+export const adminUsers = {
+  list: () => api.get<AdminUserResponse[]>("/admin-users"),
+  create: (body: AdminUserCreate) =>
+    api.post<AdminUserResponse>("/admin-users", body),
+  delete: (id: string) => api.delete<void>(`/admin-users/${id}`),
+};
+
+// ── Observability ───────────────────────────────────────────────────────────────
+
+export const observability = {
+  agentRuns: (hours?: number) => {
+    const qs = hours != null ? `?hours=${hours}` : "";
+    return api.get<ObservabilityReport>(`/observability/agent-runs${qs}`);
+  },
 };
 
 export type { ApiError } from "./client";

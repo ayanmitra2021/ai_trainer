@@ -1,8 +1,17 @@
-import { BrowserRouter, Link, NavLink, Route, Routes } from "react-router-dom";
+import React from "react";
+import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { SessionProvider, useSession } from "./context/SessionContext";
 import HomePage from "./pages/HomePage";
 import PractitionerPage from "./pages/PractitionerPage";
 import RollupsPage from "./pages/RollupsPage";
 import NudgesPage from "./pages/NudgesPage";
+import LoginPage from "./pages/LoginPage";
+import ChangePasswordPage from "./pages/ChangePasswordPage";
+import ObservabilityPage from "./pages/ObservabilityPage";
+import AdminUsersPage from "./pages/AdminUsersPage";
+import BuildProfilePage from "./pages/BuildProfilePage";
+import ProfileSkillAssessmentPage from "./pages/ProfileSkillAssessmentPage";
+import { auth } from "./api";
 
 const navStyle: React.CSSProperties = {
   display: "flex",
@@ -23,55 +32,223 @@ const brandStyle: React.CSSProperties = {
   marginRight: "auto",
 };
 
+const navLinkStyle = ({ isActive }: { isActive: boolean }): React.CSSProperties => ({
+  fontSize: "0.875rem",
+  fontWeight: 500,
+  color: isActive ? "var(--primary)" : "var(--text-muted)",
+  textDecoration: "none",
+});
+
+function NavBar() {
+  const { session, clear } = useSession();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await auth.logout();
+    clear();
+    navigate("/login");
+  };
+
+  if (!session) return null;
+
+  const isAdmin = session.identity_type === "admin";
+
+  return (
+    <nav style={navStyle}>
+      <Link to="/" style={brandStyle}>
+        Mastery Pulse
+      </Link>
+
+      {isAdmin && (
+        <>
+          <NavLink to="/" end style={navLinkStyle}>
+            Practitioners
+          </NavLink>
+          <NavLink to="/rollups" style={navLinkStyle}>
+            Rollups
+          </NavLink>
+          <NavLink to="/nudges" style={navLinkStyle}>
+            Nudges
+          </NavLink>
+          {session.admin_role === "admin" && (
+            <>
+              <NavLink to="/admin-users" style={navLinkStyle}>
+                Admin Users
+              </NavLink>
+              <NavLink to="/observability" style={navLinkStyle}>
+                Observability
+              </NavLink>
+            </>
+          )}
+        </>
+      )}
+
+      {!isAdmin && (
+        <>
+          <NavLink to="/profile" style={navLinkStyle}>
+            My Profiles
+            {session.active_certification_code && (
+              <span
+                style={{
+                  marginLeft: "0.4rem",
+                  fontSize: "0.7rem",
+                  padding: "0.1rem 0.4rem",
+                  borderRadius: "999px",
+                  background: "var(--primary)",
+                  color: "#fff",
+                  verticalAlign: "middle",
+                }}
+              >
+                {session.active_certification_code}
+              </span>
+            )}
+          </NavLink>
+          <NavLink
+            to={`/practitioners/${session.practitioner_id}/skills`}
+            style={navLinkStyle}
+          >
+            My Dashboard
+          </NavLink>
+        </>
+      )}
+
+      <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginLeft: "auto" }}>
+        Hi, {session.first_name}
+      </span>
+      <button
+        onClick={handleLogout}
+        style={{
+          fontSize: "0.8125rem",
+          color: "var(--text-muted)",
+          background: "none",
+          border: "1px solid var(--border)",
+          borderRadius: "4px",
+          padding: "0.25rem 0.625rem",
+          cursor: "pointer",
+        }}
+      >
+        Log out
+      </button>
+    </nav>
+  );
+}
+
+/** Redirect unauthenticated users to /login. */
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { session, isLoading } = useSession();
+  if (isLoading) return <div style={{ padding: "2rem", color: "var(--text-muted)" }}>Loading…</div>;
+  if (!session) return <Navigate to="/login" replace />;
+  if (session.identity_type === "admin" && session.must_change_password) {
+    return <Navigate to="/change-password" replace />;
+  }
+  return <>{children}</>;
+}
+
+/** Redirect admin-only routes for non-admins. */
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const { session, isLoading } = useSession();
+  if (isLoading) return null;
+  if (!session || session.identity_type !== "admin") return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+/** Redirect practitioners to their profiles page (not the admin list). */
+function PractitionerHome() {
+  const { session } = useSession();
+  if (session?.identity_type === "practitioner") {
+    return <Navigate to="/profile" replace />;
+  }
+  return <HomePage />;
+}
+
+function AppRoutes() {
+  return (
+    <>
+      <NavBar />
+      <Routes>
+        {/* Public routes */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/change-password" element={<ChangePasswordPage />} />
+
+        {/* Authenticated routes */}
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <PractitionerHome />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <RequireAuth>
+              <BuildProfilePage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/profile/:profileId/skills"
+          element={
+            <RequireAuth>
+              <ProfileSkillAssessmentPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/practitioners/:id/*"
+          element={
+            <RequireAuth>
+              <PractitionerPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/rollups"
+          element={
+            <RequireAdmin>
+              <RollupsPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/nudges"
+          element={
+            <RequireAdmin>
+              <NudgesPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin-users"
+          element={
+            <RequireAdmin>
+              <AdminUsersPage />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/observability"
+          element={
+            <RequireAdmin>
+              <ObservabilityPage />
+            </RequireAdmin>
+          }
+        />
+
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <nav style={navStyle}>
-        <Link to="/" style={brandStyle}>
-          Mastery Pulse
-        </Link>
-        <NavLink
-          to="/"
-          end
-          style={({ isActive }) => ({
-            fontSize: "0.875rem",
-            fontWeight: 500,
-            color: isActive ? "var(--primary)" : "var(--text-muted)",
-            textDecoration: "none",
-          })}
-        >
-          Practitioners
-        </NavLink>
-        <NavLink
-          to="/rollups"
-          style={({ isActive }) => ({
-            fontSize: "0.875rem",
-            fontWeight: 500,
-            color: isActive ? "var(--primary)" : "var(--text-muted)",
-            textDecoration: "none",
-          })}
-        >
-          Rollups
-        </NavLink>
-        <NavLink
-          to="/nudges"
-          style={({ isActive }) => ({
-            fontSize: "0.875rem",
-            fontWeight: 500,
-            color: isActive ? "var(--primary)" : "var(--text-muted)",
-            textDecoration: "none",
-          })}
-        >
-          Nudges
-        </NavLink>
-      </nav>
-
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/practitioners/:id/*" element={<PractitionerPage />} />
-        <Route path="/rollups" element={<RollupsPage />} />
-        <Route path="/nudges" element={<NudgesPage />} />
-      </Routes>
+      <SessionProvider>
+        <AppRoutes />
+      </SessionProvider>
     </BrowserRouter>
   );
 }

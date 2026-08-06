@@ -3,20 +3,36 @@
 Step 2.1 scenarios:
   - Creating then fetching a practitioner returns matching data.
   - Fetching a nonexistent practitioner returns 404, not a 500.
+
+Step 5.2 — Auth applied:
+  - GET  /practitioners               → require_admin (list all practitioners)
+  - POST /practitioners               → require_admin (admin creates; login creates practitioners)
+  - GET  /practitioners/{id}          → require_any_authenticated + self-enforcement
+  - PATCH /practitioners/{id}         → require_any_authenticated + self-enforcement
+  - GET  /practitioners/{id}/skill-profile → require_any_authenticated + self-enforcement
 """
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Practitioner, SkillProfileSnapshot, Skill
+from app.api.deps.session import (
+    SessionInfo,
+    enforce_self_or_admin,
+    require_admin,
+    require_any_authenticated,
+)
+from app.db.models import Practitioner, Skill, SkillProfileEvent, SkillProfileSnapshot
 from app.db.session import get_db
 from app.schemas.practitioners import (
     PractitionerCreate,
     PractitionerRead,
     PractitionerUpdate,
+    SelfAssessmentRequest,
+    SelfAssessmentResponse,
     SkillSnapshotRead,
 )
 
@@ -25,9 +41,11 @@ router = APIRouter(prefix="/practitioners", tags=["practitioners"])
 
 @router.post("", response_model=PractitionerRead, status_code=201)
 async def create_practitioner(
-    body: PractitionerCreate, db: AsyncSession = Depends(get_db)
+    body: PractitionerCreate,
+    db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin),
 ) -> PractitionerRead:
-    """Create a new practitioner."""
+    """Create a new practitioner. Admin only — normal practitioners are created via login."""
     practitioner = Practitioner(
         id=str(uuid.uuid4()),
         name=body.name,
@@ -43,8 +61,11 @@ async def create_practitioner(
 
 
 @router.get("", response_model=list[PractitionerRead])
-async def list_practitioners(db: AsyncSession = Depends(get_db)) -> list[PractitionerRead]:
-    """List all practitioners."""
+async def list_practitioners(
+    db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin),
+) -> list[PractitionerRead]:
+    """List all practitioners. Admin only."""
     result = await db.execute(select(Practitioner).order_by(Practitioner.name))
     practitioners = result.scalars().all()
     return [PractitionerRead.model_validate(p) for p in practitioners]
@@ -52,9 +73,12 @@ async def list_practitioners(db: AsyncSession = Depends(get_db)) -> list[Practit
 
 @router.get("/{practitioner_id}", response_model=PractitionerRead)
 async def get_practitioner(
-    practitioner_id: str, db: AsyncSession = Depends(get_db)
+    practitioner_id: str,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> PractitionerRead:
-    """Fetch one practitioner by ID."""
+    """Fetch one practitioner. Practitioner sees own data; full admin sees all."""
+    enforce_self_or_admin(session, practitioner_id)
     practitioner = await db.get(Practitioner, practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
@@ -66,8 +90,10 @@ async def update_practitioner(
     practitioner_id: str,
     body: PractitionerUpdate,
     db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> PractitionerRead:
-    """Partial update of practitioner fields."""
+    """Partial update of practitioner fields. Practitioner edits own; admin edits any."""
+    enforce_self_or_admin(session, practitioner_id)
     practitioner = await db.get(Practitioner, practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
@@ -78,11 +104,63 @@ async def update_practitioner(
     return PractitionerRead.model_validate(practitioner)
 
 
+@router.post(
+    "/{practitioner_id}/self-assessment",
+    response_model=SelfAssessmentResponse,
+    status_code=201,
+)
+async def submit_self_assessment(
+    practitioner_id: str,
+    body: SelfAssessmentRequest,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
+) -> SelfAssessmentResponse:
+    """Record a practitioner's self-assessed skill levels.
+
+    Each assessment item writes one skill_profile_event with source='self_assessment'.
+    These events are read by the Skill Profiler the next time a learning path is
+    generated, updating the mastery scores and the Skill Radar.
+
+    Skips any skill_id not present in the skills catalog (avoids FK violations if
+    the client sends a stale ID).
+    """
+    enforce_self_or_admin(session, practitioner_id)
+    practitioner = await db.get(Practitioner, practitioner_id)
+    if practitioner is None:
+        raise HTTPException(status_code=404, detail="Practitioner not found")
+
+    # Build a set of valid skill IDs to guard against stale client data
+    valid_skills_result = await db.execute(select(Skill.id))
+    valid_skill_ids: set[str] = {row[0] for row in valid_skills_result.all()}
+
+    now = datetime.now(UTC)
+    written = 0
+    for item in body.assessments:
+        if item.skill_id not in valid_skill_ids:
+            continue  # silently skip unknown skills
+        db.add(SkillProfileEvent(
+            id=str(uuid.uuid4()),
+            practitioner_id=practitioner_id,
+            skill_id=item.skill_id,
+            source="self_assessment",
+            signal_strength=item.signal_strength,
+            occurred_at=now,
+            metadata_=None,
+        ))
+        written += 1
+
+    await db.commit()
+    return SelfAssessmentResponse(events_written=written)
+
+
 @router.get("/{practitioner_id}/skill-profile", response_model=list[SkillSnapshotRead])
 async def get_skill_profile(
-    practitioner_id: str, db: AsyncSession = Depends(get_db)
+    practitioner_id: str,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> list[SkillSnapshotRead]:
-    """Return a practitioner's current skill profile (all snapshots)."""
+    """Return a practitioner's current skill profile. Practitioner sees own; admin sees all."""
+    enforce_self_or_admin(session, practitioner_id)
     practitioner = await db.get(Practitioner, practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")

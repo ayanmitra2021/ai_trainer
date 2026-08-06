@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     environment: str = Field(default="development")
     debug: bool = Field(default=False)
 
+    # ── Auth ──────────────────────────────────────────────────────────────
+    session_cookie_name: str = Field(default="mastery_session")
+    admin_session_timeout_hours: int = Field(
+        default=8,
+        description="Hours before an admin/leadership session expires from inactivity.",
+    )
+
     # ── Test ──────────────────────────────────────────────────────────────
     test_database_url: str = Field(
         default="sqlite+aiosqlite:///:memory:",

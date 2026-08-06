@@ -27,6 +27,7 @@ from sqlalchemy import delete, select
 
 from app.config import settings
 from app.db.models import (
+    AdminUser,
     Certification,
     CertificationProvider,
     CertificationSkill,
@@ -559,6 +560,36 @@ async def seed(session: AsyncSession) -> None:
         cert_count += 1
 
     await session.commit()
+
+    # ── Seed starter admin account ─────────────────────────────────────────
+    print("Seeding starter admin account...")
+    import bcrypt as _bcrypt_lib
+    from sqlalchemy import select as sa_select
+
+    ADMIN_EMAIL = "admin@example.com"
+
+    existing_admin = (
+        await session.execute(
+            sa_select(AdminUser).where(AdminUser.email == ADMIN_EMAIL)
+        )
+    ).scalar_one_or_none()
+
+    if existing_admin is None:
+        pw_hash = _bcrypt_lib.hashpw(b"welcome", _bcrypt_lib.gensalt()).decode()
+        starter_admin = AdminUser(
+            id=str(uuid.uuid4()),
+            email=ADMIN_EMAIL,
+            first_name="Admin",
+            password_hash=pw_hash,
+            role="admin",
+            must_change_password=True,
+        )
+        session.add(starter_admin)
+        await session.commit()
+        print(f"  Created admin: {ADMIN_EMAIL} / welcome (must change password)")
+    else:
+        print(f"  Admin already exists: {ADMIN_EMAIL} (skipped)")
+
     print(
         f"Done. Inserted {len(practitioners)} practitioners, "
         f"{len(all_skills)} skills, {events_added} events, "

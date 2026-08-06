@@ -6,6 +6,8 @@ skill_profile_snapshots, agent_runs, workflow_runs.
 Phase 2 tables: certification_providers, certifications, certification_skills,
 practitioner_certification_goals, certification_advisor_responses,
 learning_paths, learning_path_items, items, attempts.
+
+Phase 6 tables: practitioner_profiles, profile_skill_assessments.
 """
 
 import uuid
@@ -82,6 +84,9 @@ class Practitioner(Base):
         back_populates="practitioner", cascade="all, delete-orphan"
     )
     nudges: Mapped[list["Nudge"]] = relationship(
+        back_populates="practitioner", cascade="all, delete-orphan"
+    )
+    profiles: Mapped[list["PractitionerProfile"]] = relationship(
         back_populates="practitioner", cascade="all, delete-orphan"
     )
 
@@ -475,6 +480,11 @@ class PractitionerCertificationGoal(Base):
     )
     selected_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
     achieved_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True))
+    profile_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioner_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     practitioner: Mapped["Practitioner"] = relationship(back_populates="certification_goals")
     certification: Mapped["Certification"] = relationship(back_populates="practitioner_goals")
@@ -512,6 +522,11 @@ class CertificationAdvisorResponse(Base):
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False,
         server_default=sa.text("now()"), default=_now_utc,
+    )
+    profile_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioner_profiles.id", ondelete="SET NULL"),
+        nullable=True,
     )
 
     practitioner: Mapped["Practitioner"] = relationship(
@@ -937,4 +952,218 @@ class Rollup(Base):
         return (
             f"<Rollup id={self.id!r} scope={self.scope!r} ref={self.scope_ref!r} "
             f"cohort_met={self.min_cohort_size_met}>"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 5 — Auth tables
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── admin_users ───────────────────────────────────────────────────────────────
+
+class AdminUser(Base):
+    """Admin / leadership accounts — completely separate from practitioners.
+
+    Every new row is seeded with must_change_password=True and password "welcome".
+    role = "admin" has full access; role = "leadership" sees aggregates only.
+    """
+
+    __tablename__ = "admin_users"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(
+        sa.String(255), nullable=False, unique=True, index=True
+    )
+    first_name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    password_hash: Mapped[str] = mapped_column(sa.String(255), nullable=False)
+    # "admin" (full access) | "leadership" (aggregates only)
+    role: Mapped[str] = mapped_column(sa.String(30), nullable=False, default="admin")
+    must_change_password: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=True
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        default=_now_utc,
+        nullable=False,
+    )
+
+    sessions: Mapped[list["Session"]] = relationship(
+        back_populates="admin_user", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "role IN ('admin','leadership')",
+            name="ck_admin_users_role",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AdminUser id={self.id!r} email={self.email!r} role={self.role!r}>"
+
+
+# ── sessions ──────────────────────────────────────────────────────────────────
+
+class Session(Base):
+    """Server-side session table. The browser holds only the opaque UUID cookie.
+
+    identity_type = "practitioner" → practitioner_id is set, admin_user_id is null.
+    identity_type = "admin"        → admin_user_id is set, practitioner_id is null.
+
+    Practitioner sessions never expire (last_seen_at updated on each request).
+    Admin sessions expire after settings.admin_session_timeout_hours of inactivity
+    (checked by get_session dependency; the row is deleted on expiry).
+    """
+
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    # "practitioner" | "admin"
+    identity_type: Mapped[str] = mapped_column(sa.String(20), nullable=False)
+    practitioner_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioners.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    admin_user_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("admin_users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        default=_now_utc,
+        nullable=False,
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        default=_now_utc,
+        nullable=False,
+    )
+    # None for practitioners (no expiry); set to created_at + timeout for admins
+    expires_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+
+    admin_user: Mapped["AdminUser | None"] = relationship(back_populates="sessions")
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "identity_type IN ('practitioner','admin')",
+            name="ck_sessions_identity_type",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<Session id={self.id!r} type={self.identity_type!r} "
+            f"practitioner={self.practitioner_id!r} admin={self.admin_user_id!r}>"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 6 — Practitioner Profiles
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class PractitionerProfile(Base):
+    """A practitioner's saved learning profile — background + cert goal + skill ratings."""
+
+    __tablename__ = "practitioner_profiles"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    practitioner_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioners.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(sa.String(500), nullable=False)
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    # Optional: which certification this profile is targeting
+    certification_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certifications.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # Verbatim questionnaire snapshot at save time
+    # Use sa.JSON for cross-database compatibility (JSONB is Postgres-only but the
+    # migration uses JSONB directly for the DDL — sa.JSON just handles the Python side)
+    questionnaire_snapshot: Mapped[dict | None] = mapped_column(sa.JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        default=_now_utc,
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        default=_now_utc,
+        nullable=False,
+    )
+
+    practitioner: Mapped["Practitioner"] = relationship(back_populates="profiles")
+    certification: Mapped["Certification | None"] = relationship()
+    skill_assessments: Mapped[list["ProfileSkillAssessment"]] = relationship(
+        back_populates="profile", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<PractitionerProfile id={self.id!r} practitioner={self.practitioner_id!r} "
+            f"name={self.name!r} active={self.is_active}>"
+        )
+
+
+class ProfileSkillAssessment(Base):
+    """Per-skill rating for a specific profile — upserted on re-save."""
+
+    __tablename__ = "profile_skill_assessments"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    profile_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioner_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    skill_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("skills.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    signal_strength: Mapped[float] = mapped_column(sa.Numeric(4, 3), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        default=_now_utc,
+        nullable=False,
+    )
+
+    profile: Mapped["PractitionerProfile"] = relationship(back_populates="skill_assessments")
+    skill: Mapped["Skill"] = relationship()
+
+    __table_args__ = (
+        sa.UniqueConstraint("profile_id", "skill_id", name="uq_profile_skill_assessments"),
+        sa.CheckConstraint(
+            "signal_strength >= 0 AND signal_strength <= 1",
+            name="ck_profile_skill_assessments_signal_strength",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ProfileSkillAssessment profile={self.profile_id!r} "
+            f"skill={self.skill_id!r} signal={self.signal_strength}>"
         )

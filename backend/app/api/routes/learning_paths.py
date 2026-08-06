@@ -6,6 +6,13 @@ Routes:
   GET  /items?skill_id=                  list items for a skill (Phase 4 QuizRunner)
   POST /attempts                          submit an attempt (triggers Grader)
   GET  /attempts/{attempt_id}             fetch a scored attempt
+
+Step 5.2 — Auth applied:
+  - POST /learning-paths/generate → require_any_authenticated + body self-enforcement
+  - GET  /practitioners/{id}/learning-paths → require_any_authenticated + self-enforcement
+  - GET  /items → require_any_authenticated
+  - POST /attempts → require_any_authenticated + body self-enforcement
+  - GET  /attempts/{id} → require_any_authenticated + ownership check (self or admin)
 """
 
 import uuid
@@ -16,8 +23,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.deps.session import (
+    SessionInfo,
+    enforce_self_or_admin,
+    require_any_authenticated,
+)
 from app.config import settings
-from app.db.models import Attempt, Item, LearningPath, Practitioner
+from app.db.models import Attempt, Item, LearningPath, Practitioner, SkillProfileEvent
 from app.db.session import get_db
 from app.schemas.items import AttemptCreate, AttemptRead, GraderInput, GraderOutput, ItemRead
 from app.schemas.learning_paths import (
@@ -35,8 +47,10 @@ router = APIRouter(tags=["learning_paths"])
 async def generate_learning_path(
     body: GenerateLearningPathRequest,
     db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> GenerateLearningPathResponse:
     """Trigger the generate_learning_path workflow (Skill Profiler → Curriculum Planner → Item-Writer)."""
+    enforce_self_or_admin(session, body.practitioner_id)
     practitioner = await db.get(Practitioner, body.practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
@@ -58,9 +72,12 @@ async def generate_learning_path(
     response_model=list[LearningPathRead],
 )
 async def list_learning_paths(
-    practitioner_id: str, db: AsyncSession = Depends(get_db)
+    practitioner_id: str,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> list[LearningPathRead]:
     """Return all learning paths for a practitioner, newest first."""
+    enforce_self_or_admin(session, practitioner_id)
     practitioner = await db.get(Practitioner, practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
@@ -77,11 +94,11 @@ async def list_learning_paths(
 
 # ── Items ─────────────────────────────────────────────────────────────────────
 
-
 @router.get("/items", response_model=list[ItemRead])
 async def list_items_by_skill(
     skill_id: str = Query(..., description="Filter items by skill ID"),
     db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_any_authenticated),
 ) -> list[ItemRead]:
     """Return all items for a given skill, newest first. Used by the QuizRunner."""
     result = await db.execute(
@@ -98,8 +115,10 @@ async def list_items_by_skill(
 async def submit_attempt(
     body: AttemptCreate,
     db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> AttemptRead:
     """Submit a practitioner's response to an item and get it graded immediately."""
+    enforce_self_or_admin(session, body.practitioner_id)
     practitioner = await db.get(Practitioner, body.practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
@@ -108,7 +127,6 @@ async def submit_attempt(
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
 
-    # Run the Grader agent
     from app.agents.grader import GraderAgent
     import anthropic as anthropic_lib
 
@@ -124,7 +142,7 @@ async def submit_attempt(
     agent = GraderAgent(client=anthropic_client, db_session=db)
     grader_output: GraderOutput = await agent.run(grader_input)
 
-    # Persist the attempt
+    now = datetime.now(UTC)
     attempt = Attempt(
         id=str(uuid.uuid4()),
         practitioner_id=body.practitioner_id,
@@ -133,11 +151,22 @@ async def submit_attempt(
         score=grader_output.score,
         grader_rationale=grader_output.grader_rationale,
         is_trap_selected=grader_output.is_trap_selected,
-        attempted_at=datetime.now(UTC),
+        attempted_at=now,
     )
     db.add(attempt)
 
-    # Update calibration stats on the item
+    # Write a skill_profile_event so the quiz result feeds into the next
+    # Skill Profiler run (and therefore the Skill Radar).
+    db.add(SkillProfileEvent(
+        id=str(uuid.uuid4()),
+        practitioner_id=body.practitioner_id,
+        skill_id=item.skill_id,
+        source="quiz_attempt",
+        signal_strength=float(grader_output.score),
+        occurred_at=now,
+        metadata_={"attempt_id": attempt.id, "item_id": body.item_id},
+    ))
+
     stats = item.calibration_stats or {
         "attempt_count": 0,
         "total_score": 0.0,
@@ -155,12 +184,47 @@ async def submit_attempt(
     return AttemptRead.model_validate(attempt)
 
 
+@router.get(
+    "/practitioners/{practitioner_id}/attempts",
+    response_model=list[AttemptRead],
+)
+async def list_attempts(
+    practitioner_id: str,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
+) -> list[AttemptRead]:
+    """Return all attempts for a practitioner, newest first.
+
+    Used by the QuizRunner to restore answered-question state across navigation.
+    """
+    enforce_self_or_admin(session, practitioner_id)
+    practitioner = await db.get(Practitioner, practitioner_id)
+    if practitioner is None:
+        raise HTTPException(status_code=404, detail="Practitioner not found")
+
+    result = await db.execute(
+        select(Attempt)
+        .where(Attempt.practitioner_id == practitioner_id)
+        .order_by(Attempt.attempted_at.desc())
+    )
+    return [AttemptRead.model_validate(a) for a in result.scalars().all()]
+
+
 @router.get("/attempts/{attempt_id}", response_model=AttemptRead)
 async def get_attempt(
-    attempt_id: str, db: AsyncSession = Depends(get_db)
+    attempt_id: str,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> AttemptRead:
-    """Fetch a scored attempt by ID."""
+    """Fetch a scored attempt by ID.
+
+    Practitioner may only fetch their own attempts. Full admins fetch any.
+    Leadership admins are denied (individual data is off-limits to leadership).
+    """
     attempt = await db.get(Attempt, attempt_id)
     if attempt is None:
         raise HTTPException(status_code=404, detail="Attempt not found")
+
+    # Ownership check: same logic as enforce_self_or_admin but using attempt.practitioner_id
+    enforce_self_or_admin(session, attempt.practitioner_id)
     return AttemptRead.model_validate(attempt)

@@ -32,6 +32,23 @@ class PractitionerUpdate(BaseModel):
     seniority_level: str | None = Field(None, max_length=100)
 
 
+class SkillAssessmentItem(BaseModel):
+    """One skill's self-assessed level — part of a SelfAssessmentRequest."""
+
+    skill_id: str
+    signal_strength: float = Field(..., ge=0.0, le=1.0)
+
+
+class SelfAssessmentRequest(BaseModel):
+    """Bulk self-assessment submission from a practitioner."""
+
+    assessments: list[SkillAssessmentItem] = Field(..., min_length=1)
+
+
+class SelfAssessmentResponse(BaseModel):
+    events_written: int
+
+
 class SkillSnapshotRead(BaseModel):
     skill_id: str
     skill_name: str

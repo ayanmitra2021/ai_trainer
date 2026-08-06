@@ -3,12 +3,17 @@
 Step 2.1 scenario:
   - The skill graph endpoint preserves hierarchy — child skills correctly
     reference their parent_skill_id.
+
+Step 5.2 — Auth applied:
+  - GET /skills      → require_any_authenticated
+  - GET /skills/tree → require_any_authenticated
 """
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps.session import SessionInfo, require_any_authenticated
 from app.db.models import Skill
 from app.db.session import get_db
 from app.schemas.skills import SkillRead, SkillTreeNode
@@ -17,7 +22,10 @@ router = APIRouter(prefix="/skills", tags=["skills"])
 
 
 @router.get("", response_model=list[SkillRead])
-async def list_skills(db: AsyncSession = Depends(get_db)) -> list[SkillRead]:
+async def list_skills(
+    db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_any_authenticated),
+) -> list[SkillRead]:
     """Return all skills as a flat list, preserving parent_skill_id references."""
     result = await db.execute(
         select(Skill).order_by(Skill.category, Skill.name)
@@ -27,14 +35,16 @@ async def list_skills(db: AsyncSession = Depends(get_db)) -> list[SkillRead]:
 
 
 @router.get("/tree", response_model=list[SkillTreeNode])
-async def skill_tree(db: AsyncSession = Depends(get_db)) -> list[SkillTreeNode]:
+async def skill_tree(
+    db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_any_authenticated),
+) -> list[SkillTreeNode]:
     """Return skills as a tree — root nodes (parent_skill_id=None) with children nested."""
     result = await db.execute(
         select(Skill).order_by(Skill.category, Skill.name)
     )
     all_skills = result.scalars().all()
 
-    # Build nodes indexed by id
     node_by_id: dict[str, SkillTreeNode] = {
         s.id: SkillTreeNode(
             id=s.id,

@@ -5,6 +5,12 @@ Routes:
   POST /certification-advisor                run the advisor and persist results
   GET  /practitioners/{id}/certification-goals
   PATCH /practitioners/{id}/certification-goals/{goal_id}
+
+Step 5.2 — Auth applied:
+  - GET  /certifications               → require_any_authenticated
+  - POST /certification-advisor        → require_any_authenticated + body self-enforcement
+  - GET  /practitioners/{id}/cert-goals → require_any_authenticated + self-enforcement
+  - PATCH goal                         → require_any_authenticated + self-enforcement
 """
 
 import uuid
@@ -15,6 +21,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.deps.session import (
+    SessionInfo,
+    enforce_self_or_admin,
+    require_any_authenticated,
+)
 from app.config import settings
 from app.db.models import (
     Certification,
@@ -41,7 +52,10 @@ router = APIRouter(tags=["certifications"])
 # ── Catalog ────────────────────────────────────────────────────────────────────
 
 @router.get("/certifications", response_model=list[CertificationRead])
-async def list_certifications(db: AsyncSession = Depends(get_db)) -> list[CertificationRead]:
+async def list_certifications(
+    db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_any_authenticated),
+) -> list[CertificationRead]:
     """Return all active certifications with their provider and skill mappings."""
     result = await db.execute(
         select(Certification)
@@ -62,19 +76,16 @@ async def list_certifications(db: AsyncSession = Depends(get_db)) -> list[Certif
 async def run_certification_advisor(
     body: AdvisorRequest,
     db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> AdvisorResponse:
-    """Run the Certification Advisor for a practitioner and persist results.
+    """Run the Certification Advisor for a practitioner and persist results."""
+    # Self-enforcement: practitioners can only get advice for themselves
+    enforce_self_or_admin(session, body.practitioner_id)
 
-    Fetches the current catalog, builds context, calls the agent, and persists:
-      - certification_advisor_responses row (raw answers)
-      - practitioner_certification_goals row (status = recommended)
-    """
-    # Verify practitioner exists
     practitioner = await db.get(Practitioner, body.practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
 
-    # Build catalog context to pass to the agent
     result = await db.execute(
         select(Certification)
         .options(selectinload(Certification.provider))
@@ -95,7 +106,6 @@ async def run_certification_advisor(
         for c in certs
     ]
 
-    # Import here to avoid circular imports; also keeps the route layer thin
     from app.agents.certification_advisor import CertificationAdvisorAgent
     from app.agents.certification_advisor import CertificationAdvisorInput
     import anthropic as anthropic_lib
@@ -110,7 +120,6 @@ async def run_certification_advisor(
     agent = CertificationAdvisorAgent(client=anthropic_client, db_session=db)
     recommendation: AdvisorOutput = await agent.run(agent_input)
 
-    # Persist raw answers
     response_id = str(uuid.uuid4())
     advisor_response = CertificationAdvisorResponse(
         id=response_id,
@@ -120,7 +129,6 @@ async def run_certification_advisor(
     db.add(advisor_response)
     await db.flush()
 
-    # Resolve recommended certification ID from code
     cert_result = await db.execute(
         select(Certification).where(
             Certification.code == recommendation.primary_recommendation_code
@@ -134,7 +142,6 @@ async def run_certification_advisor(
                    f"{recommendation.primary_recommendation_code}",
         )
 
-    # Persist the goal at status=recommended
     goal_id = str(uuid.uuid4())
     goal = PractitionerCertificationGoal(
         id=goal_id,
@@ -161,9 +168,12 @@ async def run_certification_advisor(
     response_model=list[CertificationGoalRead],
 )
 async def list_certification_goals(
-    practitioner_id: str, db: AsyncSession = Depends(get_db)
+    practitioner_id: str,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> list[CertificationGoalRead]:
     """Return all certification goals for a practitioner, newest first."""
+    enforce_self_or_admin(session, practitioner_id)
     practitioner = await db.get(Practitioner, practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
@@ -199,8 +209,10 @@ async def update_certification_goal(
     goal_id: str,
     body: CertificationGoalUpdate,
     db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
 ) -> CertificationGoalRead:
     """Update a certification goal's status (e.g. recommended → selected)."""
+    enforce_self_or_admin(session, practitioner_id)
     goal = await db.get(PractitionerCertificationGoal, goal_id)
     if goal is None or goal.practitioner_id != practitioner_id:
         raise HTTPException(status_code=404, detail="Goal not found")
