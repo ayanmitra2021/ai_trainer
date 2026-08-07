@@ -24,6 +24,7 @@ import type {
   ProfileUpdate,
   QuestionnaireAnswers,
   SelfAssessmentRequest,
+  SendNudgesRequest,
 } from "../api/types";
 
 // ── Practitioners ──────────────────────────────────────────────────────────────
@@ -294,3 +295,81 @@ export const useUpsertProfileSkills = (practitioner_id: string, profile_id: stri
     },
   });
 };
+
+// ── Phase 7 — Smart Nudge Campaigns ───────────────────────────────────────────
+
+export const useNudgeCategories = () =>
+  useQuery({ queryKey: ["nudge-categories"], queryFn: pulse.listCategories });
+
+export const useGenerateNudgeCategories = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: pulse.generateCategories,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["nudge-categories"] }),
+  });
+};
+
+export const usePreviewRecipients = (category_id: string | null) =>
+  useQuery({
+    queryKey: ["nudge-recipients", category_id],
+    queryFn: () => pulse.previewRecipients(category_id!),
+    enabled: !!category_id,
+  });
+
+export const useComposeCampaign = () =>
+  useMutation({ mutationFn: (category_id: string) => pulse.composeCampaign(category_id) });
+
+export const useSendNudges = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SendNudgesRequest) => pulse.sendNudges(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["sent-campaigns"] }),
+  });
+};
+
+export const useSentCampaigns = () =>
+  useQuery({ queryKey: ["sent-campaigns"], queryFn: pulse.sentCampaigns });
+
+export const usePractitionerNudges = (practitioner_id: string) =>
+  useQuery({
+    queryKey: ["practitioner-nudges", practitioner_id],
+    queryFn: () => pulse.practitionerNudges(practitioner_id),
+    enabled: !!practitioner_id,
+  });
+
+export const useMarkNudgeRead = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (nudge_id: string) => pulse.markNudgeRead(nudge_id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["practitioner-nudges"] });
+      qc.invalidateQueries({ queryKey: ["unread-nudge-count"] });
+    },
+  });
+};
+
+export const useUnreadNudgeCount = (practitioner_id: string | undefined) =>
+  useQuery({
+    queryKey: ["unread-nudge-count", practitioner_id],
+    queryFn: () => pulse.unreadNudgeCount(practitioner_id!),
+    enabled: !!practitioner_id,
+    refetchInterval: 60_000, // Poll every 60 seconds
+  });
+
+export const useMasteryHistory = (
+  practitioner_id: string,
+  params?: { skill_id?: string; days?: number }
+) =>
+  useQuery({
+    queryKey: ["mastery-history", practitioner_id, params],
+    queryFn: () => pulse.masteryHistory(practitioner_id, params),
+    enabled: !!practitioner_id,
+  });
+
+export const useAdoptionTrends = (practitioner_id: string, days = 90) =>
+  useQuery({
+    queryKey: ["adoption-trends", practitioner_id, days],
+    queryFn: () => pulse.adoptionTrends(practitioner_id, days),
+    enabled: !!practitioner_id,
+    staleTime: 30_000, // Re-fetch if data is older than 30 seconds
+  });

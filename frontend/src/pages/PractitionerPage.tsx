@@ -1,22 +1,29 @@
 import { Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { usePractitioner } from "../hooks";
+import { usePractitioner, useUnreadNudgeCount } from "../hooks";
 import SkillRadar from "../components/SkillRadar";
 import QuizRunner from "../components/QuizRunner";
 import TrendDashboard from "../components/TrendDashboard";
-
-const TABS = [
-  { path: "skills", label: "Skill Radar" },
-  { path: "quiz", label: "Quiz" },
-  { path: "trends", label: "Adoption Trends" },
-] as const;
 
 export default function PractitionerPage() {
   const { id = "" } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: person, isLoading } = usePractitioner(id);
+  const { data: unreadData } = useUnreadNudgeCount(id || undefined);
+  const unreadCount = unreadData?.unread_count ?? 0;
 
   // Detect active tab from current pathname
   const activeTab = window.location.pathname.split("/").pop() ?? "skills";
+
+  const TABS = [
+    { path: "skills", label: "Skill Radar" },
+    { path: "quiz", label: "Quiz" },
+    {
+      path: "trends",
+      label: unreadCount > 0
+        ? `Adoption Trends (${unreadCount})`
+        : "Adoption Trends",
+    },
+  ] as const;
 
   if (isLoading) {
     return (

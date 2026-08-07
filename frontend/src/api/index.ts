@@ -2,6 +2,7 @@
 
 import { api } from "./client";
 import type {
+  AdoptionTrendsResponse,
   AdminLoginRequest,
   AdminLoginResponse,
   AdminUserCreate,
@@ -12,17 +13,24 @@ import type {
   Certification,
   CertificationGoal,
   ChangePasswordRequest,
+  ComposePreviewResponse,
   CorrelationSnapshot,
   GenerateLearningPathResponse,
   Item,
   LearningPath,
+  MasteryHistoryResponse,
   MeResponse,
   Nudge,
+  NudgeCategory,
+  NudgeExtended,
+  NudgeMarkReadResponse,
   ObservabilityReport,
   Practitioner,
   PractitionerCreate,
   PractitionerLoginRequest,
   PractitionerLoginResponse,
+  PractitionerLookupResponse,
+  PreviewRecipientsResponse,
   ProfileCreate,
   ProfileDetail,
   ProfileSkillUpsert,
@@ -33,9 +41,13 @@ import type {
   Rollup,
   SelfAssessmentRequest,
   SelfAssessmentResponse,
+  SendNudgesRequest,
+  SendNudgesResponse,
+  SentCampaignSummary,
   Skill,
   SkillSnapshot,
   SkillTreeNode,
+  UnreadCountResponse,
 } from "./types";
 
 // ── Practitioners ──────────────────────────────────────────────────────────────
@@ -136,6 +148,31 @@ export const pulse = {
   },
   approveNudge: (nudge_id: string) =>
     api.post<Nudge>(`/nudges/${nudge_id}/approve`, {}),
+  generateCategories: () => api.get<NudgeCategory[]>("/nudges/generate-categories"),
+  listCategories: () => api.get<NudgeCategory[]>("/nudges/categories"),
+  previewRecipients: (category_id: string) =>
+    api.post<PreviewRecipientsResponse>(`/nudges/categories/${category_id}/preview-recipients`, {}),
+  composeCampaign: (category_id: string) =>
+    api.post<ComposePreviewResponse>(`/nudges/categories/${category_id}/compose`, {}),
+  sendNudges: (body: SendNudgesRequest) => api.post<SendNudgesResponse>("/nudges/send", body),
+  sentCampaigns: () => api.get<SentCampaignSummary[]>("/nudges/sent"),
+  practitionerNudges: (practitioner_id: string) =>
+    api.get<NudgeExtended[]>(`/practitioners/${practitioner_id}/nudges`),
+  markNudgeRead: (nudge_id: string) =>
+    api.patch<NudgeMarkReadResponse>(`/nudges/${nudge_id}/read`, {}),
+  unreadNudgeCount: (practitioner_id: string) =>
+    api.get<UnreadCountResponse>(`/practitioners/${practitioner_id}/nudges/unread-count`),
+  masteryHistory: (practitioner_id: string, params?: { skill_id?: string; days?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.skill_id) q.set("skill_id", params.skill_id);
+    if (params?.days) q.set("days", String(params.days));
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return api.get<MasteryHistoryResponse>(`/practitioners/${practitioner_id}/mastery-history${qs}`);
+  },
+  adoptionTrends: (practitioner_id: string, days = 90) =>
+    api.get<AdoptionTrendsResponse>(
+      `/practitioners/${practitioner_id}/adoption-trends?days=${days}`
+    ),
   rollups: (params?: { scope?: string; scope_ref?: string }) => {
     const q = new URLSearchParams();
     if (params?.scope) q.set("scope", params.scope);
@@ -176,6 +213,10 @@ export const auth = {
   me: () => api.get<MeResponse>("/auth/me"),
   changePassword: (body: ChangePasswordRequest) =>
     api.post<void>("/auth/change-password", body),
+  lookupEmail: (email: string) =>
+    api.get<PractitionerLookupResponse>(
+      `/auth/lookup-email?email=${encodeURIComponent(email)}`
+    ),
 };
 
 // ── Admin Users ────────────────────────────────────────────────────────────────

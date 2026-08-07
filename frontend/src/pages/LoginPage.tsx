@@ -1,16 +1,14 @@
 /**
- * LoginPage — Step 5.2
+ * LoginPage — Step 5.2 (updated Phase 7)
  *
- * Landing page. Default: practitioner form (name, email, org level).
- * Toggle "I'm an admin / leadership member" reveals the admin form (email + password).
+ * Practitioner form field order: email → name → role → practice → seniority level.
+ * On email blur, calls GET /auth/lookup-email — if the email is already in the DB
+ * all other fields are pre-filled (user can still edit/override them).
  *
- * On success, the session is refreshed and the router redirects the user:
- *   - practitioner → /practitioners/:id/skills  (their own tabs)
- *   - admin with must_change_password → /change-password
- *   - admin (normal) → /  (full practitioners list + admin nav)
+ * Admin toggle reveals a separate email + password form.
  */
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "../api";
 import { useSession } from "../context/SessionContext";
@@ -54,19 +52,62 @@ export default function LoginPage() {
   const { refresh } = useSession();
 
   const [isAdmin, setIsAdmin] = useState(false);
-  const [name, setName] = useState("");
+
+  // Practitioner fields
   const [email, setEmail] = useState("");
-  const [orgLevel, setOrgLevel] = useState("");
+  const [name, setName] = useState("");
+  const [role, setRole] = useState("");
+  const [practice, setPractice] = useState("");
+  const [seniorityLevel, setSeniorityLevel] = useState("");
+  const [prefilled, setPrefilled] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
+
+  // Admin fields
+  const [adminEmail, setAdminEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // Track the last email we looked up so we don't repeat the same call
+  const lastLookedUpEmail = useRef("");
+
+  const handleEmailBlur = async () => {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || trimmed === lastLookedUpEmail.current) return;
+    lastLookedUpEmail.current = trimmed;
+
+    setLookingUp(true);
+    try {
+      const result = await auth.lookupEmail(trimmed);
+      if (result.found) {
+        setName(result.name);
+        setRole(result.role);
+        setPractice(result.practice);
+        setSeniorityLevel(result.seniority_level);
+        setPrefilled(true);
+      } else {
+        setPrefilled(false);
+      }
+    } catch {
+      // Lookup failure is non-fatal — user can still fill the form manually
+    } finally {
+      setLookingUp(false);
+    }
+  };
 
   const handlePractitionerLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      const res = await auth.practitionerLogin({ name, email, org_level: orgLevel });
+      const res = await auth.practitionerLogin({
+        name,
+        email: email.trim().toLowerCase(),
+        role,
+        practice,
+        seniority_level: seniorityLevel,
+      });
       await refresh();
       navigate(`/practitioners/${res.practitioner_id}/skills`);
     } catch (err: unknown) {
@@ -81,7 +122,7 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await auth.adminLogin({ email, password });
+      const res = await auth.adminLogin({ email: adminEmail, password });
       await refresh();
       if (res.must_change_password) {
         navigate("/change-password");
@@ -115,22 +156,10 @@ export default function LoginPage() {
           boxShadow: "var(--shadow)",
         }}
       >
-        <h1
-          style={{
-            fontSize: "1.375rem",
-            fontWeight: 700,
-            marginBottom: "0.25rem",
-          }}
-        >
+        <h1 style={{ fontSize: "1.375rem", fontWeight: 700, marginBottom: "0.25rem" }}>
           Mastery Pulse
         </h1>
-        <p
-          style={{
-            fontSize: "0.875rem",
-            color: "var(--text-muted)",
-            marginBottom: "1.5rem",
-          }}
-        >
+        <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", marginBottom: "1.5rem" }}>
           {isAdmin ? "Admin / leadership sign-in" : "Welcome — enter your details to continue"}
         </p>
 
@@ -174,30 +203,92 @@ export default function LoginPage() {
 
         {!isAdmin ? (
           <form onSubmit={handlePractitionerLogin}>
-            <label style={labelStyle}>Full name</label>
+
+            {/* ── Email first so lookup can fire on blur ── */}
+            <label style={labelStyle}>Work email *</label>
+            <div style={{ position: "relative", marginBottom: "0.75rem" }}>
+              <input
+                style={{ ...inputStyle, marginBottom: 0, paddingRight: lookingUp ? "2rem" : undefined }}
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  // Reset prefill state when the email changes
+                  if (e.target.value.trim().toLowerCase() !== lastLookedUpEmail.current) {
+                    setPrefilled(false);
+                  }
+                }}
+                onBlur={handleEmailBlur}
+                placeholder="you@example.com"
+                required
+                autoComplete="email"
+              />
+              {lookingUp && (
+                <span
+                  style={{
+                    position: "absolute",
+                    right: "0.625rem",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    fontSize: "0.75rem",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  <span className="spinner" style={{ width: 12, height: 12 }} />
+                </span>
+              )}
+            </div>
+
+            {prefilled && (
+              <p
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--primary)",
+                  margin: "-0.25rem 0 0.75rem",
+                }}
+              >
+                ✓ Fields pre-filled from your account — update anything that's changed.
+              </p>
+            )}
+
+            {/* ── Name ── */}
+            <label style={labelStyle}>Full name *</label>
             <input
               style={inputStyle}
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Alex Rivera"
               required
+              autoComplete="name"
             />
-            <label style={labelStyle}>Work email</label>
+
+            {/* ── Role ── */}
+            <label style={labelStyle}>Role (optional)</label>
             <input
               style={inputStyle}
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              placeholder="e.g. Solutions Architect"
             />
-            <label style={labelStyle}>Org level (optional)</label>
+
+            {/* ── Practice ── */}
+            <label style={labelStyle}>Practice (optional)</label>
             <input
               style={inputStyle}
-              value={orgLevel}
-              onChange={(e) => setOrgLevel(e.target.value)}
-              placeholder="e.g. Senior Consultant"
+              value={practice}
+              onChange={(e) => setPractice(e.target.value)}
+              placeholder="e.g. Cloud & Infrastructure"
             />
+
+            {/* ── Seniority level ── */}
+            <label style={labelStyle}>Seniority level (optional)</label>
+            <input
+              style={inputStyle}
+              value={seniorityLevel}
+              onChange={(e) => setSeniorityLevel(e.target.value)}
+              placeholder="e.g. Senior, Manager, Director"
+            />
+
             <button style={btnStyle} type="submit" disabled={loading}>
               {loading ? "Signing in…" : "Continue"}
             </button>
@@ -208,10 +299,11 @@ export default function LoginPage() {
             <input
               style={inputStyle}
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={adminEmail}
+              onChange={(e) => setAdminEmail(e.target.value)}
               placeholder="admin@example.com"
               required
+              autoComplete="email"
             />
             <label style={labelStyle}>Password</label>
             <input
@@ -220,6 +312,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+              autoComplete="current-password"
             />
             <button style={btnStyle} type="submit" disabled={loading}>
               {loading ? "Signing in…" : "Sign in"}

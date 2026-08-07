@@ -66,6 +66,15 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 6.7 Skill Radar enhancements
 - [x] 6.8 Quiz profile-awareness & navigation fix
 
+**Phase 7 — Smart Nudge System**
+- [x] 7.1 Nudge data model expansion & API
+- [x] 7.2 Nudge Category Generator Agent 👤
+- [x] 7.3 Nudge Campaign workflow (recipient resolution + composition)
+- [x] 7.4 Admin/Leadership Nudge Management UI
+- [x] 7.5 Practitioner Nudge Inbox & Progress Trend Chart
+- [x] 7.6 Email delivery integration
+- [x] 7.7 End-to-end Nudge Playwright suite
+
 ---
 
 # Phase 0 — Foundations
@@ -811,3 +820,201 @@ This phase replaces the ad-hoc "generate a path" flow with a deliberate, multi-p
 - *A practitioner with an active certification profile sees that cert's skills listed first in the quiz skill selector, tagged "(cert)".*
 
 **Definition of done:** both pass.
+
+---
+
+# Phase 7 — Smart Nudge System
+
+This phase replaces the automated, nightly-pulse-only nudge flow with an admin-driven, intent-based campaign system. The central idea: an Admin or Leadership member can see a **Nudges** menu (hidden from practitioners), use LLM to generate contextual nudge categories from aggregate KPI data, select matching practitioners, review and edit a composed message, and send it. Practitioners receive nudges both in-app (as unread messages on their Adoption Trends tab) and via email. A progress trend chart on the same tab shows mastery trajectory over time.
+
+---
+
+### Step 7.1 — Nudge data model expansion & API
+
+**Goal:** extend the data model to support admin-driven nudge campaigns with category tracking, in-app read/unread state, and historical mastery snapshots for trend charts.
+
+**Preconditions:** 6.8 (app is fully operational).
+**Context to load:** `docs/data-model.md`, `docs/architecture.md`.
+
+**Build:**
+
+*New migration:*
+- `nudge_categories`: `id` (UUID PK), `description` (text — human-readable, e.g. "Practitioners who haven't taken quizzes in 7 days"), `criteria` (jsonb — machine-readable filter params such as `{"no_quiz_days_gte": 7}`), `is_custom` (boolean — `true` when the admin typed it manually), `created_by_admin_id` (FK → `admin_users`), `created_at`.
+- `mastery_history`: `id` (UUID PK), `practitioner_id` (FK → `practitioners`), `skill_id` (FK → `skills`), `mastery_score` (float 0–1), `recorded_at` (timestamp). Append-only: a row is added here every time the Skill Profiler upserts `skill_profile_snapshots`. No unique constraint — multiple rows per (practitioner, skill) are expected. Retain only 90 days of history per practitioner.
+- Expand `nudges`: add `nudge_category_id` (nullable FK → `nudge_categories`), `subject` (nullable text — email subject line), `is_read` (boolean, default false), `read_at` (nullable timestamp), `created_by_admin_id` (nullable FK → `admin_users` — set for campaign nudges, null for nightly-pulse nudges).
+
+*API routes:*
+- `POST /nudges/categories` — create a category (used by both the LLM agent and the custom-input path).
+- `GET /nudges/categories` — list recent categories (admin/leadership).
+- `POST /nudges/categories/{id}/preview-recipients` — resolve which practitioners match a category's criteria; returns `[{id, name, email, action_profile_summary}]`.
+- `POST /nudges/categories/{id}/compose` — run the Nudge Composer Agent for this category; returns `{subject, body, tone_check, recipients}`. Does not yet create nudge rows — this is the preview step.
+- `POST /nudges/send` — given `{category_id, message_subject, message_body, recipient_overrides: [{practitioner_id, include: bool}]}`, create one `nudges` row per included practitioner (status `sent`, `sent_at` = now), then trigger email delivery (wired in Step 7.6 — stub for now).
+- `GET /nudges/sent` — list sent campaigns (readonly, admin/leadership).
+- `GET /practitioners/{id}/nudges` — list a practitioner's nudges, unread first; requires `require_practitioner` + self-only enforcement.
+- `PATCH /nudges/{id}/read` — mark a nudge as read; only the recipient practitioner may call this.
+- `GET /practitioners/{id}/mastery-history` — return time-series rows from `mastery_history`, filtered by optional `skill_id` and `days` query params.
+
+**Scenario tests:**
+- *A nudge created for a practitioner starts with `is_read = false`.*
+- *Calling `PATCH /nudges/{id}/read` sets `is_read = true` and populates `read_at`.*
+- *`preview-recipients` for a `no_quiz_days_gte: 7` category returns only practitioners with zero attempts in the last 7 days, not all practitioners.*
+
+**Definition of done:** all three pass; migration runs clean against local DB.
+
+---
+
+### Step 7.2 — Nudge Category Generator Agent 👤
+
+**Goal:** a new LLM agent that ingests aggregate KPI data (no PII — only counts, averages, and gap summaries) and proposes up to 10 actionable nudge categories, each with machine-readable criteria and a tone hint for the Nudge Composer.
+
+**Preconditions:** 7.1.
+**Context to load:** `docs/architecture.md`, `docs/human-in-the-loop.md`.
+
+**Build:**
+- `backend/app/agents/nudge_category_generator.py` + `agents/prompts/nudge_category_generator.md` — 👤 write the prompt yourself (see below).
+- `NudgeCategoryInput` (aggregate-only — no practitioner names or emails):
+  - `total_practitioners`: int
+  - `practitioners_no_quiz_7d`: int
+  - `practitioners_no_quiz_14d`: int
+  - `practitioners_no_profile`: int
+  - `practitioners_profile_unrated`: int (active profile but zero skill assessments saved)
+  - `skill_gap_summary`: list of `{skill_name, avg_gap_score, practitioner_count}` (top 5 by gap)
+  - `practitioners_stalled`: int (mastery unchanged in 14+ days)
+  - `practitioners_near_cert_ready`: int (cert-relevant mastery avg ≥ 80 %)
+  - `nudges_sent_last_7d`: int
+- `NudgeCategoryOutput`: `categories: list[NudgeCategory]` (max 10), each with:
+  - `title`: str (short label, e.g. "Idle for 7+ days")
+  - `description`: str (one sentence explaining who qualifies)
+  - `criteria`: dict (machine-readable, e.g. `{"no_quiz_days_gte": 7}`)
+  - `estimated_reach`: int
+  - `tone_hint`: str (one-line tone guidance, e.g. "warm re-engagement, not scolding")
+- `GET /nudges/generate-categories` API route: queries aggregate stats, runs the agent, persists suggested categories to `nudge_categories`, returns the list.
+- Recipient resolver: a pure Python function `resolve_recipients(criteria: dict) → list[Practitioner]` that translates criteria keys to DB queries. Supported keys:
+  - `no_quiz_days_gte: N` — no attempts in last N days
+  - `no_profile: true` — no active profile
+  - `profile_unrated: true` — active profile but no skill assessments
+  - `mastery_stalled_days_gte: N` — no mastery improvement in last N days
+  - `skill_gap_skill_id: UUID` — gap_score ≥ 0.5 on this skill
+  - `near_cert_ready: true` — cert-relevant mastery avg ≥ 80 %
+  - `custom_description: str` — free-text; resolver returns all practitioners and marks the row for manual review in the UI
+
+**Scenario tests:**
+- *A dataset with 8 practitioners having no quizzes in 7 days generates at least one category with `estimated_reach` near 8.*
+- *The resolver for `{"no_quiz_days_gte": 7}` returns only qualifying practitioners, not all practitioners.*
+- *A custom-description category creates a `nudge_categories` row with `is_custom = true` and `criteria.custom_description` populated.*
+
+**Definition of done:** all three pass against the stub Claude client.
+
+> 👤 **Human-in-the-loop:** write `agents/prompts/nudge_category_generator.md` yourself before implementing. The categories it generates determine who gets nudged — a category that flags ordinary behavior (e.g. "practitioners who skip weekends") or sets a punishing tone will erode trust. Own the criteria boundaries and the `tone_hint` vocabulary. See `docs/human-in-the-loop.md`.
+
+---
+
+### Step 7.3 — Nudge Campaign workflow (recipient resolution + composition)
+
+**Goal:** wire the NudgeCategoryGenerator output into a composable campaign: given a selected category, resolve recipients and generate an encouraging nudge message via the Nudge Composer Agent — returning a full preview before anything is sent.
+
+**Preconditions:** 7.2.
+**Context to load:** `docs/architecture.md`.
+
+**Build:**
+- Extend the existing `Nudge Composer Agent` input to accept `NudgeCampaignInput` — category description, `tone_hint` from the category, and matched-recipient count (not names). Output adds `subject: str` and `tone_check: str` (one-sentence self-assessment: "Is this message encouraging rather than punishing?").
+- `POST /nudges/categories/{id}/compose` calls `resolve_recipients(category.criteria)`, runs the Nudge Composer Agent, and returns `{subject, body, tone_check, recipients: [{id, name, email, action_profile_summary, include: true}]}`. No DB writes at this stage — preview only.
+- `POST /nudges/send` creates one `nudges` row per practitioner where `include = true` (status `sent`, `sent_at` = now), writes a `workflow_runs` row under `nudge_campaign`, then calls the email stub from Step 7.6.
+
+**Scenario tests:**
+- *Composing a campaign for a "no quiz in 7 days" category returns a `body` containing none of the words "failed", "missing", "behind", "overdue", or "lacking".*
+- *The `recipients` list from `/compose` matches what `resolve_recipients` returns for the same criteria.*
+- *Calling `/send` with two practitioners' `include` set to `false` creates nudge rows for the remaining practitioners only — the excluded two have no new nudge rows.*
+
+**Definition of done:** all three pass.
+
+---
+
+### Step 7.4 — Admin/Leadership Nudge Management UI
+
+**Goal:** the full admin-side nudge campaign experience — generate categories, pick or write one, review matching practitioners, edit the message, and send.
+
+**Preconditions:** 7.3.
+**Context to load:** `docs/architecture.md` (Auth §What each role can see).
+
+**Build:**
+- New page `frontend/src/pages/NudgesPage.tsx`, routed at `/nudges`. Route guard: Admin and Leadership sessions only — practitioner sessions are redirected away. Top-nav "Nudges" link is rendered only for Admin/Leadership sessions (hidden entirely for practitioners).
+- **Section 1 — Generate categories**: a "Generate Nudge Categories" primary button calls `GET /nudges/generate-categories`. Shows a spinner while generating. Renders up to 10 category cards, each with: title, description, estimated_reach badge, and a "Select" button.
+- **Section 2 — Custom category**: a text box ("Describe your own category in plain English") + "Apply" button. On submit, creates a `nudge_categories` row (`is_custom = true`) and immediately loads recipients.
+- **Section 3 — Recipient table** (shown after any category is selected): columns: Name, Email, Action Profile (cert goal + active profile name as one line), Include (checkbox, default checked). "Select all / Deselect all" toggle. A live count chip: "N practitioners selected".
+- **Section 4 — Nudge message**: Subject (single-line) and Body (multiline) auto-filled from `/compose`. Both freely editable. "(↻ Regenerate message)" link re-calls the compose endpoint. `tone_check` shown as small italic note below the body.
+- **Section 5 — Send**: "Send nudge to N practitioners" button. Confirm dialog. On confirm → `POST /nudges/send` → success banner + readonly table of just-sent records (Name, Email, Sent at).
+- **Sent history panel**: collapsible "Previous nudge campaigns" section showing the last 20 campaigns from `GET /nudges/sent`.
+- **Leadership restriction**: Leadership role sees the Nudges menu and the sent history panel in read-only mode. Sections 1–5 interactive controls are disabled with an "Admins only" tooltip.
+
+**Scenario tests (Playwright):**
+- *An admin can generate categories, select one, see matching practitioners, and successfully send — the sent-history panel shows the new campaign.*
+- *A leadership user can navigate to `/nudges` and see the sent history panel but the "Generate Nudge Categories" button is disabled.*
+- *Unchecking one practitioner before sending excludes them — the sent-history count is one less than the total shown in the table.*
+
+**Definition of done:** all three pass.
+
+---
+
+### Step 7.5 — Practitioner Nudge Inbox & Progress Trend Chart
+
+**Goal:** practitioners see received nudges as unread/read messages on their Adoption Trends tab, plus a mastery progress trend chart.
+
+**Preconditions:** 7.4.
+
+**Build:**
+
+*Nudge Inbox panel* on the Adoption Trends tab:
+- A "Messages" section listing the practitioner's nudges from `GET /practitioners/{id}/nudges`, newest first. Unread nudges show a blue dot and bold subject. Clicking expands the full body and calls `PATCH /nudges/{id}/read` (optimistic update — dot disappears immediately).
+- A "Messages (N unread)" badge on the Adoption Trends tab label in the top nav, driven by a `useUnreadNudgeCount` polling hook (60 s interval). Hidden when N = 0.
+
+*Progress Trend Chart* (new `ProgressTrendChart` component):
+- Data: `GET /practitioners/{id}/mastery-history` with optional `skill_id` and `days` params.
+- Default: aggregate average mastery across all skills, last 30 days.
+- Skill selector dropdown + "30 days / 90 days" toggle.
+- Uses the same Recharts setup and color palette as the Skill Radar.
+- Empty state (fewer than 2 data points): "Keep going — your progress chart fills in as you complete quizzes and update your profile."
+
+*Skill Profiler integration:* update `backend/app/agents/skill_profiler.py` to append to `mastery_history` whenever it upserts `skill_profile_snapshots`.
+
+**Scenario tests (Playwright):**
+- *A practitioner with one unread nudge sees a "1 unread" badge on the Adoption Trends tab.*
+- *Clicking the nudge card marks it read — the badge disappears and the card loses its bold styling.*
+- *A practitioner with at least two mastery-history data points on skill X sees a non-empty trend line when they select that skill from the dropdown.*
+
+**Definition of done:** all three pass.
+
+---
+
+### Step 7.6 — Email delivery integration
+
+**Goal:** when nudges are sent, practitioners also receive an email to their registered address.
+
+**Preconditions:** 7.5.
+
+**Build:**
+- `backend/app/services/email.py` — async email service wrapping `aiosmtplib`. Config via `.env`: `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_FROM`, `SMTP_USER` (optional), `SMTP_PASSWORD` (optional). If `SMTP_HOST` is not set, log a warning and skip delivery silently.
+- HTML email: subject from `nudges.subject`, body from `nudges.content` in a clean single-column layout, signed "— The Mastery Pulse Team". Footer: "You're receiving this because you're a registered practitioner in Mastery Pulse."
+- `POST /nudges/send` calls the email service after writing DB rows. Email failures are logged but do not roll back the DB write.
+- `.env.example` updated with the four SMTP config keys.
+
+**Scenario tests:**
+- *Sending a nudge when `SMTP_HOST` is not configured logs a warning and returns a 200 without raising an exception.*
+- *Given a mock SMTP stub, sending to three practitioners delivers exactly three emails — one per recipient.*
+
+**Definition of done:** both pass; `.env.example` updated.
+
+---
+
+### Step 7.7 — End-to-end Nudge Playwright suite
+
+**Goal:** string together the full admin-initiates-nudge → practitioner-receives-nudge journey end-to-end.
+
+**Preconditions:** 7.6.
+**Build:** `tests/scenarios/nudge-journey.spec.ts`
+
+**Scenario tests:**
+- *Full nudge journey*: admin logs in → navigates to Nudges → clicks "Generate Nudge Categories" → selects a category → sees matching practitioners in the table → message is auto-filled → sends → practitioner logs in → sees "1 unread" badge on Adoption Trends → clicks the nudge → badge disappears.
+- *Custom category journey*: admin types a custom description → practitioners appear in the table → admin sends → history panel shows the new campaign with the correct recipient count.
+
+**Definition of done:** both journeys pass against a full local stack (local Postgres + seeded data).

@@ -49,7 +49,17 @@ def _verify_pw(plain: str, hashed: str) -> bool:
 class PractitionerLoginRequest(BaseModel):
     name: str
     email: str
-    org_level: str = ""
+    role: str = ""
+    practice: str = ""
+    seniority_level: str = ""
+
+
+class PractitionerLookupResponse(BaseModel):
+    found: bool
+    name: str = ""
+    role: str = ""
+    practice: str = ""
+    seniority_level: str = ""
 
 
 class AdminLoginRequest(BaseModel):
@@ -109,15 +119,19 @@ async def practitioner_login(
             id=str(uuid.uuid4()),
             name=body.name,
             email=body.email,
-            seniority_level=body.org_level or None,
+            role=body.role or None,
+            practice=body.practice or None,
+            seniority_level=body.seniority_level or None,
         )
         db.add(practitioner)
         await db.flush()
     else:
-        # Overwrite name/level — "save and override" semantics
+        # Overwrite all editable fields — form values always win
         practitioner.name = body.name
-        if body.org_level:
-            practitioner.seniority_level = body.org_level
+        practitioner.role = body.role or None
+        practitioner.practice = body.practice or None
+        if body.seniority_level:
+            practitioner.seniority_level = body.seniority_level
         await db.flush()
 
     # Create session
@@ -143,6 +157,38 @@ async def practitioner_login(
     return PractitionerLoginResponse(
         first_name=first_name,
         practitioner_id=practitioner.id,
+    )
+
+
+# ── Email lookup (pre-fill) ────────────────────────────────────────────────────
+
+@router.get("/lookup-email", response_model=PractitionerLookupResponse)
+async def lookup_email(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+) -> PractitionerLookupResponse:
+    """Return existing practitioner fields for a given email (no auth required).
+
+    Called on email field blur during login to pre-fill the rest of the form.
+    Returns found=False when the email is new — never a 404, so the frontend
+    can treat any successful response uniformly.
+    """
+    from sqlalchemy import select
+
+    result = await db.execute(
+        select(Practitioner).where(Practitioner.email == email.strip().lower())
+    )
+    practitioner = result.scalar_one_or_none()
+
+    if practitioner is None:
+        return PractitionerLookupResponse(found=False)
+
+    return PractitionerLookupResponse(
+        found=True,
+        name=practitioner.name or "",
+        role=practitioner.role or "",
+        practice=practitioner.practice or "",
+        seniority_level=practitioner.seniority_level or "",
     )
 
 

@@ -57,3 +57,8 @@ app.include_router(admin_users.router, prefix="/api/v1")
 from app.api.routes import profiles
 
 app.include_router(profiles.router, prefix="/api/v1")
+
+# ── Phase 7 routes ────────────────────────────────────────────────────────────
+from app.api.routes import nudges as nudge_routes
+
+app.include_router(nudge_routes.router, prefix="/api/v1")

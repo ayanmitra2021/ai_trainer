@@ -24,6 +24,7 @@ from app.db.models import (
     Certification,
     LearningPath,
     LearningPathItem,
+    MasteryHistory,
     PractitionerCertificationGoal,
     PractitionerProfile,
     Skill,
@@ -208,6 +209,20 @@ async def _run_steps(
                 mastery_score=skill_ctx.mastery_score,
                 confidence=skill_ctx.confidence,
                 last_computed_at=now,
+            ))
+    await db.flush()
+
+    # Append mastery history rows for skills the Skill Profiler actually scored
+    # (mastery_score > 0 means the profiler had real signal, not just a zero-pad).
+    # These rows feed the ProgressTrendChart and the AdoptionTrendChart baseline.
+    for skill_ctx in skill_scores_context:
+        if skill_ctx.mastery_score > 0.0:
+            db.add(MasteryHistory(
+                id=str(uuid.uuid4()),
+                practitioner_id=practitioner_id,
+                skill_id=skill_ctx.skill_id,
+                mastery_score=skill_ctx.mastery_score,
+                recorded_at=now,
             ))
     await db.flush()
 

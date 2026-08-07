@@ -102,20 +102,24 @@ export default function ProfileWizard({ practitionerId, editProfileId, onComplet
       mentors_others_on_ai: answers.mentors_others_on_ai ?? null,
     };
 
-    const result = await adviseMutation.mutateAsync({
-      practitioner_id: practitionerId,
-      answers: fullAnswers,
-    });
+    try {
+      const result = await adviseMutation.mutateAsync({
+        practitioner_id: practitionerId,
+        answers: fullAnswers,
+      });
 
-    setRecommendation(result.recommendation);
+      setRecommendation(result.recommendation);
 
-    // Pre-select the recommended cert
-    const recCert = certList?.find(
-      (c) => c.code === result.recommendation.primary_recommendation_code
-    );
-    if (recCert) {
-      setSelectedCertId(recCert.id);
-      setSelectedCertCode(recCert.code);
+      // Pre-select the recommended cert
+      const recCert = certList?.find(
+        (c) => c.code === result.recommendation.primary_recommendation_code
+      );
+      if (recCert) {
+        setSelectedCertId(recCert.id);
+        setSelectedCertCode(recCert.code);
+      }
+    } catch {
+      // adviseMutation.isError + adviseMutation.error are now set — displayed below
     }
   };
 
@@ -375,6 +379,20 @@ export default function ProfileWizard({ practitionerId, editProfileId, onComplet
             "Get recommendation"
           )}
         </button>
+
+        {adviseMutation.isError && (
+          <p
+            style={{
+              marginTop: "0.75rem",
+              marginBottom: 0,
+              color: "var(--error, #dc2626)",
+              fontSize: "0.875rem",
+            }}
+          >
+            Could not get a recommendation — please try again. If this keeps
+            happening, check that your session is still active.
+          </p>
+        )}
       </div>
 
       {recommendation && (

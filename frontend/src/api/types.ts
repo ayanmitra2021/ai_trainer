@@ -204,7 +204,7 @@ export interface CorrelationSnapshot {
 export interface Nudge {
   id: string;
   practitioner_id: string;
-  nudge_type: "gap_alert" | "encouragement" | "reminder";
+  nudge_type: "gap_alert" | "encouragement" | "reminder" | "campaign";
   channel: "email" | "in_app";
   content: string;
   status: "drafted" | "approved" | "sent";
@@ -238,7 +238,17 @@ export interface NightlyPulseRequest {
 export interface PractitionerLoginRequest {
   name: string;
   email: string;
-  org_level?: string;
+  role?: string;
+  practice?: string;
+  seniority_level?: string;
+}
+
+export interface PractitionerLookupResponse {
+  found: boolean;
+  name: string;
+  role: string;
+  practice: string;
+  seniority_level: string;
 }
 
 export interface AdminLoginRequest {
@@ -385,4 +395,113 @@ export interface ProfileSkillUpsert {
 
 export interface ProfileSkillUpsertResponse {
   rows_written: number;
+}
+
+// ── Nudge Campaign (Phase 7) ──────────────────────────────────────────────────
+
+export interface NudgeCategory {
+  id: string;
+  title?: string;
+  description: string;
+  criteria: Record<string, unknown>;
+  is_custom: boolean;
+  tone_hint?: string;
+  estimated_reach?: number;
+  created_by_admin_id?: string;
+  created_at: string;
+}
+
+export interface RecipientPreview {
+  id: string;
+  name: string;
+  email: string;
+  action_profile_summary: string;
+}
+
+export interface PreviewRecipientsResponse {
+  recipients: RecipientPreview[];
+  total: number;
+}
+
+export interface ComposePreviewResponse {
+  subject: string;
+  body: string;
+  tone_check: string;
+  recipients: RecipientPreview[];
+}
+
+export interface SendNudgesRequest {
+  category_id: string;
+  message_subject: string;
+  message_body: string;
+  recipient_overrides: { practitioner_id: string; include: boolean }[];
+}
+
+export interface SendNudgesResponse {
+  sent_count: number;
+  workflow_run_id: string;
+  nudge_ids: string[];
+}
+
+export interface NudgeExtended extends Nudge {
+  subject?: string;
+  is_read: boolean;
+  read_at?: string;
+  nudge_category_id?: string;
+  created_by_admin_id?: string;
+}
+
+export interface NudgeMarkReadResponse {
+  id: string;
+  is_read: boolean;
+  read_at?: string;
+}
+
+export interface UnreadCountResponse {
+  unread_count: number;
+}
+
+export interface MasteryHistoryPoint {
+  skill_id: string;
+  skill_name: string;
+  mastery_score: number;
+  recorded_at: string;
+}
+
+export interface MasteryHistoryResponse {
+  points: MasteryHistoryPoint[];
+  practitioner_id: string;
+}
+
+export interface SentCampaignSummary {
+  category_id?: string;
+  category_title?: string;
+  sent_at: string;
+  recipient_count: number;
+  subject?: string;
+}
+
+// ── Adoption Trends (Phase 7, revised) ───────────────────────────────────────
+
+export interface SkillQuizPeriod {
+  week_start: string;    // "2026-07-06"
+  period_label: string;  // "Jul 6"
+  avg_score: number;     // 0.0–1.0
+  attempt_count: number;
+}
+
+export interface SkillAdoptionTrend {
+  skill_id: string;
+  skill_name: string;
+  self_assessed_score: number;         // trained / baseline
+  quiz_performance: SkillQuizPeriod[]; // weekly quiz averages
+  current_gap: number;                 // positive = under-performing vs baseline
+  gap_direction: "closing" | "widening" | "stable" | "no_data";
+  has_quiz_data: boolean;
+}
+
+export interface AdoptionTrendsResponse {
+  practitioner_id: string;
+  skills: SkillAdoptionTrend[];
+  computed_at: string;
 }

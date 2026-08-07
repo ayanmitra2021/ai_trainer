@@ -8,26 +8,28 @@ Mastery Pulse is one app built from two ideas that share a skill graph. **Master
 
 Nothing about the design is Anthropic-specific. The certification catalog (`docs/data-model.md`) is provider-agnostic by construction, and the Certification Advisor agent reasons over whatever's in that catalog rather than having any one provider's exams baked into its prompt.
 
-## The nine agents
+## Agent inventory
 
 Each agent is a single-purpose, typed unit: one input contract, one output contract (a Pydantic model, enforced via Structured Outputs — see below), one row in `agent_runs` per call. An agent never decides on its own to call another agent; a **workflow** (plain Python, not a framework) sequences them. This keeps every agent independently testable and keeps the control flow visible in code instead of hidden inside a graph the human has to reconstruct mentally.
 
 | # | Agent | Job | Reads | Writes |
 |---|---|---|---|---|
 | 1 | Certification Advisor | Match a short questionnaire to a best-fit certification | `certifications`, `certification_providers`, `certification_skills` | `certification_advisor_responses`, `practitioner_certification_goals` (status `recommended`) |
-| 2 | Skill Profiler | Turn raw signals into a current mastery estimate | `skill_profile_events`, MCP: `mcp-learning-portal` | `skill_profile_snapshots` |
+| 2 | Skill Profiler | Turn raw signals into a current mastery estimate | `skill_profile_events`, MCP: `mcp-learning-portal` | `skill_profile_snapshots`, `mastery_history` |
 | 3 | Curriculum Planner | Pick what a practitioner should work on next | `skill_profile_snapshots`, `correlation_snapshots`, `practitioner_certification_goals` (if set) | `learning_paths`, `learning_path_items` |
 | 4 | Item-Writer | Generate/calibrate practice items, incl. trap-reveal | `items`, `attempts` (calibration stats) | `items` |
 | 5 | Grader | Score an attempt, incl. free-text, with rationale | `items`, submitted response | `attempts` |
 | 6 | Usage-Signal | Ingest real usage evidence, map it to skill nodes | MCP: `mcp-usage-signals` | `usage_events` |
 | 7 | Correlation | Compare "trained" vs. "adopting" per skill | `skill_profile_snapshots`, `usage_events` | `correlation_snapshots` |
-| 8 | Nudge Composer | Draft an individual, tone-checked nudge | `correlation_snapshots` | `nudges` (status: `drafted`) |
+| 8 | Nudge Composer | Draft an individual tone-checked nudge (nightly pulse) or a campaign message (admin-initiated) | `correlation_snapshots`, `nudge_categories` | `nudges` (status: `drafted` or `sent`) |
 | 9 | Rollup Reporter | Aggregate, privacy-safe leadership narrative | `correlation_snapshots` (aggregated) | `rollups` |
+| 10 | Nudge Category Generator | Analyze aggregate KPI data and propose up to 10 nudge categories with machine-readable criteria | `practitioners`, `skill_profile_snapshots`, `attempts`, `usage_events`, `nudges` (aggregate counts only — no PII) | `nudge_categories` (via API) |
 
-Three workflows compose them:
+Four workflows compose them:
 - **`recommend_certification`**: Certification Advisor alone (Phase 2) — the actual front door for a new practitioner.
 - **`generate_learning_path`**: Skill Profiler → Curriculum Planner → Item-Writer (Phase 2) — reads the practitioner's active certification goal if `recommend_certification` has already run, but doesn't require it.
 - **`nightly_pulse`**: Usage-Signal → Correlation → Nudge Composer → Rollup Reporter (Phase 3)
+- **`nudge_campaign`**: Nudge Category Generator → Nudge Composer (Phase 7) — admin-initiated; runs on demand, not on a schedule.
 
 ## Certification Advisor: the entry point
 
@@ -114,8 +116,9 @@ Default to **Claude Sonnet 5** (`claude-sonnet-5`) unless a row below says other
 | Grader | **Opus 5** for free-text/rubric grading; **Haiku 4.5** for MCQ scoring | Free-text grading is the highest-judgment step in Mastery Mesh; MCQ scoring is close to deterministic |
 | Usage-Signal | **Haiku 4.5** | High-volume, mostly classification/tagging |
 | Correlation | **Opus 5** | Highest-stakes reasoning — feeds real nudges and rollups, must get the correlation-not-causation framing right every time |
-| Nudge Composer | Sonnet 5 | Tone-sensitive, not deeply analytical |
+| Nudge Composer | Sonnet 5 | Tone-sensitive, not deeply analytical; handles both nightly-pulse drafts and admin campaign messages |
 | Rollup Reporter | Sonnet 5 | Narrative synthesis over numbers the Correlation Agent already computed |
+| Nudge Category Generator | Sonnet 5 | Aggregated pattern analysis — moderate reasoning over KPI summaries, no per-practitioner detail |
 
 For the nightly `nightly_pulse` workflow specifically: it's not latency-sensitive, so route it through the **Message Batches API** (structured outputs are fully compatible with it, and it runs at a 50% discount) instead of the synchronous Messages API. That's a real cost lever for a workflow that runs on every practitioner, every night.
 
@@ -124,10 +127,10 @@ For the nightly `nightly_pulse` workflow specifically: it's not latency-sensitiv
 Two roles, two login paths, one cookie — no JWT, no external identity provider.
 
 ### Practitioner login
-The landing page shows a form: **name**, **email**, **org level** (free text, e.g. "Senior Consultant"). No password. On submit:
+The landing page shows a form: **email** → **name** → **role** → **practice** → **seniority level**. No password. On email blur, the form calls `GET /auth/lookup-email`; if the email is already on record, the remaining fields are pre-filled (user can edit and save). On submit:
 1. Backend looks up the practitioner by email in `practitioners`.
-2. If not found, creates a new row with the supplied name/email/level.
-3. If found, the name and level fields are updated (overwrite with what was entered — "save and override" semantics so relaunching with the same email always reflects the current org state).
+2. If not found, creates a new row with the supplied values.
+3. If found, all editable fields are overwritten ("save and override" semantics — relaunching with the same email always reflects current org state).
 4. A session row is created in `sessions` (`identity_type = practitioner`) and the UUID is returned as an HTTP-only cookie.
 
 This means a practitioner who relaunches the app and re-enters their email gets back to their existing skill snapshots, learning paths, attempts, and certification goals automatically — no account setup, no password.
@@ -154,11 +157,50 @@ Every new `admin_users` row is seeded with password `"welcome"` and `must_change
 | View | Practitioner | Leadership | Admin |
 |---|---|---|---|
 | Own skill radar, quiz, adoption trends | ✓ | — | — |
+| Own nudge inbox (unread/read messages) | ✓ | — | — |
+| Own mastery progress trend chart | ✓ | — | — |
 | Other practitioners' individual data | — | — | ✓ (read-only) |
 | Rollups (aggregated, privacy-gated) | — | ✓ | ✓ |
-| Nudge drafts — approve | — | — | ✓ |
-| Nudge drafts — view | — | ✓ | ✓ |
+| Nudges menu — generate categories, send campaigns | — | — | ✓ |
+| Nudges menu — view sent campaign history | — | ✓ | ✓ |
 | Observability dashboard (agent_runs) | — | — | ✓ |
+
+## Smart Nudge System (Phase 7)
+
+The nightly `nudge_composer` agent continues to draft automated nudges from Correlation Agent output — that path is unchanged. Phase 7 layers on a second, admin-driven path:
+
+```
+Admin clicks "Generate Nudge Categories"
+    → GET /nudges/generate-categories
+        → query aggregate KPI stats (no PII)
+        → NudgeCategoryGenerator agent (Sonnet 5)
+        → persist ≤10 NudgeCategory rows
+        → return to admin UI
+
+Admin selects a category (or types a custom one)
+    → POST /nudges/categories/{id}/preview-recipients
+        → resolve_recipients(criteria) — pure Python, no LLM
+        → return [{id, name, email, action_profile_summary}]
+
+Admin clicks "Compose message"
+    → POST /nudges/categories/{id}/compose
+        → Nudge Composer agent (Sonnet 5) — receives category + tone_hint + recipient count, not names
+        → return {subject, body, tone_check, recipients}
+        → NO DB writes yet — preview only
+
+Admin reviews table, unchecks any practitioners, edits message, clicks Send
+    → POST /nudges/send
+        → one nudges row per included practitioner (status=sent, sent_at=now, channel=in_app)
+        → workflow_runs row under nudge_campaign
+
+Practitioner sees "1 unread" badge on Adoption Trends tab
+    → useUnreadNudgeCount polling hook (60s)
+    → click card → PATCH /nudges/{id}/read → badge clears
+```
+
+**Privacy contract for this flow:** the Nudge Category Generator receives only aggregate counts — no practitioner names, emails, or individual scores. The LLM never sees PII. Individual practitioner data is resolved after the LLM step by `resolve_recipients`, which is a plain Python DB query.
+
+**Tone contract:** the Nudge Composer is responsible for producing encouraging messages. The agent's prompt includes a self-check step (`tone_check`) that the admin sees before sending. See `docs/human-in-the-loop.md` for ownership of the category-generator and composer prompts.
 
 ### Folder additions for Step 5.2
 - `backend/app/api/routes/auth.py` — `POST /auth/practitioner-login`, `POST /auth/admin-login`, `POST /auth/logout`, `POST /auth/change-password`
@@ -192,19 +234,23 @@ mastery-pulse/
 │       │   ├── base.py            # Agent contract (Step 0.4)
 │       │   ├── certification_advisor.py, skill_profiler.py, curriculum_planner.py,
 │       │   │   item_writer.py, grader.py, usage_signal.py, correlation.py,
-│       │   │   nudge_composer.py, rollup_reporter.py
+│       │   │   nudge_composer.py, rollup_reporter.py, nudge_category_generator.py
 │       │   └── prompts/           # one .md per agent — see coding-guidelines.md
 │       ├── mcp_servers/
 │       │   ├── learning_portal/
 │       │   └── usage_signals/
-│       ├── workflows/             # recommend_certification.py, generate_learning_path.py, nightly_pulse.py
+│       ├── services/
+│       │   └── email.py           # async email via aiosmtplib (Step 7.6)
+│       ├── workflows/             # recommend_certification.py, generate_learning_path.py,
+│       │                          #   nightly_pulse.py, nudge_campaign.py
 │       └── schemas/                # Pydantic I/O contracts
 │   ├── seed/                       # synthetic seed data generator
 │   └── tests/scenarios/            # Given/When/Then tests — see coding-guidelines.md
 └── frontend/
     ├── package.json
     ├── src/
-    │   ├── pages/, components/ (CertAdvisor/, SkillRadar/, QuizRunner/, TrendDashboard/, RollupView/)
+    │   ├── pages/, components/ (CertAdvisor/, SkillRadar/, QuizRunner/, TrendDashboard/,
+    │   │                         RollupView/, NudgesPage/, ProgressTrendChart/)
     │   ├── api/                    # typed client
     │   └── hooks/
     └── tests/                       # Playwright scenarios
