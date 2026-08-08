@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -124,6 +124,21 @@ class SkillCorrelationResult(BaseModel):
     has_adoption_gap: bool
     # 1–3 sentences — must name the evidence, not just state the conclusion
     reasoning: str
+
+    @model_validator(mode="after")
+    def _enforce_gap_rules(self) -> "SkillCorrelationResult":
+        """Enforce: low mastery (< 0.5) is a training need, not an adoption gap."""
+        if self.trained_score < 0.5:
+            # Low mastery → not an adoption gap regardless of adoption_score
+            if self.has_adoption_gap:
+                raise ValueError(
+                    f"Skill {self.skill_id}: has_adoption_gap cannot be True when trained_score < 0.5"
+                )
+            if self.gap_score > 0.0:
+                raise ValueError(
+                    f"Skill {self.skill_id}: gap_score must be 0.0 when trained_score < 0.5"
+                )
+        return self
 
 
 class CorrelationOutput(BaseModel):
@@ -297,6 +312,7 @@ class RollupRead(BaseModel):
     metrics: dict | None
     narrative: str | None
     min_cohort_size_met: bool
+    min_cohort_size: int
     created_at: datetime
 
     model_config = {"from_attributes": True}

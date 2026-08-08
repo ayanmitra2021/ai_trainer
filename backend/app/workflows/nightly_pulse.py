@@ -466,6 +466,7 @@ async def _run_rollup(
         metrics=rollup_output.metrics.model_dump() if rollup_output.metrics else None,
         narrative=rollup_output.narrative,
         min_cohort_size_met=rollup_output.min_cohort_size_met,
+        min_cohort_size=MINIMUM_COHORT_SIZE,
         created_at=datetime.now(UTC),
     )
     db.add(rollup)

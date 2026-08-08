@@ -25,6 +25,7 @@ from app.db.models import (
     LearningPath,
     LearningPathItem,
     MasteryHistory,
+    Practitioner,
     PractitionerCertificationGoal,
     PractitionerProfile,
     Skill,
@@ -70,6 +71,14 @@ async def run_generate_learning_path(
     )
     db.add(workflow_run)
     await db.commit()
+
+    # Validate practitioner exists before proceeding
+    practitioner = await db.get(Practitioner, practitioner_id)
+    if practitioner is None:
+        workflow_run.status = "failed"
+        workflow_run.completed_at = datetime.now(UTC)
+        await db.commit()
+        raise ValueError(f"Practitioner {practitioner_id} not found")
 
     try:
         result = await _run_steps(
@@ -136,14 +145,14 @@ async def _run_steps(
             e for e in events_data
             if not (e["source"] == "self_assessment" and e["skill_id"] in profile_skill_ids)
         ]
-        # Add profile assessments as fresh self_assessment signals
-        profile_now = datetime.now(UTC).isoformat()
+        # Add profile assessments as self_assessment signals using their actual
+        # updated_at timestamp (when the practitioner rated themselves), not now().
         for psa in active_profile.skill_assessments:
             events_data.append({
                 "skill_id": psa.skill_id,
                 "source": "self_assessment",
                 "signal_strength": float(psa.signal_strength),
-                "occurred_at": profile_now,
+                "occurred_at": psa.updated_at.isoformat(),
                 "metadata": {"source": "active_profile", "profile_id": active_profile.id},
             })
 

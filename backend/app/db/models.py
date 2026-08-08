@@ -943,7 +943,9 @@ class Rollup(Base):
     """Leadership-facing aggregate — never keyed to an individual.
 
     The min_cohort_size_met boolean is a structural privacy control, not a
-    display-layer check. If False, metrics and narrative are not populated.
+    display-layer check. If False, metrics and narrative are withheld entirely —
+    this is a structural privacy commitment, not a display preference. Small cohorts
+    allow leaders to reverse-engineer individual scores from aggregates.
     See docs/human-in-the-loop.md for the policy rationale.
     """
 
@@ -961,6 +963,8 @@ class Rollup(Base):
     narrative: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     # Structural privacy gate — if False, metrics/narrative are withheld
     min_cohort_size_met: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    # The minimum cohort size threshold used for this rollup (for auditability)
+    min_cohort_size: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=5)
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False,
         server_default=sa.text("now()"), default=_now_utc,
@@ -976,7 +980,7 @@ class Rollup(Base):
     def __repr__(self) -> str:
         return (
             f"<Rollup id={self.id!r} scope={self.scope!r} ref={self.scope_ref!r} "
-            f"cohort_met={self.min_cohort_size_met}>"
+            f"cohort_met={self.min_cohort_size_met} cohort_size={self.min_cohort_size}>"
         )
 
 

@@ -143,7 +143,12 @@ async def approve_nudge(
     db: AsyncSession = Depends(get_db),
     _session: SessionInfo = Depends(require_admin),
 ) -> NudgeRead:
-    """Approve a drafted nudge. Admin only."""
+    """Approve a drafted nudge and mark as sent. Admin only.
+
+    Nightly-pulse nudges are created with status 'drafted' and require approval
+    before delivery. Approving moves them directly to 'sent' with a timestamp
+    since there's no separate delivery mechanism for individual nudges.
+    """
     nudge = await db.get(Nudge, nudge_id)
     if nudge is None:
         raise HTTPException(status_code=404, detail="Nudge not found")
@@ -153,7 +158,9 @@ async def approve_nudge(
             detail=f"Cannot approve a nudge with status '{nudge.status}' — only 'drafted' nudges can be approved",
         )
 
-    nudge.status = "approved"
+    now = datetime.now(UTC)
+    nudge.status = "sent"
+    nudge.sent_at = now
     await db.commit()
     await db.refresh(nudge)
     return NudgeRead.model_validate(nudge)

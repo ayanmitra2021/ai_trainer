@@ -26,16 +26,9 @@ class GraderAgent(Agent[GraderInput, GraderOutput]):
 
     name = "grader"
     output_model = GraderOutput
-    # Default model; _build_messages overrides self.model before the API call
     model = "claude-haiku-4-5-20251001"
 
     def _build_messages(self, input: GraderInput) -> list[dict[str, Any]]:
-        # Set the right model before the call is made
-        if input.item_type == "free_text":
-            self.model = "claude-opus-5"
-        else:
-            self.model = "claude-haiku-4-5-20251001"
-
         item_context = {
             "item_id": input.item_id,
             "item_type": input.item_type,
@@ -56,3 +49,50 @@ class GraderAgent(Agent[GraderInput, GraderOutput]):
                 ),
             }
         ]
+
+    def _model_for_input(self, input: GraderInput) -> str:
+        """Return the appropriate model for this input without mutating self.model."""
+        if input.item_type == "free_text":
+            return "claude-opus-5"
+        return "claude-haiku-4-5-20251001"
+
+    async def _call_claude(
+        self, input: GraderInput
+    ) -> tuple[GraderOutput, int | None, int | None]:
+        """Override to use per-request model selection without race conditions."""
+        system = self._load_prompt()
+        messages = self._build_messages(input)
+        model = self._model_for_input(input)
+
+        response = await self._client.messages.parse(
+            model=model,
+            system=system,
+            messages=messages,
+            max_tokens=self.max_tokens,
+            output_format=self.output_model,
+        )
+
+        raw = self._extract_parsed(response)
+        if raw is None:
+            raise ValueError(
+                f"Agent '{self.name}': no parsed output found in response. "
+                f"Content types: {[getattr(b, 'type', '?') for b in getattr(response, 'content', [])]}"
+            )
+
+        if not isinstance(raw, self.output_model):
+            try:
+                validated = self.output_model.model_validate(
+                    raw if isinstance(raw, dict) else raw.model_dump()
+                )
+            except Exception:
+                raise
+        else:
+            validated = raw
+
+        try:
+            tokens_in: int | None = response.usage.input_tokens
+            tokens_out: int | None = response.usage.output_tokens
+        except AttributeError:
+            tokens_in = tokens_out = None
+
+        return validated, tokens_in, tokens_out

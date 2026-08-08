@@ -98,10 +98,10 @@ class TestPulseApiScenarios:
         http_client: AsyncClient,
     ):
         """
-        Scenario: Approving a drafted nudge changes its status.
+        Scenario: Approving a drafted nudge changes its status to sent.
           Given a nudge with status 'drafted'
           When POST /nudges/{id}/approve is called
-          Then the response shows status='approved'
+          Then the response shows status='sent' with sent_at set
           And a subsequent GET confirms the change persisted
         """
         # Given
@@ -113,7 +113,8 @@ class TestPulseApiScenarios:
         # Then
         assert response.status_code == 200, response.text
         data = response.json()
-        assert data["status"] == "approved"
+        assert data["status"] == "sent"
+        assert data["sent_at"] is not None
         assert data["id"] == drafted_nudge.id
 
         # And — GET confirms the status change
@@ -125,23 +126,24 @@ class TestPulseApiScenarios:
         nudges = get_response.json()
         matching = [n for n in nudges if n["id"] == drafted_nudge.id]
         assert len(matching) == 1
-        assert matching[0]["status"] == "approved"
+        assert matching[0]["status"] == "sent"
+        assert matching[0]["sent_at"] is not None
 
-    async def test_approving_already_approved_nudge_returns_409(
+    async def test_approving_already_sent_nudge_returns_409(
         self,
         db_session: AsyncSession,
         drafted_nudge: Nudge,
         http_client: AsyncClient,
     ):
         """
-        Scenario: Approving an already-approved nudge returns a conflict error.
+        Scenario: Approving an already-sent nudge returns a conflict error.
           (Edge-case: idempotency is NOT guaranteed — approving twice is an error.)
-          Given a nudge that was already approved
+          Given a nudge that was already sent
           When POST /nudges/{id}/approve is called again
           Then the response is 409 Conflict
         """
-        # Given — approve once
-        drafted_nudge.status = "approved"
+        # Given — approve once (sets status to 'sent')
+        drafted_nudge.status = "sent"
         await db_session.flush()
 
         # When — try to approve again
@@ -197,7 +199,7 @@ class TestPulseApiScenarios:
           Given one drafted nudge
           When GET /nudges?status=drafted is called
           Then the drafted nudge appears
-          When GET /nudges?status=approved is called
+          When GET /nudges?status=sent is called (none exist yet)
           Then the drafted nudge does NOT appear
         """
         # When — filter for drafted
@@ -207,8 +209,8 @@ class TestPulseApiScenarios:
         matching_ids = {n["id"] for n in nudges}
         assert drafted_nudge.id in matching_ids
 
-        # When — filter for approved (none exist)
-        response2 = await http_client.get("/api/v1/nudges", params={"status": "approved"})
+        # When — filter for sent (none exist)
+        response2 = await http_client.get("/api/v1/nudges", params={"status": "sent"})
         assert response2.status_code == 200
         nudges2 = response2.json()
         matching_ids2 = {n["id"] for n in nudges2}

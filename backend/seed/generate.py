@@ -144,7 +144,6 @@ CERTIFICATIONS_SEED = [
         "eligibility_notes": "Requires Anthropic Partner Network org email.",
         "external_url": None,
         "skill_weights": {
-            "AI Foundations": 0.9,
             "Prompt Engineering": 0.9,
             "AI Ethics & Safety": 0.8,
             "Evaluating LLM Output": 0.6,
@@ -162,7 +161,6 @@ CERTIFICATIONS_SEED = [
         "eligibility_notes": "Requires Anthropic Partner Network org email.",
         "external_url": None,
         "skill_weights": {
-            "Claude API": 0.9,
             "Structured Outputs": 0.9,
             "Tool Use & Function Calling": 0.8,
             "Prompt Engineering": 0.7,
@@ -186,12 +184,11 @@ CERTIFICATIONS_SEED = [
         ),
         "external_url": None,
         "skill_weights": {
-            "Agentic AI": 0.9,
             "MCP Servers": 0.9,
             "Orchestration Patterns": 0.9,
             "Agent Observability": 0.8,
-            "Claude API": 0.7,
             "Structured Outputs": 0.7,
+            "Tool Use & Function Calling": 0.7,
         },
     },
     {
@@ -214,12 +211,11 @@ CERTIFICATIONS_SEED = [
         ),
         "external_url": None,
         "skill_weights": {
-            "Agentic AI": 1.0,
             "Orchestration Patterns": 1.0,
             "Agent Observability": 0.9,
             "MCP Servers": 0.9,
-            "MLOps": 0.7,
             "Model Deployment": 0.7,
+            "Monitoring & Drift Detection": 0.7,
         },
     },
     # ── AWS ──────────────────────────────────────────────────────────────
@@ -238,7 +234,7 @@ CERTIFICATIONS_SEED = [
         "eligibility_notes": None,
         "external_url": "https://aws.amazon.com/certification/certified-ai-practitioner/",
         "skill_weights": {
-            "AI Foundations": 0.9,
+            "Prompt Engineering": 0.7,
             "AI Ethics & Safety": 0.7,
             "Evaluating LLM Output": 0.5,
         },
@@ -255,7 +251,6 @@ CERTIFICATIONS_SEED = [
         "eligibility_notes": "Recommended: 1+ year hands-on ML on AWS.",
         "external_url": "https://aws.amazon.com/certification/certified-machine-learning-engineer-associate/",
         "skill_weights": {
-            "MLOps": 0.9,
             "Model Deployment": 0.9,
             "Monitoring & Drift Detection": 0.8,
             "CI/CD for ML": 0.8,
@@ -277,7 +272,7 @@ CERTIFICATIONS_SEED = [
         "eligibility_notes": None,
         "external_url": "https://cloud.google.com/certification/generative-ai-leader",
         "skill_weights": {
-            "AI Foundations": 0.8,
+            "Prompt Engineering": 0.7,
             "AI Ethics & Safety": 0.7,
         },
     },
@@ -293,7 +288,6 @@ CERTIFICATIONS_SEED = [
         "eligibility_notes": "Recommended: 3+ years industry experience, 1+ year on GCP.",
         "external_url": "https://cloud.google.com/certification/machine-learning-engineer",
         "skill_weights": {
-            "MLOps": 0.9,
             "Model Deployment": 0.9,
             "Monitoring & Drift Detection": 0.9,
             "CI/CD for ML": 0.8,
@@ -314,7 +308,7 @@ CERTIFICATIONS_SEED = [
         "eligibility_notes": None,
         "external_url": "https://learn.microsoft.com/en-us/certifications/azure-ai-fundamentals/",
         "skill_weights": {
-            "AI Foundations": 0.8,
+            "Prompt Engineering": 0.7,
             "AI Ethics & Safety": 0.6,
         },
     },
@@ -330,9 +324,9 @@ CERTIFICATIONS_SEED = [
         "eligibility_notes": "Recommended: AI-900 or equivalent experience.",
         "external_url": "https://learn.microsoft.com/en-us/certifications/azure-ai-engineer/",
         "skill_weights": {
-            "Claude API": 0.6,
             "Tool Use & Function Calling": 0.7,
-            "AI Foundations": 0.7,
+            "Prompt Engineering": 0.7,
+            "AI Ethics & Safety": 0.6,
         },
     },
 ]

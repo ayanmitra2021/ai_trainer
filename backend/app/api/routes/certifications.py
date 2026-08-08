@@ -34,6 +34,7 @@ from app.db.models import (
     CertificationSkill,
     Practitioner,
     PractitionerCertificationGoal,
+    PractitionerProfile,
 )
 from app.db.session import get_db
 from app.schemas.certifications import (
@@ -142,6 +143,15 @@ async def run_certification_advisor(
                    f"{recommendation.primary_recommendation_code}",
         )
 
+    # Check if practitioner has an active profile to link the goal
+    profile_result = await db.execute(
+        select(PractitionerProfile).where(
+            PractitionerProfile.practitioner_id == body.practitioner_id,
+            PractitionerProfile.is_active.is_(True),
+        )
+    )
+    active_profile = profile_result.scalar_one_or_none()
+
     goal_id = str(uuid.uuid4())
     goal = PractitionerCertificationGoal(
         id=goal_id,
@@ -149,6 +159,7 @@ async def run_certification_advisor(
         certification_id=recommended_cert.id,
         status="recommended",
         recommended_at=datetime.now(UTC),
+        profile_id=active_profile.id if active_profile else None,
     )
     db.add(goal)
     await db.commit()
