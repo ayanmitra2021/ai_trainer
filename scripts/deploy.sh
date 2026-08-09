@@ -28,6 +28,21 @@
 
 set -euo pipefail
 
+# ── Auto-load local deploy credentials (local runs only) ─────────────────────
+# If scripts/.env.deploy exists, source it before anything else so
+# DATABASE_URL_MIGRATE and RENDER_DEPLOY_HOOK_URL are available.
+# That file is gitignored — never committed. Copy .env.deploy.example to
+# .env.deploy and fill in your real values.
+_DEPLOY_ENV="$(dirname "${BASH_SOURCE[0]}")/.env.deploy"
+if [ -f "$_DEPLOY_ENV" ]; then
+  echo "Loading deploy credentials from scripts/.env.deploy"
+  set -a            # auto-export every var that gets set
+  # shellcheck disable=SC1090
+  source "$_DEPLOY_ENV"
+  set +a
+fi
+# ─────────────────────────────────────────────────────────────────────────────
+
 SKIP_MIGRATE=false
 SKIP_BACKEND=false
 SKIP_FRONTEND=false

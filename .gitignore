@@ -3,11 +3,12 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Secrets — your API key lives in a gitignored .env (never committed).
+# Secrets — never committed.
 .env
 .env.example
 key.env
 *.local
+scripts/.env.deploy     # local deploy credentials (see scripts/.env.deploy.example)
 
 # Frontend
 **/node_modules
