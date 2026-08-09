@@ -19,8 +19,18 @@ from app.config import settings  # noqa: E402
 # ── Alembic config object ─────────────────────────────────────────────────────
 config = context.config
 
-# Override the placeholder sqlalchemy.url with the real async URL.
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Resolve the database URL for migrations.
+#
+# Priority order:
+#   1. DATABASE_URL_MIGRATE env var  — set in CI/CD (GitHub Actions secret).
+#      Must use the postgresql+asyncpg:// scheme and the DIRECT Supabase
+#      connection (port 5432, host db.xxxx.supabase.co) — NOT the pgBouncer
+#      pooler. pgBouncer's transaction-mode pooler breaks some DDL operations.
+#   2. settings.database_url         — falls back to local .env / defaults
+#      (used in local development where DATABASE_URL_MIGRATE is not set).
+_migrate_url: str = os.environ.get("DATABASE_URL_MIGRATE") or settings.database_url
+
+config.set_main_option("sqlalchemy.url", _migrate_url)
 
 # Interpret the config file for Python logging (if present).
 if config.config_file_name is not None:

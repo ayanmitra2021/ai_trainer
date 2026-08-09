@@ -1,11 +1,11 @@
 name: Deploy Mastery Pulse
 
-# Runs automatically on every push to main, and can also be triggered
+# Runs automatically on every push to master, and can also be triggered
 # manually from the Actions tab (the "Run workflow" button) — similar
 # to a manually-triggered Azure DevOps release pipeline.
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
     inputs:
       skip_migrate:
@@ -29,12 +29,12 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # Direct (port 5432) Supabase connection string — used ONLY for
-      # running Alembic migrations, which need a sync driver (psycopg2).
-      # This is NOT the same string Render uses at runtime (that one is
-      # the pooled/6543 string with the +asyncpg scheme, set directly in
-      # Render's own Environment settings, not here).
+      # Direct (port 5432) Supabase connection string — used ONLY for Alembic
+      # migrations. The migration env.py uses an async engine (asyncpg), so
+      # this must use the postgresql+asyncpg:// scheme and the DIRECT host
+      # (db.xxxx.supabase.co:5432), NOT the pgBouncer pooler (port 6543).
       DATABASE_URL_MIGRATE: ${{ secrets.DATABASE_URL_MIGRATE }}
+      # Render Deploy Hook — triggers backend rebuild/redeploy.
       RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
 
     steps:

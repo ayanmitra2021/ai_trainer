@@ -9,11 +9,15 @@
 #
 # Required environment variables:
 #   DATABASE_URL_MIGRATE     - DIRECT (port 5432) Supabase connection string.
-#                              Used only here, for Alembic. This is NOT the
-#                              same string Render uses at runtime — that one
-#                              is the pooled (port 6543) string with the
-#                              +asyncpg scheme, set in Render's own
-#                              Environment settings, not passed through here.
+#                              Must use the postgresql+asyncpg:// scheme (the
+#                              migration env.py runs an async engine). Use the
+#                              DIRECT host (db.xxxx.supabase.co:5432), NOT the
+#                              pgBouncer pooler (port 6543) — pooler's
+#                              transaction mode can break DDL migrations.
+#                              Special characters in the password MUST be
+#                              URL-encoded: % → %25, = → %3D, ? → %3F, & → %26
+#                              Example:
+#                                postgresql+asyncpg://postgres:p%40ssw0rd@db.xxx.supabase.co:5432/postgres
 #   RENDER_DEPLOY_HOOK_URL   - Render service's Deploy Hook URL
 #                              (Render dashboard -> service -> Settings -> Deploy Hook)
 #
@@ -55,9 +59,8 @@ if [ "$SKIP_MIGRATE" = false ]; then
 
   cd "$ROOT_DIR/backend"
 
-  # Alembic reads DATABASE_URL_MIGRATE directly (wired up in migrations/env.py).
-  # This must be the psycopg2 (sync) connection string, NOT the +asyncpg one
-  # the live app uses — Alembic's migration runner is synchronous.
+  # alembic/env.py picks up DATABASE_URL_MIGRATE automatically and builds an
+  # async engine (asyncpg). Use the direct Supabase connection (port 5432).
   alembic upgrade head
 
   cd "$ROOT_DIR"
