@@ -157,8 +157,8 @@ export default function ProfileWizard({ practitionerId, editProfileId, onComplet
   };
 
   const certsByProvider = React.useMemo(() => {
-    if (!certList) return {} as Record<string, typeof certList>;
-    return certList.reduce<Record<string, typeof certList>>((acc, cert) => {
+    if (!certList) return {} as Record<string, NonNullable<typeof certList>>;
+    return certList.reduce<Record<string, NonNullable<typeof certList>>>((acc, cert) => {
       const key = cert.provider.name;
       if (!acc[key]) acc[key] = [];
       acc[key].push(cert);

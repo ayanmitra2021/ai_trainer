@@ -5,7 +5,6 @@
  * Cert-relevant skills appear first (Tier 1); all other skills below (Tier 2).
  */
 
-import React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSession } from "../context/SessionContext";
 import { useCertifications, useProfile, useUpsertProfileSkills } from "../hooks";

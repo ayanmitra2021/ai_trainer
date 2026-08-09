@@ -175,7 +175,7 @@ function SentHistoryPanel({ campaigns }: { campaigns: SentCampaignSummary[] }) {
 
 export default function NudgesPage() {
   const { session } = useSession();
-  const isLeadership = session?.adminRole === "leadership";
+  const isLeadership = session?.admin_role === "leadership";
 
   const generateCategories = useGenerateNudgeCategories();
   const { data: savedCategories } = useNudgeCategories();

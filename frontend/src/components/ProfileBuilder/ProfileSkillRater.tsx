@@ -23,11 +23,9 @@ function nearestLevel(score: number): number {
 }
 
 function LevelPicker({
-  skillId,
   value,
   onChange,
 }: {
-  skillId: string;
   value: number;
   onChange: (v: number) => void;
 }) {
@@ -128,7 +126,6 @@ export default function ProfileSkillRater({
         </span>
       </div>
       <LevelPicker
-        skillId={skill.id}
         value={ratings[skill.id] ?? 0}
         onChange={(v) => setRating(skill.id, v)}
       />

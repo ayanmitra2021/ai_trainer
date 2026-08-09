@@ -1,0 +1,1 @@
+export { SkillRadar3D, SkillRadar3DCanvas } from "./SkillRadar3D";

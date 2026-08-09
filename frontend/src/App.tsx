@@ -12,6 +12,7 @@ import AdminUsersPage from "./pages/AdminUsersPage";
 import BuildProfilePage from "./pages/BuildProfilePage";
 import ProfileSkillAssessmentPage from "./pages/ProfileSkillAssessmentPage";
 import { auth } from "./api";
+import { PortalLayout } from "./components/PortalLayout";
 
 const navStyle: React.CSSProperties = {
   display: "flex",
@@ -170,12 +171,14 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />
 
-        {/* Authenticated routes */}
+        {/* Authenticated routes with Portal Layout */}
         <Route
           path="/"
           element={
             <RequireAuth>
-              <PractitionerHome />
+              <PortalLayout>
+                <PractitionerHome />
+              </PortalLayout>
             </RequireAuth>
           }
         />
@@ -183,7 +186,9 @@ function AppRoutes() {
           path="/profile"
           element={
             <RequireAuth>
-              <BuildProfilePage />
+              <PortalLayout>
+                <BuildProfilePage />
+              </PortalLayout>
             </RequireAuth>
           }
         />
@@ -191,7 +196,9 @@ function AppRoutes() {
           path="/profile/:profileId/skills"
           element={
             <RequireAuth>
-              <ProfileSkillAssessmentPage />
+              <PortalLayout>
+                <ProfileSkillAssessmentPage />
+              </PortalLayout>
             </RequireAuth>
           }
         />
@@ -199,7 +206,9 @@ function AppRoutes() {
           path="/practitioners/:id/*"
           element={
             <RequireAuth>
-              <PractitionerPage />
+              <PortalLayout>
+                <PractitionerPage />
+              </PortalLayout>
             </RequireAuth>
           }
         />
@@ -207,7 +216,9 @@ function AppRoutes() {
           path="/rollups"
           element={
             <RequireAdmin>
-              <RollupsPage />
+              <PortalLayout>
+                <RollupsPage />
+              </PortalLayout>
             </RequireAdmin>
           }
         />
@@ -215,7 +226,9 @@ function AppRoutes() {
           path="/nudges"
           element={
             <RequireAdmin>
-              <NudgesPage />
+              <PortalLayout>
+                <NudgesPage />
+              </PortalLayout>
             </RequireAdmin>
           }
         />
@@ -223,7 +236,9 @@ function AppRoutes() {
           path="/admin-users"
           element={
             <RequireAdmin>
-              <AdminUsersPage />
+              <PortalLayout>
+                <AdminUsersPage />
+              </PortalLayout>
             </RequireAdmin>
           }
         />
@@ -231,7 +246,9 @@ function AppRoutes() {
           path="/observability"
           element={
             <RequireAdmin>
-              <ObservabilityPage />
+              <PortalLayout>
+                <ObservabilityPage />
+              </PortalLayout>
             </RequireAdmin>
           }
         />
