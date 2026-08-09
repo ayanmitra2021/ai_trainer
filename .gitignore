@@ -1,0 +1,37 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Secrets — never committed.
+.env
+.env.example
+key.env
+*.local
+scripts/.env.deploy     # local deploy credentials (see scripts/.env.deploy.example)
+
+# Frontend
+**/node_modules
+dist/
+.next/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Local dev cruft
+.ipynb_checkpoints/
+.DS_Store
+outputs/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Playwright test results
+frontend/test-results/
+frontend/playwright-report/
+
+# IDE
+.vscode/
+.idea/

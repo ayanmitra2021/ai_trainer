@@ -1,0 +1,76 @@
+name: Deploy Mastery Pulse
+
+# Runs automatically on every push to master, and can also be triggered
+# manually from the Actions tab (the "Run workflow" button) — similar
+# to a manually-triggered Azure DevOps release pipeline.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      skip_migrate:
+        description: 'Skip database migration step'
+        type: boolean
+        default: false
+      skip_backend:
+        description: 'Skip Render backend deploy step'
+        type: boolean
+        default: false
+      skip_frontend:
+        description: 'Skip GitHub Pages frontend deploy step'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # required so the pipeline can push the gh-pages branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      # Direct (port 5432) Supabase connection string — used ONLY for Alembic
+      # migrations. The migration env.py uses an async engine (asyncpg), so
+      # this must use the postgresql+asyncpg:// scheme and the DIRECT host
+      # (db.xxxx.supabase.co:5432), NOT the pgBouncer pooler (port 6543).
+      DATABASE_URL_MIGRATE: ${{ secrets.DATABASE_URL_MIGRATE }}
+      # Render Deploy Hook — triggers backend rebuild/redeploy.
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # matches requires-python in pyproject.toml
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install backend dependencies
+        # Uses pyproject.toml directly — no requirements.txt in this repo.
+        # alembic, asyncpg, and psycopg2-binary are all already declared
+        # as project dependencies, so a plain install picks them up.
+        working-directory: backend
+        run: pip install .
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Run deployment pipeline
+        run: |
+          chmod +x scripts/deploy.sh
+          bash scripts/deploy.sh \
+            ${{ inputs.skip_migrate == true && '--skip-migrate' || '' }} \
+            ${{ inputs.skip_backend == true && '--skip-backend' || '' }} \
+            ${{ inputs.skip_frontend == true && '--skip-frontend' || '' }}
