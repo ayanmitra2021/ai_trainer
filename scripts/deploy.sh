@@ -61,6 +61,30 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 log() { echo -e "\n=== $1 ==="; }
 
+# ── Resolve alembic invocation ────────────────────────────────────────────────
+# In CI (GitHub Actions) alembic lands directly on PATH after `pip install .`.
+# Locally on Windows/Git Bash the Python Scripts directory is usually not in
+# the bash PATH, so we fall back through progressively broader options:
+#   1. bare `alembic`            – works in CI and Linux venvs
+#   2. `py -m alembic`           – Windows Python Launcher (always in PATH on Windows)
+#   3. `python3 -m alembic`      – standard Linux/macOS
+#   4. `python -m alembic`       – fallback
+if command -v alembic &>/dev/null; then
+  ALEMBIC_CMD="alembic"
+elif command -v py &>/dev/null; then
+  ALEMBIC_CMD="py -m alembic"
+elif command -v python3 &>/dev/null; then
+  ALEMBIC_CMD="python3 -m alembic"
+elif command -v python &>/dev/null; then
+  ALEMBIC_CMD="python -m alembic"
+else
+  echo "ERROR: Cannot find alembic or python/py. Install backend dependencies first:"
+  echo "  cd backend && pip install ."
+  exit 1
+fi
+echo "Using alembic as: $ALEMBIC_CMD"
+# ─────────────────────────────────────────────────────────────────────────────
+
 # ---------------------------------------------------------------------------
 # 1. Database migrations (Alembic, against Supabase direct connection)
 # ---------------------------------------------------------------------------
@@ -76,7 +100,7 @@ if [ "$SKIP_MIGRATE" = false ]; then
 
   # alembic/env.py picks up DATABASE_URL_MIGRATE automatically and builds an
   # async engine (asyncpg). Use the direct Supabase connection (port 5432).
-  alembic upgrade head
+  $ALEMBIC_CMD upgrade head
 
   cd "$ROOT_DIR"
   echo "Migrations applied successfully."
