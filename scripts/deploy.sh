@@ -146,11 +146,12 @@ if [ "$SKIP_FRONTEND" = false ]; then
 
   cd "$ROOT_DIR/frontend"
 
-  # gh-pages must be a devDependency in frontend/package.json:
-  #   npm install --save-dev gh-pages
-  # If it's missing, this step will still work via npx (auto-downloads it),
-  # but installing it explicitly avoids that extra download on every run.
-  npm ci
+  # Use `npm install` (not `npm ci`) so the deploy can run while the dev server
+  # is still open on Windows — `npm ci` wipes node_modules entirely, which
+  # fails with EPERM when esbuild.exe is held by the Vite process.
+  # `npm install` is incremental: it only touches packages that differ from
+  # the lockfile, so it's safe and reproducible in both CI and local runs.
+  npm install
   npm run build
   npx --yes gh-pages -d dist -u "github-actions-bot <github-actions-bot@users.noreply.github.com>"
 
