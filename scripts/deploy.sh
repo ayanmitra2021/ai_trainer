@@ -63,24 +63,30 @@ log() { echo -e "\n=== $1 ==="; }
 
 # ── Resolve alembic invocation ────────────────────────────────────────────────
 # In CI (GitHub Actions) alembic lands directly on PATH after `pip install .`.
-# Locally on Windows/Git Bash the Python Scripts directory is usually not in
-# the bash PATH, so we fall back through progressively broader options:
-#   1. bare `alembic`            – works in CI and Linux venvs
-#   2. `py -m alembic`           – Windows Python Launcher (always in PATH on Windows)
-#   3. `python3 -m alembic`      – standard Linux/macOS
-#   4. `python -m alembic`       – fallback
+# Locally on Windows/Git Bash the Python Scripts directory is often absent from
+# the bash PATH, so we walk through candidates in priority order.
+# Critically: we only accept a Python candidate if alembic is *importable*
+# from it — prevents accidentally picking the system python3 that has no alembic.
+#   py / py.exe  – Windows Python Launcher (try both; Git Bash needs .exe sometimes)
+#   python3      – standard Linux/macOS
+#   python       – last-resort fallback
 if command -v alembic &>/dev/null; then
   ALEMBIC_CMD="alembic"
-elif command -v py &>/dev/null; then
-  ALEMBIC_CMD="py -m alembic"
-elif command -v python3 &>/dev/null; then
-  ALEMBIC_CMD="python3 -m alembic"
-elif command -v python &>/dev/null; then
-  ALEMBIC_CMD="python -m alembic"
 else
-  echo "ERROR: Cannot find alembic or python/py. Install backend dependencies first:"
-  echo "  cd backend && pip install ."
-  exit 1
+  ALEMBIC_CMD=""
+  for _PY in py py.exe python3 python; do
+    if command -v "$_PY" &>/dev/null 2>&1 \
+        && "$_PY" -c "import alembic" &>/dev/null 2>&1; then
+      ALEMBIC_CMD="$_PY -m alembic"
+      break
+    fi
+  done
+  if [ -z "$ALEMBIC_CMD" ]; then
+    echo "ERROR: Cannot find a Python interpreter with alembic installed."
+    echo "  Install backend dependencies first:"
+    echo "    cd backend && pip install ."
+    exit 1
+  fi
 fi
 echo "Using alembic as: $ALEMBIC_CMD"
 # ─────────────────────────────────────────────────────────────────────────────
