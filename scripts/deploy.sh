@@ -29,17 +29,34 @@
 set -euo pipefail
 
 # ── Auto-load local deploy credentials (local runs only) ─────────────────────
-# If scripts/.env.deploy exists, source it before anything else so
-# DATABASE_URL_MIGRATE and RENDER_DEPLOY_HOOK_URL are available.
-# That file is gitignored — never committed. Copy .env.deploy.example to
-# .env.deploy and fill in your real values.
+# If scripts/.env.deploy exists, extract each variable with grep rather than
+# sourcing the file.  Sourcing + `set -a` works fine in pure-Linux bash but
+# on Windows/MINGW64 the bash-exported vars don't reliably cross the process
+# boundary into Win32 executables (py.exe, npm.cmd, etc.).  Direct extraction
+# sidesteps that entirely.
 _DEPLOY_ENV="$(dirname "${BASH_SOURCE[0]}")/.env.deploy"
+
+_read_env_var() {
+  # Usage: _read_env_var KEY FILE
+  # Returns the value of KEY= from FILE, stripping surrounding quotes and
+  # carriage returns.  Returns empty string if not found.
+  local key="$1" file="$2" raw
+  raw=$(grep -m1 "^${key}=" "$file" 2>/dev/null || true)
+  raw="${raw#"${key}="}"           # strip the KEY= prefix
+  raw="${raw%$'\r'}"               # strip trailing CR (Windows files)
+  raw="${raw#\'}" raw="${raw%\'}"  # strip surrounding single quotes
+  raw="${raw#\"}" raw="${raw%\"}"  # strip surrounding double quotes
+  printf '%s' "$raw"
+}
+
 if [ -f "$_DEPLOY_ENV" ]; then
   echo "Loading deploy credentials from scripts/.env.deploy"
-  set -a            # auto-export every var that gets set
-  # shellcheck disable=SC1090
-  source "$_DEPLOY_ENV"
-  set +a
+  _FILE_MIGRATE=$(_read_env_var DATABASE_URL_MIGRATE "$_DEPLOY_ENV")
+  _FILE_RENDER=$(_read_env_var  RENDER_DEPLOY_HOOK_URL "$_DEPLOY_ENV")
+  # Only override if the var isn't already set in the environment
+  [ -z "${DATABASE_URL_MIGRATE:-}" ]    && DATABASE_URL_MIGRATE="$_FILE_MIGRATE"
+  [ -z "${RENDER_DEPLOY_HOOK_URL:-}" ]  && RENDER_DEPLOY_HOOK_URL="$_FILE_RENDER"
+  export DATABASE_URL_MIGRATE RENDER_DEPLOY_HOOK_URL
 fi
 # ─────────────────────────────────────────────────────────────────────────────
 

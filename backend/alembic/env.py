@@ -30,7 +30,13 @@ config = context.config
 #      (used in local development where DATABASE_URL_MIGRATE is not set).
 _migrate_url: str = os.environ.get("DATABASE_URL_MIGRATE") or settings.database_url
 
-config.set_main_option("sqlalchemy.url", _migrate_url)
+# configparser (used internally by alembic) treats % as an interpolation
+# delimiter. URL-encoded passwords contain sequences like %3D, %26, %3F which
+# make configparser raise "invalid interpolation syntax". Doubling every %
+# escapes them: %3D → %%3D in storage, which configparser reads back as %3D
+# and passes verbatim to SQLAlchemy/asyncpg for correct URL decoding.
+_migrate_url_cfg = _migrate_url.replace("%", "%%")
+config.set_main_option("sqlalchemy.url", _migrate_url_cfg)
 
 # Interpret the config file for Python logging (if present).
 if config.config_file_name is not None:
