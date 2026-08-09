@@ -9,9 +9,9 @@ rollup failed) at the end.
 Each agent writes its own agent_runs row. A single practitioner's failure
 does NOT abort the run — other practitioners still complete.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Message Batches API note (architecture.md §Model selection)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 For production, this workflow is a prime candidate for the Message Batches API
 (50% discount, compatible with Structured Outputs). The current synchronous
 implementation is intentional for v1 — it keeps the workflow testable with the
@@ -24,6 +24,10 @@ Upgrade path when ready:
 
 Until that upgrade, the synchronous path is correct and costs about 2× more
 per nightly run. At small practitioner counts (<100), this is negligible.
+
+Note: NVIDIA Nemotron does not support the Message Batches API. When
+APP_BRAIN_MODEL=NVIDIA, the nightly pulse workflow falls back to synchronous
+execution.
 """
 
 from __future__ import annotations
@@ -35,8 +39,9 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.base import ClaudeClient
+from app.agents.base import ModelClient
 from app.agents.correlation import CorrelationAgent
+from app.agents.model_client import create_model_client
 from app.agents.nudge_composer import NudgeComposerAgent
 from app.agents.rollup_reporter import MINIMUM_COHORT_SIZE, RollupReporterAgent
 from app.agents.usage_signal import UsageSignalAgent
@@ -63,6 +68,19 @@ from app.schemas.pulse import (
     UsageSignalInput,
     CorrelationInput,
 )
+from app.schemas.pulse import (
+    NightlyPulseResponse,
+    NudgeComposerInput,
+    PractitionerCorrelationSummary,
+    PractitionerPulseResult,
+    RawSignal,
+    RollupReporterInput,
+    SkillGapContext,
+    SkillSnapshotContext,
+    SkillUsageSummary,
+    UsageSignalInput,
+    CorrelationInput,
+)
 
 
 async def run_nightly_pulse(
@@ -72,7 +90,7 @@ async def run_nightly_pulse(
     period_start: datetime,
     period_end: datetime,
     db: AsyncSession,
-    claude_client: ClaudeClient,
+    claude_client: ModelClient | None = None,
     *,
     # raw_signals_by_practitioner is the injection point for tests and for the
     # MCP-fetching layer. In production, callers should pre-fetch from
@@ -91,6 +109,9 @@ async def run_nightly_pulse(
       3. Rollup Reporter — aggregate all → write rollup
       4. Mark workflow_runs completed / partial / failed
     """
+    # Create model client if not provided (for backward compatibility in tests)
+    if claude_client is None:
+        claude_client = create_model_client()
     workflow_run_id = str(uuid.uuid4())
     now = datetime.now(UTC)
 
@@ -193,7 +214,7 @@ async def _run_practitioner_steps(
     practitioner_id: str,
     workflow_run_id: str,
     db: AsyncSession,
-    claude_client: ClaudeClient,
+    claude_client: ModelClient,
     known_skills: list[dict[str, Any]],
     period_end: datetime,
     raw_signals: list[dict[str, Any]],
@@ -400,7 +421,7 @@ async def _run_rollup(
     period_end: datetime,
     workflow_run_id: str,
     db: AsyncSession,
-    claude_client: ClaudeClient,
+    claude_client: ModelClient,
 ) -> str:
     """Run the Rollup Reporter and persist a rollup row. Returns the rollup id."""
     practitioner_count = len(practitioner_ids)

@@ -27,6 +27,9 @@ dependencies = [
     "anthropic[mcp]>=0.40",
     "mcp>=1.0",
 
+    # NVIDIA Nemotron (OpenAI-compatible API)
+    "openai>=1.40",
+
     # Utilities
     "faker>=26.0",
 

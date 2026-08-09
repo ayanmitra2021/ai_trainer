@@ -107,20 +107,69 @@ No LangGraph/Temporal for v1. A `workflows/` module with plain async functions t
 
 Default to **Claude Sonnet 5** (`claude-sonnet-5`) unless a row below says otherwise. Verify against [the current models overview](https://platform.claude.com/docs/en/about-claude/models/overview) before you build each agent — new models ship often enough that this table is a starting point, not gospel, by the time you reach Phase 3.
 
-| Agent | Default | Why |
-|---|---|---|
-| Certification Advisor | Sonnet 5 | Matching + explaining against structured catalog context — moderate reasoning, not the highest stakes |
-| Skill Profiler | Sonnet 5 | Structured extraction across a few signal sources — moderate reasoning |
-| Curriculum Planner | Sonnet 5 | Sequencing/planning, moderate complexity |
-| Item-Writer | Sonnet 5 (escalate to **Opus 5** for the hardest trap items) | Pedagogical judgment; most items don't need the top tier |
-| Grader | **Opus 5** for free-text/rubric grading; **Haiku 4.5** for MCQ scoring | Free-text grading is the highest-judgment step in Mastery Mesh; MCQ scoring is close to deterministic |
-| Usage-Signal | **Haiku 4.5** | High-volume, mostly classification/tagging |
-| Correlation | **Opus 5** | Highest-stakes reasoning — feeds real nudges and rollups, must get the correlation-not-causation framing right every time |
-| Nudge Composer | Sonnet 5 | Tone-sensitive, not deeply analytical; handles both nightly-pulse drafts and admin campaign messages |
-| Rollup Reporter | Sonnet 5 | Narrative synthesis over numbers the Correlation Agent already computed |
-| Nudge Category Generator | Sonnet 5 | Aggregated pattern analysis — moderate reasoning over KPI summaries, no per-practitioner detail |
+| Agent | Default (Anthropic) | NVIDIA | Why |
+|---|---|---|---|
+| Certification Advisor | Sonnet 5 | Nemotron 3 Ultra | Matching + explaining against structured catalog context — moderate reasoning, not the highest stakes |
+| Skill Profiler | Sonnet 5 | Nemotron 3 Ultra | Structured extraction across a few signal sources — moderate reasoning |
+| Curriculum Planner | Sonnet 5 | Nemotron 3 Ultra | Sequencing/planning, moderate complexity |
+| Item-Writer | Sonnet 5 (escalate to **Opus 5** for the hardest trap items) | Nemotron 3 Ultra | Pedagogical judgment; most items don't need the top tier |
+| Grader | **Opus 5** for free-text/rubric grading; **Haiku 4.5** for MCQ scoring | Nemotron 3 Ultra | Free-text grading is the highest-judgment step in Mastery Mesh; MCQ scoring is close to deterministic |
+| Usage-Signal | **Haiku 4.5** | Nemotron 3 Ultra | High-volume, mostly classification/tagging |
+| Correlation | **Opus 5** | Nemotron 3 Ultra | Highest-stakes reasoning — feeds real nudges and rollups, must get the correlation-not-causation framing right every time |
+| Nudge Composer | Sonnet 5 | Nemotron 3 Ultra | Tone-sensitive, not deeply analytical; handles both nightly-pulse drafts and admin campaign messages |
+| Rollup Reporter | Sonnet 5 | Nemotron 3 Ultra | Narrative synthesis over numbers the Correlation Agent already computed |
+| Nudge Category Generator | Sonnet 5 | Nemotron 3 Ultra | Aggregated pattern analysis — moderate reasoning over KPI summaries, no per-practitioner detail |
 
 For the nightly `nightly_pulse` workflow specifically: it's not latency-sensitive, so route it through the **Message Batches API** (structured outputs are fully compatible with it, and it runs at a 50% discount) instead of the synchronous Messages API. That's a real cost lever for a workflow that runs on every practitioner, every night.
+
+**Note:** NVIDIA Nemotron does not support the Message Batches API. When `APP_BRAIN_MODEL=NVIDIA`, the nightly pulse workflow falls back to synchronous execution.
+
+---
+
+## Multi-Model Provider Support (Phase 8)
+
+The system supports two LLM providers selectable at runtime via the `APP_BRAIN_MODEL` environment variable:
+
+| Provider | Env Value | API Key | Base URL | Default Model |
+|---|---|---|---|---|
+| Anthropic (default) | `ANTHROPIC` | `ANTHROPIC_API_KEY` | `https://api.anthropic.com` | `claude-sonnet-5` |
+| NVIDIA Nemotron | `NVIDIA` | `NVIDIA_API_KEY` | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-ultra-550b-a55b` |
+
+### Abstraction Layer
+
+A unified `ModelClient` protocol in `backend/app/agents/model_client.py` abstracts provider differences. Both `AnthropicModelClient` and `NVIDIAModelClient` implement:
+
+- `messages.parse()` with Structured Outputs (Pydantic model validation)
+- Token usage extraction (`input_tokens`, `output_tokens`)
+- Latency measurement
+- Transient error detection and retry logic
+
+The `Agent` base class accepts any `ModelClient` implementation — no agent code changes required.
+
+### MCP Compatibility
+
+MCP servers use the `anthropic[mcp]` client-side pattern, which is **Anthropic-specific**. When `APP_BRAIN_MODEL=NVIDIA`:
+
+- Agents that use MCP (Skill Profiler, Usage-Signal) log a warning and proceed **without** external MCP data
+- Certification Advisor is unaffected (catalog passed in prompt)
+- Skill Profiler uses only `skill_profile_events` (no `mcp-learning-portal` data)
+- Usage-Signal uses empty raw signals (produces no usage events)
+
+This is a v1 limitation. Future versions may implement a generic tool-calling loop.
+
+### Configuration
+
+Required `.env` variables:
+
+```bash
+APP_BRAIN_MODEL=ANTHROPIC  # or NVIDIA
+ANTHROPIC_API_KEY=...      # required when ANTHROPIC
+NVIDIA_API_KEY=...         # required when NVIDIA
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_MODEL_ID=nvidia/nemotron-3-ultra-550b-a55b
+```
+
+---
 
 ## Auth & sessions (Step 5.2)
 

@@ -16,9 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.agents.base import ClaudeClient
+from app.agents.base import ModelClient
 from app.agents.curriculum_planner import CurriculumPlannerAgent
 from app.agents.item_writer import ItemWriterAgent
+from app.agents.model_client import create_model_client
 from app.agents.skill_profiler import SkillProfilerAgent
 from app.db.models import (
     Certification,
@@ -46,7 +47,7 @@ from app.schemas.learning_paths import (
 async def run_generate_learning_path(
     practitioner_id: str,
     db: AsyncSession,
-    claude_client: ClaudeClient,
+    claude_client: ModelClient | None = None,
 ) -> GenerateLearningPathResponse:
     """Run the full generate_learning_path workflow.
 
@@ -58,6 +59,9 @@ async def run_generate_learning_path(
       5. Persist learning_path + learning_path_items
       6. Mark workflow_runs completed (or failed on any exception)
     """
+    # Create model client if not provided (for backward compatibility in tests)
+    if claude_client is None:
+        claude_client = create_model_client()
     workflow_run_id = str(uuid.uuid4())
     now = datetime.now(UTC)
 
@@ -103,7 +107,7 @@ async def _run_steps(
     practitioner_id: str,
     workflow_run_id: str,
     db: AsyncSession,
-    claude_client: ClaudeClient,
+    claude_client: ModelClient,
 ) -> GenerateLearningPathResponse:
     # ── 2. Skill Profiler ─────────────────────────────────────────────────
     # Fetch raw events

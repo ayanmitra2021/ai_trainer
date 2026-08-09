@@ -29,8 +29,30 @@ class Settings(BaseSettings):
         description="Sync SQLAlchemy URL for Alembic migrations (psycopg2 driver).",
     )
 
+    # ── Model Provider ─────────────────────────────────────────────────────
+    # APP_BRAIN_MODEL=ANTHROPIC (default) | NVIDIA
+    app_brain_model: str = Field(
+        default="ANTHROPIC",
+        description="LLM provider: ANTHROPIC or NVIDIA",
+    )
+
     # ── Anthropic ─────────────────────────────────────────────────────────
     anthropic_api_key: str = Field(default="", description="Anthropic API key.")
+
+    # ── NVIDIA Nemotron ───────────────────────────────────────────────────
+    nvidia_api_key: str = Field(default="", description="NVIDIA API key (required when APP_BRAIN_MODEL=NVIDIA).")
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1",
+        description="NVIDIA API base URL (OpenAI-compatible).",
+    )
+    nvidia_model_id: str = Field(
+        default="nvidia/nemotron-3-ultra-550b-a55b",
+        description=(
+            "NVIDIA NIM model ID. Defaults to Nemotron 3 Ultra 550B — the original project-plan model. "
+            "Override via NVIDIA_MODEL_ID in .env. "
+            "Run tools/check_nvidia.py to discover which models your API key can reach."
+        ),
+    )
 
     # ── App ───────────────────────────────────────────────────────────────
     environment: str = Field(default="development")

@@ -75,6 +75,14 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 7.6 Email delivery integration
 - [x] 7.7 End-to-end Nudge Playwright suite
 
+**Phase 8 — Multi-Model Provider Support (NVIDIA Nemotron)**
+- [x] 8.1 Configuration & model abstraction layer
+- [x] 8.2 NVIDIA Nemotron client implementation
+- [x] 8.3 Agent framework integration
+- [x] 8.4 MCP server compatibility
+- [x] 8.5 Testing & validation
+- [x] 8.6 Documentation & migration guide
+
 ---
 
 # Phase 0 — Foundations
@@ -1018,3 +1026,274 @@ This phase replaces the automated, nightly-pulse-only nudge flow with an admin-d
 - *Custom category journey*: admin types a custom description → practitioners appear in the table → admin sends → history panel shows the new campaign with the correct recipient count.
 
 **Definition of done:** both journeys pass against a full local stack (local Postgres + seeded data).
+
+---
+
+# Phase 8 — Multi-Model Provider Support (NVIDIA Nemotron)
+
+This phase adds support for NVIDIA's Nemotron 3 Ultra model as an alternative LLM provider alongside Anthropic Claude. The system uses an environment variable `APP_BRAIN_MODEL` to select the provider at runtime, with full backward compatibility for existing Anthropic-based deployments. The agent framework, MCP servers, prompts, and architecture remain unchanged — only the model client layer is abstracted.
+
+---
+
+### Step 8.1 — Configuration & model abstraction layer
+
+**Goal:** Introduce a unified model abstraction layer that allows switching between Anthropic and NVIDIA providers via configuration, without changing agent code.
+
+**Preconditions:** 7.7 (all existing functionality operational).
+**Context to load:** `docs/architecture.md`, `docs/coding-guidelines.md`, `backend/app/agents/base.py`.
+
+**Build:**
+
+*Configuration (`.env` and `backend/app/config.py`):*
+- Add `APP_BRAIN_MODEL` env var with values: `ANTHROPIC` (default) | `NVIDIA`
+- Add `NVIDIA_API_KEY` env var (required when `APP_BRAIN_MODEL=NVIDIA`)
+- Add `NVIDIA_BASE_URL` env var (default: `https://integrate.api.nvidia.com/v1`)
+- Add `NVIDIA_MODEL_ID` env var (default: `nvidia/nemotron-3-ultra-550b-a55b`)
+- Update `Settings` class in `config.py` with these new fields
+
+*Abstraction layer (`backend/app/agents/model_client.py` — new file):*
+- Define a `ModelClient` protocol extending the existing `ClaudeClient` protocol from `base.py`
+- Create `AnthropicModelClient` wrapper around `anthropic.AsyncAnthropic` (current behavior)
+- Create `NVIDIAModelClient` wrapper using OpenAI-compatible SDK (NVIDIA API is OpenAI-compatible)
+- Both implementations must support the `messages.parse()` method with Structured Outputs
+- Factory function `create_model_client(settings) -> ModelClient` that reads `APP_BRAIN_MODEL` and returns the appropriate client
+
+*Agent base class update (`backend/app/agents/base.py`):*
+- Change `ClaudeClient` type hint to `ModelClient` protocol
+- Update `_call_claude` to use the new protocol methods
+- Ensure retry logic, token counting, and error handling work identically for both providers
+- The `Agent` class constructor should accept `ModelClient` (already does via protocol)
+
+**Scenario tests:**
+- Given `APP_BRAIN_MODEL=ANTHROPIC`, `create_model_client` returns `AnthropicModelClient` that works with existing tests
+- Given `APP_BRAIN_MODEL=NVIDIA` with valid API key, `create_model_client` returns `NVIDIAModelClient`
+- Both clients correctly handle Structured Outputs parsing for a simple agent output schema
+- Both clients return token usage and latency in the same format
+- Transient errors (rate limits, timeouts) are correctly identified and retried for both providers
+
+**Definition of done:** All scenario tests pass; existing agent tests still pass with `APP_BRAIN_MODEL=ANTHROPIC`.
+
+---
+
+### Step 8.2 — NVIDIA Nemotron client implementation
+
+**Goal:** Implement the NVIDIA Nemotron client with full feature parity to the Anthropic client for the agent use case.
+
+**Preconditions:** 8.1.
+**Context to load:** NVIDIA API documentation (OpenAI-compatible), `backend/app/agents/model_client.py`.
+
+**Build:**
+
+*Client implementation (`backend/app/agents/model_client.py` — extend):*
+- Use `openai.AsyncOpenAI` with `base_url` set to NVIDIA endpoint and API key
+- NVIDIA Nemotron supports Structured Outputs via `response_format` parameter (JSON Schema)
+- Implement `messages.parse()` equivalent using OpenAI's `beta.chat.completions.parse()` 
+- Handle NVIDIA-specific response format differences (e.g., token usage field names)
+- Map NVIDIA model IDs to internal agent model strings (e.g., `nvidia/nemotron-3-ultra-550b-a55b`)
+
+*Token counting & observability:*
+- NVIDIA returns `usage.prompt_tokens` and `usage.completion_tokens` (OpenAI format)
+- Ensure `AgentRun` persistence receives correct token counts for cost tracking
+- Latency measurement must work identically
+
+*Error handling:*
+- Map NVIDIA error codes to the existing `_transient_errors` tuple
+- Rate limits (429), timeouts, connection errors, 5xx should all trigger retries
+- Non-transient errors (400, 401, 404) should fail fast
+
+**Scenario tests:**
+- NVIDIA client successfully calls Nemotron with a simple prompt and returns parsed output
+- Structured Outputs validation works — malformed responses are caught and raise `ValidationError`
+- Token counts are correctly extracted and match NVIDIA API response
+- Transient errors trigger retry with exponential backoff
+- Non-transient errors fail immediately without retry
+- Works with the stub client fixture pattern (test double)
+
+**Definition of done:** All scenario tests pass; client can be used as a drop-in replacement in agent tests.
+
+---
+
+### Step 8.3 — Agent framework integration
+
+**Goal:** Wire the model abstraction into all nine agents and workflows, ensuring each agent can use either provider seamlessly.
+
+**Preconditions:** 8.2.
+**Context to load:** `docs/architecture.md` (Model selection table), `backend/app/agents/*.py`, `backend/app/workflows/*.py`.
+
+**Build:**
+
+*Agent model configuration:*
+- Update `docs/architecture.md` Model Selection table to include NVIDIA model mappings
+- Each agent's `model` class attribute becomes a *default* for Anthropic; NVIDIA uses its own model ID
+- Add optional `model_override` parameter to `Agent.__init__` for per-instance model selection
+- Agent factories in workflows should use `create_model_client(settings)` and pass to agents
+
+*Workflow integration:*
+- Update `generate_learning_path.py`, `nightly_pulse.py`, `nudge_campaign.py` to use `create_model_client`
+- `certification_advisor` route, `learning_paths/generate` route, `attempts` route all need to create client via factory
+- Message Batches API note: NVIDIA doesn't support batch API — document this limitation; nightly pulse falls back to synchronous
+
+*MCP server compatibility:*
+- MCP servers use `anthropic[mcp]` client-side pattern which is Anthropic-specific
+- For NVIDIA: MCP tools must be called via the agent's model (not via Anthropic's tool runner)
+- Option A: Disable MCP for NVIDIA (agents use only built-in knowledge)
+- Option B: Implement a generic tool-calling loop in the agent base class
+- **Decision:** Option A for v1 — MCP servers only available with Anthropic provider; document clearly
+
+**Scenario tests:**
+- All 9 agents work with `APP_BRAIN_MODEL=ANTHROPIC` (regression)
+- All 9 agents work with `APP_BRAIN_MODEL=NVIDIA` (new functionality)
+- Workflows complete end-to-end with both providers
+- Agent output schemas validate correctly for both providers
+- `agent_runs` rows correctly record `model_used` for both providers
+- MCP-dependent agents (Skill Profiler, Usage-Signal) work with Anthropic; with NVIDIA they skip MCP and use prompt-only context (graceful degradation)
+
+**Definition of done:** All scenario tests pass; full regression suite green for both providers.
+
+---
+
+### Step 8.4 — MCP server compatibility
+
+**Goal:** Document and implement MCP server behavior for NVIDIA provider (graceful degradation).
+
+**Preconditions:** 8.3.
+**Context to load:** `docs/architecture.md` (MCP strategy section), `backend/app/mcp_servers/*.py`.
+
+**Build:**
+
+*Documentation updates:*
+- Add section to `docs/architecture.md` explaining MCP is Anthropic-only in v1
+- When `APP_BRAIN_MODEL=NVIDIA`, agents that use MCP log a warning and proceed without external data
+- Certification Advisor: catalog still passed in prompt (no MCP needed)
+- Skill Profiler: `mcp-learning-portal` data omitted; works with only `skill_profile_events`
+- Usage-Signal: `mcp-usage-signals` data omitted; works with empty raw signals (produces no usage events)
+
+*Implementation:*
+- Add `has_mcp` flag to agent input schemas where MCP is used
+- In workflow, conditionally fetch MCP data only when using Anthropic provider
+- Pass `portal_certifications=None` etc. to Skill Profiler when NVIDIA
+
+**Scenario tests:**
+- Skill Profiler with NVIDIA runs without MCP data and produces valid snapshots
+- Usage-Signal with NVIDIA runs with empty raw signals and produces empty normalized events (no crash)
+- Workflow logs clear warning when MCP is skipped due to provider
+
+**Definition of done:** All scenario tests pass; behavior documented.
+
+---
+
+### Step 8.5 — Testing & validation
+
+**Goal:** Comprehensive test coverage for dual-provider support, including live API tests and CI integration.
+
+**Preconditions:** 8.4.
+**Context to load:** `docs/coding-guidelines.md` (Testing section), `backend/tests/conftest.py`.
+
+**Build:**
+
+*Stub client updates:*
+- Update `backend/tests/fixtures/stub_claude_client.py` to support both provider response formats
+- Add `StubNVIDIAModelClient` fixture for NVIDIA-specific testing
+- Ensure existing `StubClaudeClient` still works for Anthropic tests
+
+*Test matrix:*
+- Add `@pytest.mark.provider_anthropic` and `@pytest.mark.provider_nvidia` markers
+- Run full scenario suite twice in CI (or sequentially): once with `APP_BRAIN_MODEL=ANTHROPIC`, once with `APP_BRAIN_MODEL=NVIDIA` (if NVIDIA_API_KEY available)
+- If NVIDIA_API_KEY not set in CI, skip NVIDIA tests with clear message
+
+*Live tests:*
+- Add `@pytest.mark.live` tests for NVIDIA provider (manual/scheduled)
+- Validate prompt quality with Nemotron — some prompts may need tuning for Nemotron's style
+- Document any prompt adjustments needed per agent
+
+*Observability:*
+- Verify `agent_runs.model_used` correctly records `nvidia/nemotron-3-ultra-550b-a55b` for NVIDIA runs
+- Cost tracking works (token counts from NVIDIA API)
+
+**Scenario tests:**
+- All existing scenario tests pass with both providers (where MCP is not required)
+- New NVIDIA-specific scenario tests pass
+- CI runs both provider test suites
+- Observability dashboard shows correct model names for both providers
+
+**Definition of done:** All scenario tests pass for both providers; CI configured.
+
+---
+
+### Step 8.6 — Documentation & migration guide
+
+**Goal:** Complete documentation for dual-provider support, including migration guide and architecture updates.
+
+**Preconditions:** 8.5.
+**Context to load:** All docs files.
+
+**Build:**
+
+*Architecture updates (`docs/architecture.md`):*
+- Add "Multi-Model Provider Support" section
+- Update Model Selection table with NVIDIA mappings
+- Add MCP compatibility note
+- Add configuration reference for `APP_BRAIN_MODEL`, `NVIDIA_API_KEY`, `NVIDIA_BASE_URL`, `NVIDIA_MODEL_ID`
+
+*Coding guidelines updates (`docs/coding-guidelines.md`):*
+- Add section on model-agnostic agent development
+- Note: agents must not assume Anthropic-specific features (MCP, specific error types)
+
+*Configuration reference (`.env.example`):*
+- Add all new env vars with comments
+
+*Migration guide (`docs/MULTI_PROVIDER.md` — new file):*
+- How to switch providers
+- Known limitations (MCP, Message Batches API)
+- Prompt tuning tips for Nemotron
+- Troubleshooting common issues
+
+*CLAUDE.md updates:*
+- Add Phase 8 to step index
+- Note the new model abstraction layer
+
+**Scenario tests:**
+- Documentation renders correctly
+- `.env.example` includes all required variables
+- Migration guide is complete and accurate
+
+**Definition of done:** All documentation updated; migration guide created; new team member can switch providers following the guide.
+
+---
+
+## Additional Test Cases for Phase 8
+
+The following test scenarios must be added/modified across the test suite:
+
+1. **Model Client Factory Tests** (`tests/scenarios/test_model_client.py` — new):
+   - Factory returns correct client type based on `APP_BRAIN_MODEL`
+   - Both clients implement `ModelClient` protocol
+   - Invalid `APP_BRAIN_MODEL` value raises clear error
+
+2. **NVIDIA Client Tests** (`tests/scenarios/test_nvidia_client.py` — new):
+   - Structured Outputs parsing with Nemotron
+   - Token counting accuracy
+   - Error mapping and retry behavior
+   - Works with stub fixture
+
+3. **Agent Regression Tests** (modify existing):
+   - Each agent test class runs twice: once with Anthropic stub, once with NVIDIA stub
+   - Use `@pytest.mark.parametrize("provider", ["anthropic", "nvidia"])`
+   - MCP-dependent agents skip MCP data when provider=NVIDIA
+
+4. **Workflow Integration Tests** (modify existing):
+   - `test_generate_learning_path` runs with both providers
+   - `test_nightly_pulse` runs with both providers (NVIDIA skips Message Batches API)
+   - MCP-dependent workflows log warnings with NVIDIA
+
+5. **Configuration Tests** (`tests/scenarios/test_config.py` — extend):
+   - Settings loads all new env vars correctly
+   - Default values are sensible
+   - Missing NVIDIA_API_KEY raises error when NVIDIA provider selected
+
+6. **Observability Tests** (extend existing):
+   - `agent_runs.model_used` records correct model string for NVIDIA
+   - Token counts match API response for both providers
+
+7. **Frontend Tests** (no changes needed):
+   - Frontend is provider-agnostic; no test modifications required

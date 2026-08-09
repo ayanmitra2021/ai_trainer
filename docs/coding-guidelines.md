@@ -68,3 +68,22 @@ A step is done when its scenarios are green against the stub client, not when th
 ## Observability from day one
 
 Every agent call writes an `agent_runs` row (Step 0.4) — model used, tokens, latency, status. Don't treat this as a Phase 5 nice-to-have; without it, debugging why the Correlation Agent produced a weird gap score for one practitioner means re-running things and guessing, instead of reading a row.
+
+---
+
+## Model-Agnostic Agent Development (Phase 8)
+
+Agents must not assume Anthropic-specific features:
+
+- **No MCP in agents**: MCP servers are accessed via workflows, not directly in agents. When `APP_BRAIN_MODEL=NVIDIA`, workflows skip MCP fetches and pass `None` to agent inputs.
+- **No Anthropic error types**: Use the `_transient_errors` tuple in `Agent` base class — it maps both Anthropic and NVIDIA (OpenAI) error codes to retryable exceptions.
+- **Structured Outputs only**: Both providers support JSON Schema-based structured outputs. Never parse JSON from text responses.
+- **Model config via protocol**: Agents receive a `ModelClient` protocol, not a concrete `anthropic.AsyncAnthropic`. The factory `create_model_client(settings)` handles provider selection.
+- **Model-specific prompts not allowed**: Prompts live in `agents/prompts/<agent>.md` and are provider-agnostic. If Nemotron needs different prompting, adjust the single prompt file — not per-provider.
+
+### Testing with Multiple Providers
+
+- All scenario tests use `StubClaudeClient` (Anthropic-format stub) by default
+- For NVIDIA testing, use `StubNVIDIAModelClient` which returns OpenAI-format responses
+- Add `@pytest.mark.parametrize("provider", ["anthropic", "nvidia"])` to agent test classes for dual-provider regression
+- MCP-dependent agents are tested with `provider=anthropic` only; NVIDIA tests pass empty MCP data

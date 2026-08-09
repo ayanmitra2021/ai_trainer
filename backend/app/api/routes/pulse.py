@@ -25,6 +25,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.base import ModelClient
+from app.agents.model_client import create_model_client
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
@@ -42,6 +44,7 @@ from app.schemas.pulse import (
     NudgeRead,
     RollupRead,
 )
+from app.workflows.nightly_pulse import run_nightly_pulse
 
 router = APIRouter(tags=["pulse"])
 
@@ -62,11 +65,7 @@ async def trigger_nightly_pulse(
                 status_code=404, detail=f"Practitioner {pid!r} not found"
             )
 
-    import anthropic as anthropic_lib
-
-    from app.workflows.nightly_pulse import run_nightly_pulse
-
-    claude_client = anthropic_lib.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    model_client = create_model_client()
     period_start = datetime.fromisoformat(body.period_start).replace(tzinfo=UTC)
     period_end = datetime.fromisoformat(body.period_end).replace(tzinfo=UTC)
 
@@ -77,7 +76,7 @@ async def trigger_nightly_pulse(
         period_start=period_start,
         period_end=period_end,
         db=db,
-        claude_client=claude_client,
+        claude_client=model_client,
     )
     return result
 

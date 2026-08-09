@@ -27,6 +27,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.base import ModelClient
+from app.agents.model_client import create_model_client
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
@@ -199,8 +201,6 @@ async def generate_nudge_categories(
     session: SessionInfo = Depends(require_admin),
 ) -> list[NudgeCategoryRead]:
     """Generate up to 10 nudge categories from aggregate KPI data. Admin only."""
-    import anthropic as anthropic_lib
-
     from app.agents.nudge_category_generator import NudgeCategoryGeneratorAgent
     from app.schemas.nudge_campaign import NudgeCategoryInput, SkillGapSummaryItem
 
@@ -217,8 +217,8 @@ async def generate_nudge_categories(
         nudges_sent_last_7d=kpi["nudges_sent_last_7d"],
     )
 
-    claude_client = anthropic_lib.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    agent = NudgeCategoryGeneratorAgent(client=claude_client, db_session=db)
+    model_client = create_model_client()
+    agent = NudgeCategoryGeneratorAgent(client=model_client, db_session=db)
     output = await agent.run(agent_input)
 
     # Persist categories
@@ -280,8 +280,6 @@ async def compose_campaign_preview(
     _session: SessionInfo = Depends(require_admin),
 ) -> ComposePreviewResponse:
     """Compose a nudge message preview for a category. No DB writes. Admin only."""
-    import anthropic as anthropic_lib
-
     from app.agents.nudge_campaign_composer import NudgeCampaignComposerAgent
     from app.schemas.nudge_campaign import NudgeCampaignComposerInput
 
@@ -297,8 +295,8 @@ async def compose_campaign_preview(
         tone_hint=cat.tone_hint or "warm and encouraging",
         recipient_count=len(practitioners_list),
     )
-    claude_client = anthropic_lib.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    agent = NudgeCampaignComposerAgent(client=claude_client, db_session=db)
+    model_client = create_model_client()
+    agent = NudgeCampaignComposerAgent(client=model_client, db_session=db)
     output = await agent.run(agent_input)
 
     return ComposePreviewResponse(

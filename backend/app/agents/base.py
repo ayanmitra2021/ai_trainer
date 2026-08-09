@@ -25,60 +25,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
-import anthropic
 import pydantic
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AgentRun
+from app.agents.model_client import ModelClient, _extract_parsed
 
 # ── Type parameters ───────────────────────────────────────────────────────────
 
 TInput = TypeVar("TInput", bound=BaseModel)
 TOutput = TypeVar("TOutput", bound=BaseModel)
-
-# ── Claude client protocol ────────────────────────────────────────────────────
-# We depend on a narrow interface rather than the concrete anthropic.AsyncAnthropic
-# class so that tests can substitute a stub without monkey-patching.
-
-
-class ParsedResponse(Protocol[TOutput]):
-    """Minimal shape of what client.messages.parse() returns.
-
-    The real Anthropic SDK (>=0.100) returns a ParsedMessage where the parsed
-    output lives on each content block as `block.parsed_output`.  Test stubs
-    use a simpler structure with a top-level `parsed` attribute.  _extract_parsed
-    handles both so neither path breaks.
-    """
-
-    class usage:
-        input_tokens: int
-        output_tokens: int
-
-
-@runtime_checkable
-class MessagesClient(Protocol):
-    """Async messages client — real SDK or stub."""
-
-    async def parse(
-        self,
-        *,
-        model: str,
-        system: str,
-        messages: list[dict[str, Any]],
-        max_tokens: int,
-        output_format: type[TOutput],
-        **kwargs: Any,
-    ) -> Any:  # ParsedResponse[TOutput]
-        ...
-
-
-@runtime_checkable
-class ClaudeClient(Protocol):
-    """Top-level client — real anthropic.AsyncAnthropic or a stub."""
-
-    messages: MessagesClient
-
 
 # ── Agent base ────────────────────────────────────────────────────────────────
 
@@ -94,11 +51,11 @@ class Agent(ABC, Generic[TInput, TOutput]):
 
     Subclasses must set:
         name         — matches the prompt filename (prompts/<name>.md)
-        model        — Claude model ID to use (see docs/architecture.md)
+        model        — Default model ID for Anthropic provider (see docs/architecture.md)
         output_model — Pydantic model that defines the Structured Output schema
 
     And must implement:
-        _build_messages(input) → list[dict]   (converts input → Claude messages)
+        _build_messages(input) → list[dict]   (converts input → messages)
 
     Optionally override:
         max_tokens         — default 8192
@@ -121,26 +78,32 @@ class Agent(ABC, Generic[TInput, TOutput]):
     # Subclasses may override this tuple. Tests typically substitute a simpler
     # exception type rather than constructing a real anthropic.RateLimitError.
     _transient_errors: tuple[type[BaseException], ...] = (
-        anthropic.RateLimitError,
-        anthropic.APITimeoutError,
-        anthropic.APIConnectionError,
-        anthropic.InternalServerError,
+        # Default to Anthropic errors; actual client implementation determines
+        # which exceptions are raised. Subclasses using NVIDIA should override.
+        # The ModelClient implementations handle provider-specific error mapping.
     )
 
     def __init__(
         self,
-        client: ClaudeClient,
+        client: ModelClient,
         db_session: AsyncSession | None = _NO_DB,
         workflow_run_id: str | None = None,
+        model_override: str | None = None,
     ) -> None:
         self._client = client
         self._db = db_session
         self._workflow_run_id = workflow_run_id
+        self._model_override = model_override
+
+    @property
+    def effective_model(self) -> str:
+        """Return the model to use for this agent call."""
+        return self._model_override or self.model
 
     # ── Public API ────────────────────────────────────────────────────────
 
     async def run(self, input: TInput) -> TOutput:
-        """Execute the agent: call Claude, persist agent_runs, return typed output.
+        """Execute the agent: call the model, persist agent_runs, return typed output.
 
         Retry policy
         ------------
@@ -171,13 +134,13 @@ class Agent(ABC, Generic[TInput, TOutput]):
 
         for attempt in range(self.max_retries + 1):
             try:
-                output, tokens_in, tokens_out = await self._call_claude(input)
+                output, tokens_in, tokens_out = await self._call_model(input)
                 latency_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
                 await self._persist_run(
                     run_id=run_id,
                     input=input,
                     output=output,
-                    model_used=self.model,
+                    model_used=self.effective_model,
                     tokens_input=tokens_in,
                     tokens_output=tokens_out,
                     latency_ms=latency_ms,
@@ -193,7 +156,7 @@ class Agent(ABC, Generic[TInput, TOutput]):
                 if is_transient and attempt < self.max_retries:
                     delay = self.retry_base_delay_s * (2 ** attempt)
                     await asyncio.sleep(delay)
-                    continue  # next attempt
+                    continue
                 break  # non-transient error, or transient but retries exhausted
 
         # All retries exhausted, or a non-transient error broke out of the loop.
@@ -203,7 +166,7 @@ class Agent(ABC, Generic[TInput, TOutput]):
             run_id=run_id,
             input=input,
             output=None,
-            model_used=self.model,
+            model_used=self.effective_model,
             tokens_input=None,
             tokens_output=None,
             latency_ms=latency_ms,
@@ -217,7 +180,7 @@ class Agent(ABC, Generic[TInput, TOutput]):
 
     @abstractmethod
     def _build_messages(self, input: TInput) -> list[dict[str, Any]]:
-        """Convert the typed input into the Claude messages list."""
+        """Convert the typed input into the messages list."""
         ...
 
     # ── Internal helpers ──────────────────────────────────────────────────
@@ -232,22 +195,22 @@ class Agent(ABC, Generic[TInput, TOutput]):
             )
         return prompt_path.read_text(encoding="utf-8").strip()
 
-    async def _call_claude(
+    async def _call_model(
         self, input: TInput
     ) -> tuple[TOutput, int | None, int | None]:
-        """Call the Claude API with Structured Outputs and return (output, tokens_in, tokens_out)."""
+        """Call the model API with Structured Outputs and return (output, tokens_in, tokens_out)."""
         system = self._load_prompt()
         messages = self._build_messages(input)
 
-        response = await self._client.messages.parse(
-            model=self.model,
+        response = await self._client.parse(
+            model=self.effective_model,
             system=system,
             messages=messages,
             max_tokens=self.max_tokens,
             output_format=self.output_model,
         )
 
-        raw = self._extract_parsed(response)
+        raw = _extract_parsed(response)
         if raw is None:
             raise ValueError(
                 f"Agent '{self.name}': no parsed output found in response. "
@@ -275,23 +238,6 @@ class Agent(ABC, Generic[TInput, TOutput]):
             tokens_in = tokens_out = None
 
         return validated, tokens_in, tokens_out
-
-    @staticmethod
-    def _extract_parsed(response: Any) -> Any:
-        """Extract the parsed model instance from a parse() response.
-
-        Handles two shapes:
-        - Real Anthropic SDK >=0.100: ParsedMessage with content blocks where
-          each text block carries a `parsed_output` attribute.
-        - Test stub (_FakeParsedResponse): simple object with a `parsed` attr.
-        """
-        # Real SDK path: iterate content blocks for parsed_output
-        for block in getattr(response, "content", []):
-            value = getattr(block, "parsed_output", None)
-            if value is not None:
-                return value
-        # Stub / legacy fallback
-        return getattr(response, "parsed", None)
 
     async def _persist_run(
         self,

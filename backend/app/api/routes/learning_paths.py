@@ -23,6 +23,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.agents.base import ModelClient
+from app.agents.model_client import create_model_client
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
@@ -37,6 +39,7 @@ from app.schemas.learning_paths import (
     GenerateLearningPathResponse,
     LearningPathRead,
 )
+from app.workflows.generate_learning_path import run_generate_learning_path
 
 router = APIRouter(tags=["learning_paths"])
 
@@ -55,14 +58,11 @@ async def generate_learning_path(
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
 
-    from app.workflows.generate_learning_path import run_generate_learning_path
-    import anthropic as anthropic_lib
-
-    anthropic_client = anthropic_lib.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    model_client = create_model_client()
     result = await run_generate_learning_path(
         practitioner_id=body.practitioner_id,
         db=db,
-        claude_client=anthropic_client,
+        claude_client=model_client,
     )
     return result
 
@@ -128,9 +128,8 @@ async def submit_attempt(
         raise HTTPException(status_code=404, detail="Item not found")
 
     from app.agents.grader import GraderAgent
-    import anthropic as anthropic_lib
 
-    anthropic_client = anthropic_lib.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    model_client = create_model_client()
     grader_input = GraderInput(
         item_id=body.item_id,
         item_type=item.item_type,
@@ -139,7 +138,7 @@ async def submit_attempt(
         trap_explanation=item.trap_explanation,
         submitted_response=body.response,
     )
-    agent = GraderAgent(client=anthropic_client, db_session=db)
+    agent = GraderAgent(client=model_client, db_session=db)
     grader_output: GraderOutput = await agent.run(grader_input)
 
     now = datetime.now(UTC)

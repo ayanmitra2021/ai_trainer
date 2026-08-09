@@ -10,7 +10,7 @@ Built mostly via Claude Code, with a few parts (marked 👤 in `project_plan.md`
 
 ## Tech stack
 
-Python 3.11+ / FastAPI / SQLAlchemy / Alembic · Postgres (+ `pgvector`) · React + TypeScript (Vite) · nine Claude-API-backed agents orchestrated by plain async Python (no LangGraph/Temporal) · custom local MCP servers for internal data sources.
+Python 3.11+ / FastAPI / SQLAlchemy / Alembic · Postgres (+ `pgvector`) · React + TypeScript (Vite) · nine LLM-API-backed agents orchestrated by plain async Python (no LangGraph/Temporal) · custom local MCP servers for internal data sources · **dual-model support: Anthropic Claude (default) or NVIDIA Nemotron 3 Ultra via `APP_BRAIN_MODEL` env var**.
 
 ## Repo map
 
@@ -48,6 +48,7 @@ Ten steps across the plan need a human judgment call — a prompt's pedagogy, a 
 - `docs/data-model.md` — the Postgres schema, including the certification catalog.
 - `docs/coding-guidelines.md` — conventions, prompt-file pattern, testing approach in full.
 - `docs/human-in-the-loop.md` — the ten 👤 steps, with reasoning.
+- `docs/MULTI_PROVIDER.md` — migration guide for dual-provider support (Phase 8).
 
 `project_plan.md` names which of these to open for each step — no need to load them all every session.
 
