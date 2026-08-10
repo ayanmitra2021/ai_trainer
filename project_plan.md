@@ -1,6 +1,6 @@
 # Mastery Pulse — Project Plan
 
-## How to use this document
+## How to use this document for this project
 
 1. **One step at a time.** Paste that step's full section (Goal through Definition of Done) into a fresh Claude Code session as the task.
 2. **Check "Context to load" first.** Tell Claude Code to read those docs before it starts. `CLAUDE.md` already points it at the repo layout, so it can usually find its own way, but naming the doc up front saves a round trip.
