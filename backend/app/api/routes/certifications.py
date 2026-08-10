@@ -128,17 +128,37 @@ async def run_certification_advisor(
     db.add(advisor_response)
     await db.flush()
 
-    cert_result = await db.execute(
-        select(Certification).where(
-            Certification.code == recommendation.primary_recommendation_code
-        )
-    )
-    recommended_cert = cert_result.scalar_one_or_none()
+    # Resolve the recommended certification code to a DB row.
+    # Some LLMs (especially non-Anthropic providers) occasionally return a
+    # sentinel like "NO_CERT_AVAILABLE" instead of a real code when they can't
+    # find a match.  We try the primary code first; if it isn't in the catalog,
+    # fall back to the alternative_code before giving up.
+    async def _find_cert(code: str | None) -> "Certification | None":
+        if not code:
+            return None
+        r = await db.execute(select(Certification).where(Certification.code == code))
+        return r.scalar_one_or_none()
+
+    recommended_cert = await _find_cert(recommendation.primary_recommendation_code)
+    if recommended_cert is None and recommendation.alternative_code:
+        recommended_cert = await _find_cert(recommendation.alternative_code)
+        if recommended_cert is not None:
+            # Swap so the response reflects what was actually used
+            recommendation = recommendation.model_copy(update={
+                "primary_recommendation_code": recommended_cert.code,
+                "primary_rationale": (
+                    f"[Fell back to alternative] {recommendation.primary_rationale}"
+                ),
+            })
+
     if recommended_cert is None:
         raise HTTPException(
-            status_code=422,
-            detail=f"Agent returned unknown certification code: "
-                   f"{recommendation.primary_recommendation_code}",
+            status_code=400,
+            detail=(
+                f"The recommendation engine could not match a certification from "
+                f"the catalog (returned '{recommendation.primary_recommendation_code}'). "
+                f"Please try again — adjusting your answers may help."
+            ),
         )
 
     # Check if practitioner has an active profile to link the goal

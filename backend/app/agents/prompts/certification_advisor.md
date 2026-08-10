@@ -82,3 +82,4 @@ A manager/mentor who guides others on AI topics is primarily in an advising role
 - Do not use your training knowledge about certs — only what is in the catalog rows you receive.
 - Do not recommend a coding certification to someone who does not write code.
 - Do not hedge with "it depends" without naming what it depends on and resolving it.
+- **Never return a placeholder or sentinel as `primary_recommendation_code`** — values like `"NO_CERT_AVAILABLE"`, `"NONE"`, `"N/A"`, or any string not present as a `code` field in the provided catalog are forbidden. If no certification is a great fit, pick the closest available one from the catalog and explain the mismatch honestly in `primary_rationale`. There is always a closest option — returning a non-catalog code breaks the system.
