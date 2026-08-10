@@ -2,9 +2,14 @@
 
 from contextlib import asynccontextmanager
 
+import logging
+
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+_log = logging.getLogger("mastery_pulse")
 
 from app.config import settings
 from app.db.session import engine
@@ -50,10 +55,16 @@ app.add_middleware(
 # *outside* the CORS layer — so no Access-Control-Allow-Origin header is added
 # and the browser sees a CORS error instead of the real 500.
 # This handler runs inside CORSMiddleware so its responses always get the header.
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # Log the full validation error so it appears in Render logs for debugging.
+    _log.warning("422 Validation error on %s %s: %s", request.method, request.url.path, exc.errors())
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    import logging
-    logging.getLogger("mastery_pulse").exception("Unhandled exception: %s", exc)
+    _log.exception("Unhandled exception on %s %s: %s", request.method, request.url.path, exc)
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error — check server logs for details."},
