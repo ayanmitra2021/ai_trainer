@@ -149,8 +149,8 @@ async def practitioner_login(
         key=settings.session_cookie_name,
         value=session.id,
         httponly=True,
-        samesite="lax",
-        secure=settings.environment == "production",
+        samesite="none",   # required for cross-origin cookie (GitHub Pages → Render)
+        secure=True,       # SameSite=None requires Secure; localhost is exempt by spec
     )
 
     first_name = practitioner.name.split()[0]
@@ -232,8 +232,8 @@ async def admin_login(
         key=settings.session_cookie_name,
         value=session.id,
         httponly=True,
-        samesite="lax",
-        secure=settings.environment == "production",
+        samesite="none",   # required for cross-origin cookie (GitHub Pages → Render)
+        secure=True,       # SameSite=None requires Secure; localhost is exempt by spec
     )
 
     return AdminLoginResponse(
@@ -259,7 +259,13 @@ async def logout(
             await db.commit()
 
     resp = FastAPIResponse(status_code=204)
-    resp.delete_cookie(key=settings.session_cookie_name)
+    # Must pass the same samesite/secure flags used when setting the cookie,
+    # otherwise browsers treat it as a different cookie and won't clear it.
+    resp.delete_cookie(
+        key=settings.session_cookie_name,
+        samesite="none",
+        secure=True,
+    )
     return resp
 
 

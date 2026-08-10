@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db.session import engine
@@ -25,6 +26,20 @@ app = FastAPI(
     version="0.1.0",
     debug=settings.debug,
     lifespan=lifespan,
+)
+
+
+# ── CORS ─────────────────────────────────────────────────────────────────────
+# Must be added BEFORE any route includes.
+# allow_credentials=True is required so the browser sends the session cookie on
+# cross-origin requests (GitHub Pages → Render).  When credentials are allowed,
+# the origin list must be explicit — "*" is rejected by browsers in that case.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

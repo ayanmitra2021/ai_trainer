@@ -1,6 +1,18 @@
-/** Base fetch wrapper — all calls proxy through Vite to localhost:8000. */
-
-const BASE = "/api/v1";
+/**
+ * Base fetch wrapper.
+ *
+ * In local dev, VITE_API_BASE_URL is unset so BASE resolves to "/api/v1" and
+ * Vite's proxy forwards those requests to localhost:8000.
+ *
+ * In production (GitHub Pages), VITE_API_BASE_URL is set to the Render backend
+ * origin (e.g. "https://ai-trainer-pavl.onrender.com") via frontend/.env.production,
+ * so every request goes directly to the correct host.
+ *
+ * credentials:"include" is required for the session cookie to be sent on
+ * cross-origin requests (GitHub Pages → Render).  The backend CORS policy
+ * explicitly allows the GitHub Pages origin with allow_credentials=True.
+ */
+const BASE = `${import.meta.env.VITE_API_BASE_URL ?? ""}/api/v1`;
 
 export class ApiError extends Error {
   constructor(
@@ -17,6 +29,7 @@ async function request<T>(
   init?: RequestInit,
 ): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
+    credentials: "include",           // send/receive session cookie cross-origin
     headers: { "Content-Type": "application/json", ...init?.headers },
     ...init,
   });

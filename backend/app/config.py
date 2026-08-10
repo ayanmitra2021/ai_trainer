@@ -58,6 +58,20 @@ class Settings(BaseSettings):
     environment: str = Field(default="development")
     debug: bool = Field(default=False)
 
+    # ── CORS ─────────────────────────────────────────────────────────────
+    # Comma-separated list of allowed origins for the CORS middleware.
+    # Must include the GitHub Pages origin in production, and localhost for dev.
+    # Set ALLOWED_ORIGINS on Render to override (no trailing slashes).
+    # Example: ALLOWED_ORIGINS=https://ayanmitra2021.github.io,http://localhost:5173
+    allowed_origins: str = Field(
+        default="https://ayanmitra2021.github.io,http://localhost:5173",
+        description="Comma-separated CORS allowed origins.",
+    )
+
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
     # ── Auth ──────────────────────────────────────────────────────────────
     session_cookie_name: str = Field(default="mastery_session")
     admin_session_timeout_hours: int = Field(
