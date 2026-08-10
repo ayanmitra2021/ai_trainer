@@ -92,6 +92,11 @@ export interface AdvisorOutput {
   primary_rationale: string;
   alternative_code?: string;
   alternative_rationale?: string;
+  // Cert metadata — always returned so auto-create works
+  cert_full_name?: string;
+  cert_provider_name?: string;
+  cert_level?: string;
+  cert_requires_coding?: boolean;
 }
 
 export interface AdvisorResponse {
@@ -99,6 +104,8 @@ export interface AdvisorResponse {
   advisor_response_id: string;
   goal_id: string;
   recommendation: AdvisorOutput;
+  /** True when the cert was not in the catalog and has been auto-created. */
+  is_new_certification: boolean;
 }
 
 export type GoalStatus =

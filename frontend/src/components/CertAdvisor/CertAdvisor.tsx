@@ -94,14 +94,49 @@ export default function CertAdvisor({ practitionerId }: Props) {
   };
 
   if (step === "result" && result) {
-    const primary = certByCode(result.recommendation.primary_recommendation_code);
-    const alt = result.recommendation.alternative_code
-      ? certByCode(result.recommendation.alternative_code)
-      : null;
+    const rec = result.recommendation;
+    const primary = certByCode(rec.primary_recommendation_code);
+    const alt = rec.alternative_code ? certByCode(rec.alternative_code) : null;
+
+    // Derive display name / provider / level from DB record when available,
+    // falling back to the metadata the LLM returned (used for auto-created certs).
+    const primaryName = primary?.name ?? rec.cert_full_name ?? rec.primary_recommendation_code;
+    const primaryProvider = primary?.provider.name ?? rec.cert_provider_name;
+    const primaryLevel = primary?.level ?? rec.cert_level;
+    const primaryAudience = primary?.typical_audience;
 
     return (
       <div>
         <h2>Recommendation</h2>
+
+        {/* New-certification notice */}
+        {result.is_new_certification && (
+          <div
+            style={{
+              display: "flex",
+              gap: "0.75rem",
+              alignItems: "flex-start",
+              padding: "0.875rem 1rem",
+              marginBottom: "1rem",
+              borderRadius: "0.5rem",
+              background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+              border: "1px solid color-mix(in srgb, var(--accent) 35%, transparent)",
+              fontSize: "0.875rem",
+              lineHeight: 1.5,
+            }}
+          >
+            <span style={{ fontSize: "1.25rem", flexShrink: 0 }}>✨</span>
+            <div>
+              <strong>New certification added to your catalog</strong>
+              <p style={{ margin: "0.25rem 0 0", color: "var(--text-muted)" }}>
+                The advisor recommended{" "}
+                <strong>{rec.primary_recommendation_code}</strong> which wasn't
+                yet in our inventory. It has been automatically added so your
+                goal can be tracked — an admin can enrich the details later.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Primary recommendation */}
         <div className="card" style={{ marginBottom: "1rem" }}>
@@ -109,11 +144,11 @@ export default function CertAdvisor({ practitionerId }: Props) {
             <div>
               <span className="badge badge-blue" style={{ marginBottom: "0.5rem" }}>Primary recommendation</span>
               <h3 style={{ margin: "0.25rem 0" }}>
-                {primary ? `${primary.name} (${primary.code})` : result.recommendation.primary_recommendation_code}
+                {primaryName} ({rec.primary_recommendation_code})
               </h3>
-              {primary && (
+              {(primaryProvider || primaryLevel || primaryAudience) && (
                 <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", margin: "0.25rem 0 0" }}>
-                  {primary.provider.name} · {primary.level} · {primary.typical_audience}
+                  {[primaryProvider, primaryLevel, primaryAudience].filter(Boolean).join(" · ")}
                 </p>
               )}
             </div>
@@ -126,22 +161,24 @@ export default function CertAdvisor({ practitionerId }: Props) {
             </button>
           </div>
           <p style={{ marginTop: "1rem", marginBottom: 0, fontSize: "0.875rem", lineHeight: 1.6 }}>
-            {result.recommendation.primary_rationale}
+            {rec.primary_rationale}
           </p>
         </div>
 
         {/* Alternative */}
-        {alt && result.recommendation.alternative_rationale && (
+        {(alt || rec.alternative_code) && rec.alternative_rationale && (
           <div className="card" style={{ marginBottom: "1rem" }}>
             <span className="badge badge-gray" style={{ marginBottom: "0.5rem" }}>Alternative</span>
             <h3 style={{ margin: "0.25rem 0" }}>
-              {alt.name} ({alt.code})
+              {alt ? `${alt.name} (${alt.code})` : rec.alternative_code}
             </h3>
-            <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
-              {alt.provider.name} · {alt.level}
-            </p>
+            {alt && (
+              <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginTop: "0.25rem" }}>
+                {alt.provider.name} · {alt.level}
+              </p>
+            )}
             <p style={{ marginTop: "0.75rem", marginBottom: 0, fontSize: "0.875rem", lineHeight: 1.6 }}>
-              {result.recommendation.alternative_rationale}
+              {rec.alternative_rationale}
             </p>
           </div>
         )}

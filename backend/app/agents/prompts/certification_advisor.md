@@ -75,6 +75,12 @@ A manager/mentor who guides others on AI topics is primarily in an advising role
 - `primary_rationale`: 2–4 sentences. Lead with *why this certification fits this practitioner*, not a generic description of the cert. Name the relevant answers (coding background, focus, experience) explicitly.
 - `alternative_code`: null if there is no genuine alternative.
 - `alternative_rationale`: when present, one sentence naming the trade-off (e.g. "If you decide to move toward building applications, CCDV-F would be the natural next step"). Null when `alternative_code` is null.
+- `cert_full_name`: the full display name of the primary recommendation exactly as shown in the catalog (e.g. `"Claude Certified Associate – Foundations"`).
+- `cert_provider_name`: the provider name exactly as shown in the catalog (e.g. `"Anthropic"`, `"AWS"`, `"Google Cloud"`, `"Microsoft"`).
+- `cert_level`: the level exactly as shown in the catalog (e.g. `"foundational"`, `"associate"`, `"professional"`).
+- `cert_requires_coding`: `true` if the certification requires a coding background, `false` otherwise.
+
+**Output format**: After completing your reasoning, output a single valid JSON object and nothing else. No prose, no markdown fences, no explanation before or after the JSON. The JSON must contain all eight fields listed above.
 
 ## What not to do
 

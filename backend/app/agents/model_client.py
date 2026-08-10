@@ -183,22 +183,51 @@ class AnthropicModelClient(BaseModelClient, ModelClient):
 
 
 def _extract_json_from_content(content: str) -> str:
-    """Strip optional markdown code-block fences from an LLM response.
+    """Extract a JSON object from an LLM response that may contain surrounding text.
 
-    NVIDIA Nemotron sometimes wraps its JSON output in ```json ... ``` even
-    when instructed not to. This helper extracts the raw JSON string so that
-    json.loads() can parse it cleanly.
+    Handles three output patterns:
+
+    1. ````json ... ``` ` fences — strips the fences (some models add these
+       despite being told not to).
+    2. Pure JSON starting with ``{`` — returned as-is.
+    3. Reasoning/prose followed by a JSON object — this is the characteristic
+       output of thinking/reasoning models like NVIDIA Nemotron Ultra, which
+       walk through their logic in plain text and then emit the JSON at the end.
+       We find the last ``{...}`` block by scanning the string from the right.
+
+    Any of these can also have a trailing ``` after the JSON; the fence-stripping
+    in case 1 handles that too.
     """
     content = content.strip()
+
+    # Pattern 1: markdown fences (```json … ``` or ``` … ```)
     if content.startswith("```"):
-        # Drop the opening fence line (e.g. "```json\n" or "```\n")
         newline = content.find("\n")
         if newline != -1:
             content = content[newline + 1:]
-        # Drop the closing fence
         if content.rstrip().endswith("```"):
             content = content.rstrip()[:-3].rstrip()
-    return content.strip()
+        return content.strip()
+
+    # Pattern 2: pure JSON object
+    if content.startswith("{"):
+        return content
+
+    # Pattern 3: reasoning text followed by a JSON object.
+    # Find the rightmost `}` then walk left to find its matching `{`.
+    last_close = content.rfind("}")
+    if last_close != -1:
+        depth = 0
+        for i in range(last_close, -1, -1):
+            if content[i] == "}":
+                depth += 1
+            elif content[i] == "{":
+                depth -= 1
+                if depth == 0:
+                    return content[i : last_close + 1]
+
+    # No JSON object found — return as-is so json.loads() raises a clear error
+    return content
 
 
 class NVIDIAMessagesClient(MessagesClient):

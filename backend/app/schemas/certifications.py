@@ -127,6 +127,33 @@ class AdvisorOutput(BaseModel):
         description="Short rationale naming the trade-off vs. the primary pick.",
     )
 
+    # ── Cert metadata — always populated so auto-create works ────────────────
+    # These fields allow the route to create a new Certification row when the
+    # recommended code is not already in the catalog (e.g. when a non-Anthropic
+    # LLM recommends a cert we haven't seeded yet).
+    cert_full_name: str | None = Field(
+        None,
+        description=(
+            "Full display name of the recommended certification "
+            "(e.g. 'Claude Certified Associate – Foundations')."
+        ),
+    )
+    cert_provider_name: str | None = Field(
+        None,
+        description=(
+            "Provider name exactly as shown in the catalog "
+            "(e.g. 'Anthropic', 'AWS', 'Google Cloud', 'Microsoft')."
+        ),
+    )
+    cert_level: str | None = Field(
+        None,
+        description="Level: foundational | associate | professional.",
+    )
+    cert_requires_coding: bool | None = Field(
+        None,
+        description="True if a coding background is required, false otherwise.",
+    )
+
 
 class AdvisorResponse(BaseModel):
     """What the API route returns to the caller."""
@@ -135,6 +162,14 @@ class AdvisorResponse(BaseModel):
     advisor_response_id: str
     goal_id: str
     recommendation: AdvisorOutput
+    is_new_certification: bool = Field(
+        False,
+        description=(
+            "True when the recommended certification was not previously in the "
+            "catalog and has been auto-created from the LLM's metadata. "
+            "The frontend uses this to show an informational notice."
+        ),
+    )
 
 
 # ── Certification goal ────────────────────────────────────────────────────────

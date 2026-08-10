@@ -14,7 +14,7 @@ Step 5.2 — Auth applied:
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -139,6 +139,7 @@ async def run_certification_advisor(
         r = await db.execute(select(Certification).where(Certification.code == code))
         return r.scalar_one_or_none()
 
+    is_new_certification = False
     recommended_cert = await _find_cert(recommendation.primary_recommendation_code)
     if recommended_cert is None and recommendation.alternative_code:
         recommended_cert = await _find_cert(recommendation.alternative_code)
@@ -152,14 +153,56 @@ async def run_certification_advisor(
             })
 
     if recommended_cert is None:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"The recommendation engine could not match a certification from "
-                f"the catalog (returned '{recommendation.primary_recommendation_code}'). "
-                f"Please try again — adjusting your answers may help."
-            ),
+        # The LLM recommended a cert not yet in our catalog.
+        # Auto-create it from the metadata fields the model must always return
+        # (cert_full_name, cert_provider_name, cert_level, cert_requires_coding).
+        # This lets the flow succeed and surfaces the new cert to the user
+        # rather than erroring — they see an informational notice in the UI.
+        if not (
+            recommendation.cert_full_name
+            and recommendation.cert_provider_name
+            and recommendation.cert_level is not None
+            and recommendation.cert_requires_coding is not None
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"The recommendation engine returned an unrecognised certification "
+                    f"code ('{recommendation.primary_recommendation_code}') and did not "
+                    f"provide enough metadata to add it automatically. "
+                    f"Please try again — rephrasing your answers may help."
+                ),
+            )
+
+        # Find or create the provider
+        prov_result = await db.execute(
+            select(CertificationProvider).where(
+                CertificationProvider.name == recommendation.cert_provider_name
+            )
         )
+        provider = prov_result.scalar_one_or_none()
+        if provider is None:
+            provider = CertificationProvider(
+                id=str(uuid.uuid4()),
+                name=recommendation.cert_provider_name,
+            )
+            db.add(provider)
+            await db.flush()
+
+        # Create the new certification row
+        recommended_cert = Certification(
+            id=str(uuid.uuid4()),
+            provider_id=provider.id,
+            code=recommendation.primary_recommendation_code,
+            name=recommendation.cert_full_name,
+            level=recommendation.cert_level,
+            requires_coding_background=recommendation.cert_requires_coding,
+            is_active=True,
+            last_verified_at=date.today(),
+        )
+        db.add(recommended_cert)
+        await db.flush()
+        is_new_certification = True
 
     # Check if practitioner has an active profile to link the goal
     profile_result = await db.execute(
@@ -187,6 +230,7 @@ async def run_certification_advisor(
         advisor_response_id=response_id,
         goal_id=goal_id,
         recommendation=recommendation,
+        is_new_certification=is_new_certification,
     )
 
 
