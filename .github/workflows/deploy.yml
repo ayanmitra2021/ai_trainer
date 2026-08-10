@@ -62,10 +62,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Configure git identity
+      - name: Configure git identity and credentials
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          # Inject GITHUB_TOKEN into the remote URL so that gh-pages (npx gh-pages)
+          # can push the built dist/ folder to the gh-pages branch without prompting
+          # for credentials (non-interactive runners have no tty for a password prompt).
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
 
       - name: Run deployment pipeline
         run: |
