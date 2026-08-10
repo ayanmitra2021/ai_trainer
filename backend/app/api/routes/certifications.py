@@ -21,12 +21,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.agents.model_client import create_model_client
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
     require_any_authenticated,
 )
-from app.config import settings
 from app.db.models import (
     Certification,
     CertificationAdvisorResponse,
@@ -109,7 +109,6 @@ async def run_certification_advisor(
 
     from app.agents.certification_advisor import CertificationAdvisorAgent
     from app.agents.certification_advisor import CertificationAdvisorInput
-    import anthropic as anthropic_lib
 
     agent_input = CertificationAdvisorInput(
         practitioner_id=body.practitioner_id,
@@ -117,8 +116,7 @@ async def run_certification_advisor(
         catalog=catalog,
     )
 
-    anthropic_client = anthropic_lib.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    agent = CertificationAdvisorAgent(client=anthropic_client, db_session=db)
+    agent = CertificationAdvisorAgent(client=create_model_client(), db_session=db)
     recommendation: AdvisorOutput = await agent.run(agent_input)
 
     response_id = str(uuid.uuid4())
