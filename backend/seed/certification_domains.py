@@ -1,4 +1,4 @@
-"""Certification exam domains seed data — Phase 10.1 bootstrap.
+"""Certification exam domains seed data — Phase 10.1 bootstrap (updated Phase 10.2).
 
 Usage (called automatically from seed.generate):
     from seed.certification_domains import seed_certification_domains
@@ -8,34 +8,42 @@ This module is the **bootstrap seed** — it populates the first version of exam
 domain data for every active certification.  All ten certifications have been
 verified against their official exam guide PDFs (see inline # Source: comments).
 
-⚠️  DESIGN NOTE — Step 10.2 introduces versioning:
-    From Step 10.2 onward, every domain row belongs to a
-    `certification_domain_versions` record (version_label = BOOTSTRAP_VERSION_LABEL
-    on first run).  A practitioner profile's `domain_version_id` is frozen at
+Phase 10.2 versioning strategy:
+    From Step 10.2 onward every domain row belongs to a
+    ``CertificationDomainVersion`` record (version_label = BOOTSTRAP_VERSION_LABEL
+    on first run).  A practitioner profile's ``domain_version_id`` is frozen at
     lock time, so admin refreshes never retroactively shift existing scores.
-    The Step 10.2 migration updates this seeder to create version rows and sets
-    `domain_version_id` on each CertificationDomain.  Until then this function
-    uses the simpler clear-then-insert strategy.
+
+    This seeder is idempotent under versioning:
+    - If a bootstrap version already exists for a cert, it is reused.
+    - Domain rows are only inserted if none yet exist for that (cert, version).
+    - Existing domain rows are NEVER deleted — profiles may reference them via
+      their frozen ``domain_version_id``.
 
 ⚠️  KEEPING DATA CURRENT:
     From Step 10.3 onward the Cert Domain Discovery Agent handles refreshes —
     no need to edit this file when an exam is revised.  For the period between
     Step 10.1 and Step 10.3, re-run verification manually if a cert's
-    `last_verified_at` is more than 3 months old.
+    ``last_verified_at`` is more than 3 months old.
 """
 
 import uuid
 
-from sqlalchemy import delete, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Certification, CertificationDomain
+from app.db.models import Certification, CertificationDomain, CertificationDomainVersion
 
 # The version label applied to every domain row created by this seeder.
-# Step 10.2 imports this constant when it creates the bootstrap
+# The Step 10.2 migration imports this constant when it creates the bootstrap
 # certification_domain_versions row — do not change the value without also
-# updating the Step 10.2 migration.
+# updating the 013_domain_versioning migration.
 BOOTSTRAP_VERSION_LABEL = "bootstrap-step-10.1"
+
+_BOOTSTRAP_SOURCE_NOTES = (
+    "Bootstrap seed from Phase 10.1 certification exam guides.  "
+    "Verified against official exam guide PDFs at Step 10.1 time."
+)
 
 
 # ── Domain definitions ────────────────────────────────────────────────────────
@@ -697,17 +705,18 @@ DOMAINS_BY_CERT_CODE: dict[str, list[dict]] = {
 async def seed_certification_domains(session: AsyncSession) -> None:
     """Seed bootstrap certification domain rows for every active cert.
 
-    Strategy (pre-Step-10.2): clear any existing domain rows for each cert and
-    re-insert from DOMAINS_BY_CERT_CODE.  This is safe at bootstrap time
-    because no practitioner profiles yet reference domain rows via
-    domain_version_id.
+    Phase 10.2 versioned strategy (idempotent):
+    - For each cert in DOMAINS_BY_CERT_CODE:
+      1. Look up the cert's bootstrap CertificationDomainVersion row.
+         - If it already exists, reuse it.
+         - If not, create one (is_current=True, version_label=BOOTSTRAP_VERSION_LABEL).
+      2. Count existing CertificationDomain rows for (cert_id, version_id).
+         - If any exist, skip (already seeded for this version).
+         - If none exist, insert domain rows with domain_version_id set.
 
-    ⚠️  Step 10.2 changes this function:  once CertificationDomainVersion and
-    the domain_version_id FK exist, this function must NOT delete existing
-    domain rows (profiles may reference them).  It will instead check for an
-    existing bootstrap version and create one only if absent, then set
-    domain_version_id on each inserted row.  The updated logic lives in the
-    Step 10.2 migration and will replace the delete+insert block below.
+    Existing domain rows are NEVER deleted.  Once a practitioner profile
+    references a version via its frozen ``domain_version_id``, deleting domain
+    rows for that version would break historical scoring.
 
     Certs not in DOMAINS_BY_CERT_CODE are skipped silently.
     """
@@ -731,22 +740,53 @@ async def seed_certification_domains(session: AsyncSession) -> None:
         if cert_id is None:
             continue  # cert not in DB or not active
 
-        # ⚠️  Step 10.2: replace this delete+insert block with versioned inserts.
-        # After Step 10.2 migration runs, domain rows carry a domain_version_id
-        # FK and must never be deleted once profiles reference them.
-        await session.execute(
-            delete(CertificationDomain).where(
-                CertificationDomain.certification_id == cert_id
+        # ── Step 1: resolve or create the bootstrap version row ───────────────
+        version_result = await session.execute(
+            select(CertificationDomainVersion.id).where(
+                CertificationDomainVersion.certification_id == cert_id,
+                CertificationDomainVersion.version_label == BOOTSTRAP_VERSION_LABEL,
             )
         )
+        existing_version_id = version_result.scalar_one_or_none()
 
-        # Insert bootstrap domain rows.
-        # Step 10.2 will also set domain_version_id on each row; leave that
-        # column absent here — it is nullable until the migration runs.
+        if existing_version_id:
+            version_id = existing_version_id
+        else:
+            version = CertificationDomainVersion(
+                id=str(uuid.uuid4()),
+                certification_id=cert_id,
+                version_label=BOOTSTRAP_VERSION_LABEL,
+                is_current=True,
+                source_notes=_BOOTSTRAP_SOURCE_NOTES,
+                agent_run_id=None,
+                created_by_admin_id=None,
+            )
+            session.add(version)
+            await session.flush()  # materialise the ID before FK references
+            version_id = version.id
+            print(f"  [{code}] created bootstrap version row ({BOOTSTRAP_VERSION_LABEL})")
+
+        # ── Step 2: insert domain rows if absent for this version ─────────────
+        count_result = await session.execute(
+            select(func.count()).where(
+                CertificationDomain.certification_id == cert_id,
+                CertificationDomain.domain_version_id == version_id,
+            )
+        )
+        existing_count = count_result.scalar_one()
+
+        if existing_count > 0:
+            print(
+                f"  [{code}] {existing_count} domain rows already linked to "
+                f"bootstrap version; skipping insert."
+            )
+            continue
+
         for domain_spec in domains:
             domain = CertificationDomain(
                 id=str(uuid.uuid4()),
                 certification_id=cert_id,
+                domain_version_id=version_id,
                 domain_name=domain_spec["domain_name"],
                 domain_description=domain_spec["domain_description"],
                 weight_pct=domain_spec["weight_pct"],
@@ -756,6 +796,9 @@ async def seed_certification_domains(session: AsyncSession) -> None:
 
         domain_count = len(domains)
         total_weight = sum(d["weight_pct"] for d in domains)
-        print(f"  [{code}] seeded {domain_count} domains (total weight: {total_weight}%)")
+        print(
+            f"  [{code}] seeded {domain_count} domains "
+            f"(total weight: {total_weight}%, version: {BOOTSTRAP_VERSION_LABEL})"
+        )
 
     await session.flush()

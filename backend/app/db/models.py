@@ -17,6 +17,10 @@ Phase 9.1: ``rollups`` table dropped — the Rollup model has been removed.
 
 Phase 10.1 tables: certification_domains, certification_domain_scores.
                Altered: items (certification_domain_id, is_cert_evaluated).
+
+Phase 10.2 tables: certification_domain_versions, certification_domain_proposals.
+               Altered: certification_domains (domain_version_id FK),
+                        practitioner_profiles (domain_version_id FK).
 """
 
 import uuid
@@ -426,6 +430,14 @@ class Certification(Base):
         cascade="all, delete-orphan",
         order_by="CertificationDomain.sequence_order",
     )
+    # Phase 10.2: version history for this cert's exam domain definitions
+    domain_versions: Mapped[list["CertificationDomainVersion"]] = relationship(
+        back_populates="certification", cascade="all, delete-orphan"
+    )
+    # Phase 10.2: domain refresh proposals produced by the Cert Domain Discovery Agent
+    domain_proposals: Mapped[list["CertificationDomainProposal"]] = relationship(
+        back_populates="certification", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         sa.CheckConstraint(
@@ -486,6 +498,12 @@ class CertificationDomain(Base):
 
     ``sequence_order`` matches the official exam guide numbering (Domain 1,
     Domain 2, …) and is used for display ordering in the gap chart.
+
+    Phase 10.2: every row belongs to a ``CertificationDomainVersion``.  The
+    ``domain_version_id`` FK is nullable for rows that pre-date the 013
+    migration but is always set on rows written after that migration.  Rows are
+    never deleted once a profile references them via ``domain_version_id`` —
+    the FK ondelete=RESTRICT enforces this.
     """
 
     __tablename__ = "certification_domains"
@@ -495,6 +513,14 @@ class CertificationDomain(Base):
         sa.String(36),
         sa.ForeignKey("certifications.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    # Phase 10.2: which version snapshot this row belongs to.
+    # Nullable for rows that pre-date the 013 migration; always set for new rows.
+    domain_version_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certification_domain_versions.id", ondelete="RESTRICT"),
+        nullable=True,
         index=True,
     )
     domain_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
@@ -507,6 +533,9 @@ class CertificationDomain(Base):
     certification: Mapped["Certification"] = relationship(
         back_populates="domains"
     )
+    version: Mapped["CertificationDomainVersion | None"] = relationship(
+        back_populates="domains"
+    )
     domain_scores: Mapped[list["CertificationDomainScore"]] = relationship(
         back_populates="domain", cascade="all, delete-orphan"
     )
@@ -515,6 +544,180 @@ class CertificationDomain(Base):
         return (
             f"<CertificationDomain cert={self.certification_id!r} "
             f"name={self.domain_name!r} weight={self.weight_pct}%>"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 10.2 — Domain versioning tables
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+# ── certification_domain_versions ─────────────────────────────────────────────
+
+class CertificationDomainVersion(Base):
+    """Snapshot of a certification's exam domain definitions — Phase 10.2.
+
+    Each set of official domain definitions for a certification is one version
+    row.  The bootstrap seed (Step 10.1) creates version 1; admin-triggered
+    refreshes via the Cert Domain Discovery Agent (Step 10.3) create new
+    versions.
+
+    Partial unique index on (certification_id) WHERE is_current = true enforces
+    that at most one version per cert is the "live" version at any time.  On
+    Postgres (production + integration tests) this is a real partial index.
+    On SQLite (unit tests) the WHERE clause is silently dropped — unit tests do
+    not exercise multi-version scenarios so this is acceptable.
+
+    **Freeze semantics:** ``practitioner_profiles.domain_version_id`` is set at
+    profile-lock time (Step 10.5) to the then-current version.  A subsequent
+    admin refresh creates a new version; the practitioner's pinned version and
+    their domain scores are never retroactively changed.
+    """
+
+    __tablename__ = "certification_domain_versions"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    certification_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certifications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # Human-readable label — e.g. "bootstrap-step-10.1" or "2025-Q1-refresh"
+    version_label: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # True = this is the active version for the cert (partial unique index enforces one per cert)
+    is_current: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=True, server_default=sa.text("true")
+    )
+    # Where the data came from: exam guide URL, agent confidence notes, or "bootstrap seed"
+    source_notes: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    # null for bootstrap seed; set when an agent-driven refresh produced this version
+    agent_run_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("agent_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    # null for bootstrap seed; set for admin-triggered refreshes
+    created_by_admin_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("admin_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        default=_now_utc,
+        nullable=False,
+    )
+
+    certification: Mapped["Certification"] = relationship(
+        back_populates="domain_versions"
+    )
+    domains: Mapped[list["CertificationDomain"]] = relationship(
+        back_populates="version"
+    )
+    # Profiles that were locked against this version
+    locked_profiles: Mapped[list["PractitionerProfile"]] = relationship(
+        back_populates="domain_version",
+        foreign_keys="PractitionerProfile.domain_version_id",
+    )
+
+    __table_args__ = (
+        # Partial unique index: at most one row per cert may have is_current=True.
+        # On Postgres this creates a proper partial index; on SQLite the WHERE
+        # clause is dropped (creating a regular unique index on certification_id,
+        # which is acceptable since unit tests don't create multiple versions).
+        sa.Index(
+            "uq_cert_domain_versions_current_per_cert",
+            "certification_id",
+            unique=True,
+            postgresql_where=sa.text("is_current = true"),
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CertificationDomainVersion id={self.id!r} "
+            f"cert={self.certification_id!r} label={self.version_label!r} "
+            f"current={self.is_current}>"
+        )
+
+
+# ── certification_domain_proposals ────────────────────────────────────────────
+
+class CertificationDomainProposal(Base):
+    """Pending domain refresh proposal from the Cert Domain Discovery Agent — Phase 10.2/10.3.
+
+    Each row represents one agent run's output for one certification, awaiting
+    admin review.  Approved proposals become new ``CertificationDomainVersion``
+    rows plus fresh ``CertificationDomain`` rows; rejected proposals are
+    archived with a rejection reason.
+
+    When ``certification_id`` is null the agent is proposing a brand-new
+    certification not yet in the catalog.  Approving such a proposal creates a
+    ``Certification`` row with ``is_active = false`` for separate admin
+    activation.
+    """
+
+    __tablename__ = "certification_domain_proposals"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    # null when proposing a brand-new cert not yet in certifications
+    certification_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certifications.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Always set — even when certification_id is null
+    cert_code: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    cert_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # JSONB: list of {sequence_order, domain_name, domain_description, weight_pct}
+    proposed_domains: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
+    # Agent's explanation of where data was found and confidence level
+    source_notes: Mapped[str] = mapped_column(sa.Text, nullable=False, default="")
+    # The agent_runs row that produced this proposal
+    agent_run_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("agent_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # pending_review | approved | rejected
+    status: Mapped[str] = mapped_column(
+        sa.String(20), nullable=False, default="pending_review"
+    )
+    reviewed_by_admin_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("admin_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    rejection_notes: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        default=_now_utc,
+        nullable=False,
+    )
+
+    certification: Mapped["Certification | None"] = relationship(
+        back_populates="domain_proposals"
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "status IN ('pending_review','approved','rejected')",
+            name="ck_cert_domain_proposals_status",
+        ),
+        sa.Index("ix_cert_domain_proposals_status", "status"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CertificationDomainProposal id={self.id!r} "
+            f"cert_code={self.cert_code!r} status={self.status!r}>"
         )
 
 
@@ -1324,6 +1527,18 @@ class PractitionerProfile(Base):
         sa.ForeignKey("certifications.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Phase 10.2: frozen at profile-lock time (Step 10.5) to the then-current
+    # domain version for the chosen certification.  All domain scoring for this
+    # profile — initial self-assessment estimates and quiz-derived scores —
+    # uses certification_domains rows filtered to this version.  A subsequent
+    # admin refresh never retroactively shifts this practitioner's baseline.
+    # Null for profiles created before Step 10.5 runs.
+    domain_version_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certification_domain_versions.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
     # Verbatim questionnaire snapshot at save time
     # Use sa.JSON for cross-database compatibility (JSONB is Postgres-only but the
     # migration uses JSONB directly for the DDL — sa.JSON just handles the Python side)
@@ -1343,6 +1558,10 @@ class PractitionerProfile(Base):
 
     practitioner: Mapped["Practitioner"] = relationship(back_populates="profiles")
     certification: Mapped["Certification | None"] = relationship()
+    domain_version: Mapped["CertificationDomainVersion | None"] = relationship(
+        back_populates="locked_profiles",
+        foreign_keys=[domain_version_id],
+    )
     skill_assessments: Mapped[list["ProfileSkillAssessment"]] = relationship(
         back_populates="profile", cascade="all, delete-orphan"
     )

@@ -92,7 +92,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 **Phase 10 — Certification-Domain Alignment & Mastery Refinements**
 - [x] 10.1 Certification exam domains data model & seed data 👤
-- [ ] 10.2 Domain versioning data model — live-refreshable domain versions
+- [x] 10.2 Domain versioning data model — live-refreshable domain versions
 - [ ] 10.3 Cert Domain Discovery Agent — LLM-driven exam domain research & refresh 👤
 - [ ] 10.4 Admin "Refresh Certification Domains" UI
 - [ ] 10.5 Domain Scorer Agent — self-assessment → initial domain scores

@@ -116,3 +116,8 @@ app.include_router(profiles.router, prefix="/api/v1")
 from app.api.routes import nudges as nudge_routes
 
 app.include_router(nudge_routes.router, prefix="/api/v1")
+
+# ── Phase 10.2 routes ─────────────────────────────────────────────────────────
+from app.api.routes import cert_domain_versions
+
+app.include_router(cert_domain_versions.router, prefix="/api/v1")
