@@ -220,25 +220,8 @@ export interface Nudge {
   composer_reasoning?: string;
 }
 
-export interface Rollup {
-  id: string;
-  scope: "team" | "practice";
-  scope_ref: string;
-  period_start: string;
-  period_end: string;
-  metrics?: Record<string, unknown>;
-  narrative?: string;
-  min_cohort_size_met: boolean;
-  created_at: string;
-}
-
-export interface NightlyPulseRequest {
-  practitioner_ids: string[];
-  scope: string;
-  scope_ref: string;
-  period_start: string;
-  period_end: string;
-}
+// Phase 9.1: Rollup interface removed — rollups table dropped.
+// Phase 9.1: NightlyPulseRequest interface removed — nightly_pulse workflow stubbed.
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 

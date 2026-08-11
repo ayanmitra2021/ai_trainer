@@ -20,7 +20,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AdminUser, Attempt, Item, Nudge, Practitioner, Rollup
+from app.db.models import AdminUser, Attempt, Item, Nudge, Practitioner
 from app.db.models import Session as SessionModel
 from app.db.session import get_db
 from app.main import app
@@ -250,31 +250,21 @@ class TestLeadershipAdminAccess:
             f"Expected 403 for leadership accessing individual attempt, got {resp.status_code}"
         )
 
-    async def test_leadership_can_view_rollups(
+    async def test_leadership_rollups_endpoint_returns_404_phase91(
         self,
         db_session: AsyncSession,
         auth_client: AsyncClient,
     ):
         """
-        Scenario: A leadership admin CAN view rollups.
-          Given a rollup with min_cohort_size_met=True and a leadership session
+        Scenario (Phase 9.1): GET /rollups returns 404 — rollups removed.
+          Given a leadership session
           When GET /rollups is called
-          Then 200 is returned
+          Then 404 is returned (the endpoint no longer exists)
+
+        Replaces the pre-Phase-9.1 test that checked for 200 — rollups are gone.
         """
         # Given
         now = datetime.now(UTC)
-        rollup = Rollup(
-            id=str(uuid.uuid4()),
-            scope="team",
-            scope_ref="Platform Engineering",
-            period_start=now - timedelta(days=7),
-            period_end=now,
-            metrics={"avg_gap_score": 0.3},
-            narrative="The team is adopting well.",
-            min_cohort_size_met=True,
-            created_at=now,
-        )
-        db_session.add(rollup)
         leadership = await _create_admin(
             db_session, "leader2@test.example", "pass123", role="leadership"
         )
@@ -292,8 +282,11 @@ class TestLeadershipAdminAccess:
             cookies={"mastery_session": l_session.id},
         )
 
-        # Then
-        assert resp.status_code == 200, resp.text
+        # Then — 404, not 200 (rollups removed in Phase 9.1)
+        assert resp.status_code == 404, (
+            f"Expected 404 for /rollups after Phase 9.1 removal, got {resp.status_code}. "
+            f"Body: {resp.text}"
+        )
 
 
 class TestAdminPasswordEnforcement:

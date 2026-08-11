@@ -1,20 +1,30 @@
-"""Step 3.6 — Pulse API scenarios.
+"""Step 3.6 / Phase 9.1 — Pulse API scenarios.
 
-Scenario: Approving a drafted nudge changes its status and sets the approval.
-Scenario: A rollup below the privacy floor is withheld by the API regardless of who's asking.
+Phase 9.1 changes:
+  - Removed: test_rollup_below_privacy_floor_has_null_metrics (rollups removed)
+  - Removed: small_rollup fixture (rollups table dropped)
+  - Added:   test_rollups_endpoint_returns_404 — /rollups no longer exists
+  - Added:   test_nightly_pulse_trigger_endpoint_returns_404 — POST /pulse/run removed
+
+Remaining scenarios:
+  Scenario: Approving a drafted nudge changes its status and sets sent_at.
+  Scenario: GET /rollups returns 404 — the endpoint has been removed (Phase 9.1).
+  Scenario: POST /pulse/run returns 404 — the endpoint has been removed (Phase 9.1).
+  Scenario: The admin-initiated nudge campaign workflow is unaffected — correlation
+            snapshots and nudge routes still operate correctly.
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Nudge, Practitioner, Rollup
+from app.db.models import Nudge, Practitioner
 from app.main import app
 
 
@@ -47,26 +57,6 @@ async def drafted_nudge(
     db_session.add(nudge)
     await db_session.flush()
     return nudge
-
-
-@pytest_asyncio.fixture
-async def small_rollup(db_session: AsyncSession) -> Rollup:
-    """Rollup below the minimum cohort size — metrics/narrative must be None."""
-    now = datetime.now(UTC)
-    rollup = Rollup(
-        id=str(uuid.uuid4()),
-        scope="team",
-        scope_ref="Small Team",
-        period_start=now - timedelta(days=7),
-        period_end=now,
-        metrics=None,
-        narrative=None,
-        min_cohort_size_met=False,
-        created_at=now,
-    )
-    db_session.add(rollup)
-    await db_session.flush()
-    return rollup
 
 
 @pytest_asyncio.fixture
@@ -137,7 +127,6 @@ class TestPulseApiScenarios:
     ):
         """
         Scenario: Approving an already-sent nudge returns a conflict error.
-          (Edge-case: idempotency is NOT guaranteed — approving twice is an error.)
           Given a nudge that was already sent
           When POST /nudges/{id}/approve is called again
           Then the response is 409 Conflict
@@ -152,39 +141,72 @@ class TestPulseApiScenarios:
         # Then
         assert response.status_code == 409
 
-    async def test_rollup_below_privacy_floor_has_null_metrics(
+    # ── Phase 9.1 removal scenarios ───────────────────────────────────────────
+
+    async def test_rollups_endpoint_returns_404(
         self,
-        db_session: AsyncSession,
-        small_rollup: Rollup,
         http_client: AsyncClient,
     ):
         """
-        Scenario: A rollup below the privacy floor is withheld by the API.
-          Given a rollup with min_cohort_size_met=False
-          When GET /rollups/{id} is called
-          Then the response includes min_cohort_size_met=False
-          And metrics and narrative are null (not {} or empty string)
-          (The floor holds at the API layer — not just at generation time.)
+        Scenario (Phase 9.1): GET /rollups returns 404 after endpoint removal.
+          Given the rollups table has been dropped and the /rollups route removed
+          When GET /api/v1/rollups is called (even by an admin)
+          Then the response is 404 Not Found — the endpoint no longer exists
         """
-        # Given — rollup was already created with min_cohort_size_met=False
-        assert small_rollup.min_cohort_size_met is False
-        assert small_rollup.metrics is None
-        assert small_rollup.narrative is None
-
         # When
-        response = await http_client.get(f"/api/v1/rollups/{small_rollup.id}")
+        response = await http_client.get("/api/v1/rollups")
+
+        # Then — 404, not 200 or 403
+        assert response.status_code == 404, (
+            f"Expected 404 for /rollups after Phase 9.1 removal, got {response.status_code}. "
+            f"Body: {response.text}"
+        )
+
+    async def test_rollup_by_id_endpoint_returns_404(
+        self,
+        http_client: AsyncClient,
+    ):
+        """
+        Scenario (Phase 9.1): GET /rollups/{id} returns 404 after endpoint removal.
+          Given the /rollups route has been removed
+          When GET /api/v1/rollups/{some-id} is called
+          Then the response is 404 Not Found
+        """
+        # When — any UUID will do; the route itself doesn't exist
+        response = await http_client.get(f"/api/v1/rollups/{uuid.uuid4()}")
 
         # Then
-        assert response.status_code == 200
-        data = response.json()
-        assert data["min_cohort_size_met"] is False
-        # Metrics and narrative must be null — never empty dict or empty string
-        assert data["metrics"] is None, (
-            "metrics must be null when cohort is below the privacy floor — "
-            "not an empty dict or partial data"
+        assert response.status_code == 404, (
+            f"Expected 404 for /rollups/{{id}} after Phase 9.1 removal, got {response.status_code}"
         )
-        assert data["narrative"] is None, (
-            "narrative must be null when cohort is below the privacy floor"
+
+    async def test_nightly_pulse_trigger_endpoint_returns_404(
+        self,
+        http_client: AsyncClient,
+    ):
+        """
+        Scenario (Phase 9.1): POST /pulse/run returns 404 after endpoint removal.
+          Given the nightly_pulse trigger endpoint has been removed
+          When POST /api/v1/pulse/run is called (even by an admin)
+          Then the response is 404 Not Found — not a silent 200
+        """
+        # When
+        response = await http_client.post(
+            "/api/v1/pulse/run",
+            json={
+                "practitioner_ids": [],
+                "scope": "practice",
+                "scope_ref": "test",
+                "period_start": "2026-08-01",
+                "period_end": "2026-08-10",
+            },
+        )
+
+        # Then — 404, not 200 or 422
+        assert response.status_code == 404, (
+            f"Expected 404 for POST /pulse/run after Phase 9.1 removal, got {response.status_code}. "
+            f"The nightly_pulse trigger must not silently succeed — it should be gone. "
+            f"Body: {response.text}"
         )
 
     async def test_list_nudges_by_status_filter(

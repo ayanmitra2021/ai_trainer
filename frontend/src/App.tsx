@@ -3,7 +3,6 @@ import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useNavigate } fr
 import { SessionProvider, useSession } from "./context/SessionContext";
 import HomePage from "./pages/HomePage";
 import PractitionerPage from "./pages/PractitionerPage";
-import RollupsPage from "./pages/RollupsPage";
 import NudgesPage from "./pages/NudgesPage";
 import LoginPage from "./pages/LoginPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
@@ -64,9 +63,6 @@ function NavBar() {
         <>
           <NavLink to="/" end style={navLinkStyle}>
             Practitioners
-          </NavLink>
-          <NavLink to="/rollups" style={navLinkStyle}>
-            Rollups
           </NavLink>
           <NavLink to="/nudges" style={navLinkStyle}>
             Nudges
@@ -210,16 +206,6 @@ function AppRoutes() {
                 <PractitionerPage />
               </PortalLayout>
             </RequireAuth>
-          }
-        />
-        <Route
-          path="/rollups"
-          element={
-            <RequireAdmin>
-              <PortalLayout>
-                <RollupsPage />
-              </PortalLayout>
-            </RequireAdmin>
           }
         />
         <Route

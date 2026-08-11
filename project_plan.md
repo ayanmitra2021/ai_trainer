@@ -83,6 +83,15 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 8.5 Testing & validation
 - [x] 8.6 Documentation & migration guide
 
+**Phase 9 — Mastery Refinements: Quiz-Driven Radar, Profile Lockdown & Admin Simplification**
+- [x] 9.1 Remove Rollups & nightly auto-nudge pipeline
+- [ ] 9.2 Admin/Leadership practitioner view — Skill Radar only (read-only)
+- [ ] 9.3 Profile lockdown after first full submission
+- [ ] 9.4 Quiz-only mastery engine (Skill Radar driven solely by quiz answers)
+- [ ] 9.5 Progressive quiz-round scoring model (scores can rise AND fall)
+- [ ] 9.6 Auto-refresh quiz questions after round exhaustion
+- [ ] 9.7 Visual mastery trend indicators (↑ green / ↓ amber on radar + bar chart)
+
 ---
 
 # Phase 0 — Foundations
@@ -377,6 +386,8 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 
 ### Step 3.4 — Rollup Reporter Agent 👤
 
+> ⚠️ **Superseded by Phase 9.1.** This agent and the `rollups` table are removed in Step 9.1. The code exists in the repo but is no longer part of the active product. Do not extend this agent; do not add new routes that depend on it.
+
 **Goal:** aggregate, privacy-safe leadership rollups.
 **Preconditions:** 3.2.
 **Context to load:** `docs/architecture.md`, `docs/data-model.md`, `docs/human-in-the-loop.md`.
@@ -393,6 +404,8 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 ---
 
 ### Step 3.5 — Nightly Pulse orchestrator workflow
+
+> ⚠️ **Superseded by Phase 9.1.** The fully-automated nightly nudge + rollup pipeline is removed in Step 9.1. Correlation snapshots (Step 3.2) still exist and feed the admin-driven nudge campaign system (Phase 7), but there is no longer a scheduled nightly run that auto-generates nudges or rollups.
 
 **Goal:** wire 3.1 → 3.2 → 3.3 → 3.4 into the `nightly_pulse` workflow, routed through the Message Batches API (not latency-sensitive, and structured outputs are fully compatible with it at a 50% discount — see `docs/architecture.md`).
 **Preconditions:** 3.1–3.4.
@@ -495,6 +508,8 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 ---
 
 ### Step 4.6 — Leadership rollup view
+
+> ⚠️ **Superseded by Phase 9.1.** The rollup view is removed in Step 9.1. Leadership users no longer have a rollup dashboard. The `RollupView` component and its route are deleted as part of that step.
 
 **Goal:** display team/practice rollups.
 **Preconditions:** 4.1, 3.4.
@@ -740,6 +755,8 @@ This phase replaces the ad-hoc "generate a path" flow with a deliberate, multi-p
 
 ### Step 6.5 — Profile-linked skill assessment
 
+> ⚠️ **Modified by Phase 9.3 & 9.4.** After this step's skill-assessment save succeeds, the profile is permanently locked (Step 9.3). Additionally, the saved skill ratings are no longer piped into the Skill Profiler for radar computation (Step 9.4) — they are captured as part of the profile record but the Skill Radar is driven solely by quiz answers going forward.
+
 **Goal:** after the wizard commits a certification choice, present a skills table weighted toward that certification's skills and save the ratings against the profile.
 
 **Preconditions:** 6.4.
@@ -765,6 +782,8 @@ This phase replaces the ad-hoc "generate a path" flow with a deliberate, multi-p
 
 ### Step 6.6 — Profile management & activation
 
+> ⚠️ **Modified by Phase 9.3.** The "Edit" action on profile cards is replaced with a read-only "View" action in Step 9.3. Once a profile is locked (saved through the full wizard), it cannot be edited — only deleted or viewed. Creating a new profile is the only path to changing certification or questionnaire answers.
+
 **Goal:** complete the profile-switching experience — practitioners can activate any profile from the list, and the rest of the app (Skill Radar, Quiz) immediately reads from the newly active one.
 
 **Preconditions:** 6.5.
@@ -784,6 +803,8 @@ This phase replaces the ad-hoc "generate a path" flow with a deliberate, multi-p
 ---
 
 ### Step 6.7 — Skill Radar enhancements
+
+> ⚠️ **Modified by Phase 9.4.** The Skill Radar's mastery scores are driven exclusively by quiz answers after Step 9.4. Self-assessment signals from the profile are no longer reflected in the radar. A new empty-state message should explain this: "Take quizzes to see your skill levels populate." The guidance messages (< 40%, 40–69%, etc.) remain but are now entirely based on quiz-derived mastery.
 
 **Goal:** turn the Skill Radar tab into a clean, read-only dashboard that communicates certification progress and guides the practitioner toward their next action.
 
@@ -810,6 +831,8 @@ This phase replaces the ad-hoc "generate a path" flow with a deliberate, multi-p
 ---
 
 ### Step 6.8 — Quiz profile-awareness & navigation fix
+
+> ⚠️ **Extended by Phase 9.5 & 9.6.** The quiz question ordering established here is extended in Steps 9.5–9.6: mastery now follows a progressive round-based scoring ceiling, and exhausted question sets are automatically refreshed with a new generation of items.
 
 **Goal:** quiz questions are drawn from the active profile's certification-relevant skills first; the Next button reliably advances to the next unanswered question.
 
@@ -1297,3 +1320,301 @@ The following test scenarios must be added/modified across the test suite:
 
 7. **Frontend Tests** (no changes needed):
    - Frontend is provider-agnostic; no test modifications required
+
+---
+
+# Phase 9 — Mastery Refinements: Quiz-Driven Radar, Profile Lockdown & Admin Simplification
+
+This phase tightens the product around three principles:
+1. **Profile immutability** — a submitted profile is a permanent record; to change course, create a new one.
+2. **Quiz-first mastery** — the Skill Radar reflects only what the practitioner has demonstrated through answers, not what they claimed in a self-assessment.
+3. **Progressive difficulty** — mastery cannot reach 100% from a single round of questions; it must be earned across multiple rounds, preventing trivially saturated radars.
+4. **Focused admin view** — when leadership or admins look at a practitioner, they see one thing: the Skill Radar.
+5. **Leaner signal loop** — the automated nightly nudge pipeline and leadership rollup reports are removed; the admin campaign nudge system (Phase 7) remains.
+
+---
+
+### Step 9.1 — Remove Rollups & nightly auto-nudge pipeline
+
+**Goal:** strip out the two pieces of functionality the product no longer needs: aggregated leadership rollup reports and the fully-automated nightly nudge generation. The admin-driven nudge campaign system (Phase 7) stays intact; only the autopilot path is removed.
+
+**Preconditions:** 8.6 (all existing functionality operational).
+**Context to load:** `docs/architecture.md` (Agent inventory + Nightly Pulse sections), `docs/data-model.md` (rollups table).
+
+**Build:**
+
+*Backend:*
+- Archive `backend/app/agents/rollup_reporter.py` and `prompts/rollup_reporter.md` (move to `backend/app/agents/_deprecated/` so the history is clear).
+- Write and apply a migration that drops the `rollups` table. Verify no FK constraints from other tables point to it.
+- Archive or stub `backend/app/workflows/nightly_pulse.py` — replace its body with a single `raise NotImplementedError("nightly_pulse removed in Phase 9.1")` so any accidental trigger surfaces clearly rather than silently doing nothing.
+- Remove all API routes that served rollup data (`GET /rollups/`, any rollup-scoped endpoints in `api/routes/`).
+- Update `workflow_runs.workflow_name` enum to remove `nightly_pulse` (or keep as a legacy value with no active code path — document the choice in the migration comment).
+- The Correlation Agent (Step 3.2) and `correlation_snapshots` table remain — they feed the Nudge Category Generator (Phase 7). Only the nightly auto-nudge path (Nudge Composer triggered on a schedule) is removed.
+- Update `docs/architecture.md` "What each role can see" table — remove rollup rows from Leadership and Admin; update the workflow list to remove `nightly_pulse`.
+
+*Frontend:*
+- Delete `frontend/src/components/RollupView/` and any routes pointing to it.
+- Remove the "Rollups" / "Team rollups" nav link from Leadership sessions.
+- If any Leadership landing page defaulted to the rollup view, redirect Leadership users to the Nudges sent-history panel (`/nudges`) instead.
+
+**Scenario tests:**
+- *A `GET /rollups/` request returns 404 after removal.*
+- *Calling the `nightly_pulse` workflow (if an endpoint existed) returns a clear error, not a silent 200.*
+- *The admin-initiated nudge campaign workflow still completes correctly end-to-end — Correlation Agent and nudge campaign path are unaffected.*
+
+**Definition of done:** all three pass; `rollups` table is absent from the schema; rollup-related frontend components are deleted; `docs/architecture.md` reflects the new role table.
+
+---
+
+### Step 9.2 — Admin/Leadership practitioner view — Skill Radar only (read-only)
+
+**Goal:** when an Admin user selects a practitioner to view, they see exactly one tab — the Skill Radar — and all interactive controls are absent. The profile details are surfaced as a compact read-only panel alongside the radar.
+
+**Preconditions:** 9.1.
+**Context to load:** `docs/architecture.md` (Auth — What each role can see).
+
+**Build:**
+
+*Frontend — Admin practitioner view (`/admin/practitioners/:id`):*
+- Renders only the Skill Radar component from Step 6.7, scoped to the selected practitioner.
+- **Tab strip**: a single tab "Skill Radar". Quiz, Adoption Trends, Nudge Inbox, Certifications tabs are not rendered for this view. There is no tab switcher — just the radar.
+- **Interactive controls hidden**: "Regenerate path" button is not shown (admins cannot trigger profiler runs on behalf of another practitioner). "Edit profile →" link is absent. There is no self-assessment toggle.
+- **Read-only profile panel** (sidebar or header strip, not a tab): shows practitioner name, active profile name, chosen certification (code + full name), and the date the profile was last saved — all plain text, no action buttons.
+- Admin navigation: `GET /admin/practitioners` list page already exists; each row/card links to this dedicated view (`/admin/practitioners/:id`).
+- Leadership sessions follow the same view — they can navigate to the same practitioner radar view.
+
+*Backend:*
+- Existing routes (`GET /practitioners/{id}/skill-profile`, `GET /practitioners/{id}/profiles`) already require `require_admin` or `require_admin_or_leadership`. No new routes needed.
+- Verify that `GET /practitioners/{id}/profiles/{profile_id}` returns the `is_locked` field so the frontend can confirm it (already true after Step 9.3, but include the field now for consistency).
+
+**Scenario tests (Playwright):**
+- *An admin who navigates to `/admin/practitioners/:id` sees exactly one tab labelled "Skill Radar" and no other tabs.*
+- *The Skill Radar tab for an admin-viewed practitioner has no "Regenerate path" button and no "Edit profile" link.*
+- *The read-only profile panel shows the practitioner's certification code and profile name as plain text.*
+
+**Definition of done:** all three pass.
+
+---
+
+### Step 9.3 — Profile lockdown after first full submission
+
+**Goal:** once a practitioner completes the full profile wizard (questionnaire → certification → skill ratings → save), the profile is permanently locked. They can view it, activate/deactivate it, or delete it — but they cannot edit the questionnaire answers, change the certification, or re-rate the skills on that profile. To change direction, they create a new profile.
+
+**Preconditions:** 9.2.
+**Context to load:** `docs/data-model.md` (practitioner_profiles table), Step 6.5 for the save endpoint.
+
+**Build:**
+
+*Backend:*
+- New migration: add `is_locked` (boolean, default `false`, non-nullable) to `practitioner_profiles`.
+- In `POST /practitioners/{id}/profiles/{profile_id}/skill-assessments` (the final wizard step): after successfully writing all skill rows, immediately set `is_locked = true` on the profile within the same transaction. This is the lock trigger — saving skill ratings is the definitional "done" moment for a profile.
+- `PATCH /practitioners/{id}/profiles/{profile_id}`: if `is_locked = true`, return `HTTP 403` with body `{"detail": "Profile is locked and cannot be edited. Create a new profile to make changes."}`.
+- `POST /practitioners/{id}/profiles/{profile_id}/skill-assessments`: if `is_locked = true`, return `HTTP 403` with the same message. (Prevents a second save attempt after locking.)
+- `GET /practitioners/{id}/profiles` and `GET /practitioners/{id}/profiles/{profile_id}`: expose `is_locked` in the response body.
+- `PATCH /practitioners/{id}/profiles/{profile_id}/activate` and `DELETE /practitioners/{id}/profiles/{profile_id}`: unaffected by `is_locked` — practitioners can still activate or delete locked profiles.
+- The `PATCH /auth/me` active-profile response (added in Step 6.6): include `is_locked` so the frontend can gate controls without an extra round-trip.
+
+*Frontend:*
+- `BuildProfilePage`: for profiles where `is_locked = true`, replace the "Edit" card action with a "View" button that opens a non-editable summary modal or navigates to a read-only profile detail page.
+- `ProfileWizard` (Step 6.4): on entry via a wizard URL that carries a `profile_id`, check `is_locked`; if true, redirect immediately to `BuildProfilePage` with a toast: `"This profile is locked. Create a new profile to make changes."`
+- `ProfileSkillAssessmentPage` (Step 6.5): if `is_locked = true`, render all skill sliders/pickers as `disabled` and show a banner at the top: `"This profile is saved and locked. Your skill ratings cannot be changed."`
+- "Delete" action: remains available regardless of lock state. (Practitioners can delete a locked profile; they just cannot edit it.)
+- "New profile" CTA on `BuildProfilePage` and the banner message in the locked state both link clearly to starting the wizard fresh.
+
+**Scenario tests:**
+- *Completing the full wizard (questionnaire + certification + skills) locks the profile — a subsequent `PATCH /practitioners/{id}/profiles/{profile_id}` request returns 403.*
+- *A locked profile card on `BuildProfilePage` shows "View" in place of "Edit".*
+- *Navigating to the wizard URL for a locked profile redirects to `BuildProfilePage` with a "locked" toast rather than showing the editable wizard step.*
+
+**Definition of done:** all three pass; migration runs cleanly; no existing scenario tests (for unlocked flows) are broken.
+
+---
+
+### Step 9.4 — Quiz-only mastery engine
+
+**Goal:** `skill_profile_snapshots` are computed exclusively from quiz-attempt signals. Self-assessment ratings stored in `profile_skill_assessments`, certification completion signals, and project-history events no longer contribute to the radar. The initial profile self-assessment is preserved in the DB as part of the locked profile record, but is not passed to the Skill Profiler.
+
+**Preconditions:** 9.3.
+**Context to load:** `docs/architecture.md` (Skill Profiler agent entry), `docs/data-model.md` (skill_profile_events, profile_skill_assessments).
+
+**Design note — starting state:**
+- A new practitioner who has just locked their first profile will have all mastery scores at 0% until they answer quiz questions. This is intentional.
+- The Skill Radar empty state (Step 6.7) should be updated to say: *"Your radar starts at zero and grows as you answer quiz questions. Click "Regenerate path" after each quiz session to update it."*
+- "Regenerate path" remains the manual trigger — there is no background re-profiling.
+
+**Build:**
+
+*Backend:*
+- In `backend/app/workflows/generate_learning_path.py` (the workflow that calls the Skill Profiler): change the query that assembles profiler input to filter `skill_profile_events` to `source = 'quiz_attempt'` only. Remove the code that fetches `profile_skill_assessments` rows and merges them in.
+- In `backend/app/agents/skill_profiler.py`: remove the `self_assessment_ratings` input field from `SkillProfilerInput` (or mark it as deprecated/unused); the profiler now receives only quiz-attempt events.
+- Update `prompts/skill_profiler.md`: remove all references to self-assessment or certification signals. The prompt now reads only quiz attempts (score, skill, item difficulty) and computes mastery from those alone.
+- The MCP `mcp-learning-portal` integration (certification completions from external portal) is also removed from the profiler's input construction — it was already degraded for NVIDIA in Phase 8; now it is removed for all providers, keeping the profiler's input contract clean.
+- `skill_profile_events` rows with `source IN ('self_assessment', 'certification', 'project_history')` remain in the database — they are not deleted — but they are simply not queried by the profiler workflow.
+
+*Frontend:*
+- `SkillRadar` (Step 6.7): update the empty-state copy: *"Your radar starts at zero. Answer quiz questions and click 'Regenerate path' to see your mastery levels fill in."*
+- Remove any remaining copy or tooltip that implies self-rating affects the radar scores.
+
+**Scenario tests:**
+- *A practitioner with a locked profile whose `profile_skill_assessments` show `signal_strength = 0.9` on skill X — and zero quiz attempts — has a mastery score of 0.0 on skill X after running the Skill Profiler.*
+- *After a practitioner submits a correct quiz answer for skill Y and clicks "Regenerate path", skill Y's mastery score increases above 0.*
+- *`skill_profile_events` rows with `source = 'self_assessment'` are present in the DB but do not change the snapshot when the profiler runs.*
+
+**Definition of done:** all three pass; `prompts/skill_profiler.md` contains no self-assessment or certification signal language.
+
+---
+
+### Step 9.5 — Progressive quiz-round scoring model
+
+**Goal:** a practitioner cannot achieve 100% mastery on a skill from a single set of quiz questions. Mastery rises progressively across multiple completed rounds, following a ceiling formula that guarantees meaningful effort is required to approach full mastery.
+
+**Preconditions:** 9.4.
+**Context to load:** `docs/data-model.md` (items, attempts tables), `backend/app/agents/skill_profiler.py`.
+
+**Design — round-based ceiling model:**
+
+A **round** is defined as: the practitioner has attempted every available item in the current generation for a skill at least once (see Step 9.6 for the generation concept). The mastery ceiling after N completed rounds follows:
+
+```
+ceiling(N) = 1 − (0.5)^N
+```
+
+| Rounds completed | Max mastery |
+|---|---|
+| 0 | 0% |
+| 1 | 50% |
+| 2 | 75% |
+| 3 | 87.5% |
+| 4 | 93.75% |
+| 5 | 96.875% |
+
+**Scoring model — ceiling × recency-weighted accuracy:**
+
+The actual mastery score = `ceiling(rounds_completed) × weighted_accuracy`, where `weighted_accuracy` weights recent rounds more heavily than earlier ones. This means **wrong answers in a later round lower the mastery score**, even when earlier rounds went well — a practitioner who cruised through round 1 then struggles in round 3 will see their radar drop.
+
+Weighting formula (recency-weighted average across all completed rounds):
+
+```
+weighted_accuracy = Σ (accuracy[i] × weight[i]) / Σ weight[i]
+weight[i] = 2^(i−1)          # round 1 has weight 1, round 2 has weight 2, round 3 has weight 4, …
+```
+
+Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → weighted accuracy ≈ 0.61 → ceiling(3) × 0.61 = 0.875 × 0.61 ≈ 53%. The bad round-3 performance tanks a score that was on track for 87%. That is intentional — it reflects actual current knowledge, not a historical peak.
+
+**There is no ratchet.** Mastery scores can and should go down when a practitioner performs poorly in a later round. A practitioner who was overconfident and fails round 3 deserves to see their radar decline. The ceiling itself never decreases (completing a round is permanent), but the actual score within that ceiling is always recomputed from the full weighted accuracy.
+
+**Build:**
+
+*Backend:*
+- New migration: add `generation` (integer, default 1, non-nullable) column to `items`. All existing items get `generation = 1`. When new items are generated for a skill (Step 9.6), they receive `generation = max(existing for that skill) + 1`.
+- New utility function `backend/app/agents/round_metrics.py` — `compute_round_metrics(practitioner_id: UUID, skill_id: UUID, db: AsyncSession) -> RoundMetrics`:
+  - Queries `attempts` joined to `items` for this practitioner and skill.
+  - Groups by `items.generation` to determine which rounds are fully completed (all items in that generation have at least one attempt).
+  - Computes `per_round_accuracy: list[float]` in generation order, then applies the recency-weighted formula.
+  - Returns: `rounds_completed: int`, `per_round_accuracy: list[float]`, `mastery_ceiling: float`, `weighted_accuracy: float`, `current_mastery_score: float`.
+- Update `generate_learning_path` workflow: after querying quiz-attempt events (Step 9.4), also call `compute_round_metrics` for each skill and pass the results to `SkillProfilerInput` as `quiz_round_metrics: list[RoundMetricsPerSkill]`.
+- Update `SkillProfilerInput` to include `quiz_round_metrics` alongside raw attempt events.
+- Update `prompts/skill_profiler.md` to instruct the agent to use `mastery_ceiling` and `current_mastery_score` from `quiz_round_metrics` as the primary mastery signal and to note that scores can decrease when recent round accuracy is poor.
+- Also return `previous_mastery_score` in `RoundMetrics` (the value from the previous `skill_profile_snapshots` row before this profiler run) so the API can expose the delta to the frontend for visual indicators (Step 9.7).
+
+**Scenario tests:**
+- *A practitioner who answers all generation-1 items for skill X with 100% accuracy achieves `current_mastery_score ≤ 0.50` — the round-1 ceiling is enforced.*
+- *A practitioner who completes rounds 1 and 2 with 100% accuracy achieves `current_mastery_score > 0.50` and `≤ 0.75`.*
+- *A practitioner whose round-3 accuracy is 40% (well below their round-1 and round-2 performance) achieves a `current_mastery_score` lower than their score after round 2 — incorrect answers in a recent round pull the score down.*
+
+**Definition of done:** all three pass; `generation` column exists in `items`; `compute_round_metrics` has its own unit test file; the third scenario explicitly confirms score reduction on a bad round.
+
+---
+
+### Step 9.6 — Auto-refresh quiz questions after round exhaustion
+
+**Goal:** when a practitioner has answered all available items for a skill, the system automatically generates a new set of questions (next generation) so the practitioner can continue progressing. The Quiz Runner surfaces a brief "round complete" moment before presenting the new items.
+
+**Preconditions:** 9.5.
+**Context to load:** `docs/architecture.md` (Item-Writer agent), `backend/app/agents/item_writer.py`.
+
+**Build:**
+
+*Backend:*
+- New helper `get_unanswered_items(practitioner_id: UUID, skill_id: UUID, db: AsyncSession) -> list[Item]`: returns items in the current (highest) generation for a skill that have zero attempts by this practitioner.
+- Update the quiz item endpoint (`GET /practitioners/{id}/quiz-items` or the existing skill-items route):
+  1. Call `get_unanswered_items(practitioner_id, skill_id)`.
+  2. If the result is non-empty: return those items normally with `generation_refreshed: false`.
+  3. If the result is empty (all current-generation items answered): trigger `ItemWriterAgent` synchronously to generate a new set for this skill with `generation = max_existing + 1`. Cap generation size via env var `QUIZ_ITEMS_PER_GENERATION` (default: 5). Return the new items with `generation_refreshed: true` and `new_generation: int`.
+- The Item-Writer prompt for refresh rounds should receive context that these are follow-up items (the agent already knows the skill; the new items should be harder or approach the topic from a different angle). Pass `is_refresh_round: true` and `prior_generation_count: int` to the agent input.
+- New `agent_runs` row is written for each Item-Writer call (existing behavior — no change needed).
+- Env var `QUIZ_ITEMS_PER_GENERATION` defaults to 5; document in `.env.example`.
+
+*Frontend:*
+- `QuizRunner` (Step 6.8): detect `generation_refreshed: true` in the endpoint response. When true, display a brief interstitial panel (1–2 seconds, or dismiss-on-click):
+  - Heading: **"Round complete! 🎯"**
+  - Sub-text: **"You've answered all available questions for this skill. New challenges are loading…"**
+  - After the interstitial, render the new items normally — the "Next" button logic continues as before.
+- Quiz tab skill selector: add a small indicator next to each skill showing the current round number: `"Round N"` (read from `new_generation` or derive from attempt counts). This gives practitioners a sense of progress without surfacing the ceiling formula itself.
+- Empty-state handling: if the Item-Writer call fails during auto-refresh, show a friendly error instead of crashing: *"Couldn't load new questions right now. Try clicking Regenerate path or refreshing the page."*
+
+**Scenario tests:**
+- *When a practitioner has answered all generation-1 items for skill X, the quiz endpoint returns generation-2 items with `generation_refreshed: true` — no error, no empty response.*
+- *The generation-2 items have different `id` values from the generation-1 items — they are new questions, not duplicates.*
+- *The `QuizRunner` displays the "Round complete" interstitial when `generation_refreshed = true` and then shows the new questions.*
+
+**Definition of done:** all three pass; `QUIZ_ITEMS_PER_GENERATION` is documented in `.env.example`; a failed Item-Writer call surfaces a user-facing error message rather than a crash.
+
+---
+
+### Step 9.7 — Visual mastery trend indicators (rising, falling, stable)
+
+**Goal:** every skill row in the Skill Radar and the skill-gap bar chart clearly shows whether that skill is trending up, down, or stable since the last profiler run — using color and directional labels so a practitioner immediately sees what is improving and what is declining.
+
+**Preconditions:** 9.6 (scoring model produces `current_mastery_score` and `previous_mastery_score`; `mastery_history` table contains the data to compute deltas).
+
+**Context to load:** Step 9.5 (delta computation), `frontend/src/components/SkillRadar/`, `frontend/src/components/TrendDashboard/`.
+
+**Design — three trend states per skill:**
+
+| State | Condition | Color | Label / Icon |
+|---|---|---|---|
+| Improving | `current > previous + 0.01` | Green | `↑ +X%` |
+| Declining | `current < previous − 0.01` | Amber/red | `↓ −X%` |
+| Stable | within ±0.01 of previous | Grey | `→ No change` |
+
+A ±1% dead-band prevents cosmetic noise from triggering indicators after rounding. The exact threshold (0.01) is a configuration constant, not a magic number.
+
+**Build:**
+
+*Backend:*
+- `GET /practitioners/{id}/skill-profile` response (or a new `GET /practitioners/{id}/skill-profile/deltas` endpoint — whichever the frontend already hits for radar data): extend the per-skill payload to include:
+  - `mastery_score`: float — current score (already present)
+  - `previous_mastery_score`: float | null — the second-most-recent `mastery_history` row for this skill, null if only one history row exists
+  - `mastery_delta`: float | null — `current − previous`, null when no previous
+  - `trend`: `"improving"` | `"declining"` | `"stable"` | `"new"` — computed server-side using the ±0.01 threshold; `"new"` when no `previous_mastery_score` exists
+- This computation is a lightweight SQL query over `mastery_history` — no LLM call.
+
+*Frontend — Skill Radar (`SkillRadar` component):*
+- Radar polygon: each axis / spoke uses the trend color for its label text and its filled data point:
+  - `improving` → green label and point
+  - `declining` → amber/red label and point
+  - `stable` → default theme color
+  - `new` → default theme color, no indicator (first time filling in)
+- Below or beside each axis label on the radar, show the delta tag: `↑ +12%` or `↓ −8%`. If the chart is too compact for per-axis labels, show the delta in a legend table below the chart instead — one row per skill.
+- The radar legend table (below the chart): columns: Skill name | Current | Change | Trend icon. Rows where trend = `declining` are highlighted with a subtle amber row background.
+
+*Frontend — Skill-gap bar chart (progress bars on the side panel, Step 6.7):*
+- Each bar now renders a **delta chip** to the right of the bar: `+12%` in green, `−8%` in red, or nothing when stable/new.
+- The bar fill color changes based on trend:
+  - `declining` bars use an amber/red fill instead of the default accent color.
+  - `improving` bars use a green fill (or a green overlay/stripe on top of the standard fill).
+  - `stable` and `new` bars keep the standard fill.
+- Tooltip on hover: shows the full detail — "Previous: 58% → Current: 50% (−8%) · Last updated: [date]".
+
+*Theme-awareness:*
+- All trend colors must work in both light and dark modes using CSS variables, not hardcoded hex values.
+- `--color-trend-up`: green token; `--color-trend-down`: amber/red token; `--color-trend-neutral`: muted text token.
+
+**Scenario tests (Playwright):**
+- *A practitioner whose mastery on skill X dropped from 70% to 55% after a bad quiz round sees an amber `↓ −15%` indicator on skill X's radar axis and bar — not the default color.*
+- *A practitioner whose mastery on skill Y rose from 40% to 58% sees a green `↑ +18%` indicator on skill Y.*
+- *A brand-new skill (first time appearing in the radar — no previous score) shows no trend indicator — only the current score.*
+- *In dark mode, trend colors remain readable (contrast ≥ 4.5:1 against the background).*
+
+**Definition of done:** all four pass; trend color tokens are defined as CSS variables; the delta chip in both the radar legend and the bar chart shows the correct sign, magnitude, and color in both light and dark mode.

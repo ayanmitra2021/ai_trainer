@@ -1,7 +1,12 @@
 """Pydantic schemas for the Adoption Pulse (Phase 3) agents and API.
 
-Covers: Usage-Signal, Correlation, Nudge Composer, Rollup Reporter agents,
-plus the API read schemas for nudges, correlation snapshots, and rollups.
+Phase 9.1: Rollup Reporter schemas and nightly_pulse workflow schemas removed.
+  Removed: PractitionerCorrelationSummary, RollupReporterInput, RollupMetrics,
+            RollupReporterOutput, RollupRead, NightlyPulseRequest,
+            PractitionerPulseResult, NightlyPulseResponse.
+
+Covers: Usage-Signal, Correlation, Nudge Composer agents,
+plus the API read schemas for nudges and correlation snapshots.
 """
 
 from __future__ import annotations
@@ -193,64 +198,10 @@ class NudgeComposerOutput(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Rollup Reporter Agent I/O  (Step 3.4)
+# Rollup Reporter Agent I/O  (Step 3.4) — REMOVED in Phase 9.1
 # ═══════════════════════════════════════════════════════════════════════════════
-
-
-class PractitionerCorrelationSummary(BaseModel):
-    """Anonymized per-practitioner summary — no individual identifying data."""
-
-    trained_skills_count: int
-    skills_with_gap_count: int
-    avg_trained_score: float
-    avg_adoption_score: float
-    avg_gap_score: float
-
-
-class RollupReporterInput(BaseModel):
-    """Input to the Rollup Reporter Agent.
-
-    Practitioner summaries are anonymized before being passed here — the agent
-    never receives a practitioner_id or name.
-    """
-
-    scope: str = Field(..., description="team | practice")
-    scope_ref: str
-    period_start: str  # ISO-8601
-    period_end: str  # ISO-8601
-    practitioner_count: int
-    practitioner_summaries: list[PractitionerCorrelationSummary]
-    min_cohort_size: int = Field(
-        ...,
-        description="Privacy threshold set in config — rollup is withheld if count < this",
-    )
-
-
-class RollupMetrics(BaseModel):
-    """Aggregate metrics — only populated when min_cohort_size_met is True."""
-
-    avg_gap_score: float
-    pct_with_adoption_gap: float = Field(..., description="0–1 fraction")
-    top_gap_skill_names: list[str] = Field(
-        default_factory=list,
-        description="Skill names most commonly showing adoption gaps (aggregated, not individual)",
-    )
-    adoption_trend: str = Field(
-        ..., description="improving | stable | declining — relative to prior period if available"
-    )
-
-
-class RollupReporterOutput(BaseModel):
-    """Structured output from the Rollup Reporter Agent."""
-
-    min_cohort_size_met: bool
-    # None when min_cohort_size_met is False — structural privacy gate
-    metrics: RollupMetrics | None = None
-    narrative: str | None = Field(
-        None,
-        description="Leadership-facing narrative summary; null when cohort too small",
-    )
-    reasoning: str
+# PractitionerCorrelationSummary, RollupReporterInput, RollupMetrics,
+# RollupReporterOutput are archived in agents/_deprecated/rollup_reporter.py.
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -303,47 +254,6 @@ class NudgeApproveRequest(BaseModel):
     pass  # no body needed — the action is implicit in the route
 
 
-class RollupRead(BaseModel):
-    id: str
-    scope: str
-    scope_ref: str
-    period_start: datetime
-    period_end: datetime
-    metrics: dict | None
-    narrative: str | None
-    min_cohort_size_met: bool
-    min_cohort_size: int
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Nightly Pulse workflow schemas
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-class NightlyPulseRequest(BaseModel):
-    """Trigger the nightly_pulse workflow via the API."""
-
-    practitioner_ids: list[str]
-    scope: str = Field("practice", description="team | practice")
-    scope_ref: str
-    period_start: str  # ISO-8601 date
-    period_end: str    # ISO-8601 date
-
-
-class PractitionerPulseResult(BaseModel):
-    practitioner_id: str
-    status: str  # success | error
-    error_message: str | None = None
-    usage_events_written: int = 0
-    correlation_snapshots_written: int = 0
-    nudge_drafted: bool = False
-
-
-class NightlyPulseResponse(BaseModel):
-    workflow_run_id: str
-    rollup_id: str | None
-    practitioner_results: list[PractitionerPulseResult]
-    status: str  # completed | partial | failed
+# Phase 9.1: RollupRead removed — rollups table dropped.
+# Phase 9.1: NightlyPulseRequest, PractitionerPulseResult, NightlyPulseResponse
+#            removed — nightly_pulse workflow stubbed out.

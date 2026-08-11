@@ -21,15 +21,17 @@ Each agent is a single-purpose, typed unit: one input contract, one output contr
 | 5 | Grader | Score an attempt, incl. free-text, with rationale | `items`, submitted response | `attempts` |
 | 6 | Usage-Signal | Ingest real usage evidence, map it to skill nodes | MCP: `mcp-usage-signals` | `usage_events` |
 | 7 | Correlation | Compare "trained" vs. "adopting" per skill | `skill_profile_snapshots`, `usage_events` | `correlation_snapshots` |
-| 8 | Nudge Composer | Draft an individual tone-checked nudge (nightly pulse) or a campaign message (admin-initiated) | `correlation_snapshots`, `nudge_categories` | `nudges` (status: `drafted` or `sent`) |
-| 9 | Rollup Reporter | Aggregate, privacy-safe leadership narrative | `correlation_snapshots` (aggregated) | `rollups` |
-| 10 | Nudge Category Generator | Analyze aggregate KPI data and propose up to 10 nudge categories with machine-readable criteria | `practitioners`, `skill_profile_snapshots`, `attempts`, `usage_events`, `nudges` (aggregate counts only — no PII) | `nudge_categories` (via API) |
+| 8 | Nudge Composer | Draft a campaign message (admin-initiated) | `correlation_snapshots`, `nudge_categories` | `nudges` (status: `sent`) |
+| 9 | Nudge Category Generator | Analyze aggregate KPI data and propose up to 10 nudge categories with machine-readable criteria | `practitioners`, `skill_profile_snapshots`, `attempts`, `usage_events`, `nudges` (aggregate counts only — no PII) | `nudge_categories` (via API) |
 
-Four workflows compose them:
+> **Phase 9.1 note:** Agent 9 (Rollup Reporter) has been removed from the active product. The archived implementation lives in `backend/app/agents/_deprecated/rollup_reporter.py`.
+
+Three active workflows compose them:
 - **`recommend_certification`**: Certification Advisor alone (Phase 2) — the actual front door for a new practitioner.
 - **`generate_learning_path`**: Skill Profiler → Curriculum Planner → Item-Writer (Phase 2) — reads the practitioner's active certification goal if `recommend_certification` has already run, but doesn't require it.
-- **`nightly_pulse`**: Usage-Signal → Correlation → Nudge Composer → Rollup Reporter (Phase 3)
 - **`nudge_campaign`**: Nudge Category Generator → Nudge Composer (Phase 7) — admin-initiated; runs on demand, not on a schedule.
+
+> **Phase 9.1 note:** The `nightly_pulse` workflow (Usage-Signal → Correlation → Nudge Composer → Rollup Reporter) has been removed. Correlation snapshots still feed the admin nudge campaign system, but there is no longer a scheduled automated run.
 
 ## Certification Advisor: the entry point
 
@@ -198,7 +200,7 @@ Every new `admin_users` row is seeded with password `"welcome"` and `must_change
 ### Session mechanics
 - Sessions live in `sessions` (server-side). The browser holds only the opaque UUID in an **HTTP-only** cookie. No `localStorage`, no `sessionStorage` — per `docs/coding-guidelines.md`.
 - A FastAPI dependency (`get_session`) reads the cookie on every protected route, loads the session row, and attaches a typed `Session` object to `request.state`. If the cookie is missing or the session row doesn't exist, the dependency returns 401.
-- Route-level role guards: practitioner routes return 403 for admin sessions and vice versa; rollup and nudge-approval routes require `admin` or `leadership`.
+- Route-level role guards: practitioner routes return 403 for admin sessions and vice versa; nudge-approval routes require `admin` or `leadership`.
 - Admin sessions expire after inactivity (configurable via `settings.admin_session_timeout_hours`, default 8). Practitioner sessions do not expire — every request updates `last_seen_at`.
 
 ### What each role can see
@@ -209,10 +211,11 @@ Every new `admin_users` row is seeded with password `"welcome"` and `must_change
 | Own nudge inbox (unread/read messages) | ✓ | — | — |
 | Own mastery progress trend chart | ✓ | — | — |
 | Other practitioners' individual data | — | — | ✓ (read-only) |
-| Rollups (aggregated, privacy-gated) | — | ✓ | ✓ |
 | Nudges menu — generate categories, send campaigns | — | — | ✓ |
 | Nudges menu — view sent campaign history | — | ✓ | ✓ |
 | Observability dashboard (agent_runs) | — | — | ✓ |
+
+> **Phase 9.1:** Leadership rollup reports (the "Rollups" row) have been removed from the product. Leadership users can navigate to `/nudges` to see sent campaign history.
 
 ## Smart Nudge System (Phase 7)
 

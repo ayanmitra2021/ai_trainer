@@ -38,7 +38,6 @@ import type {
   ProfileUpdate,
   PractitionerProfile,
   QuestionnaireAnswers,
-  Rollup,
   SelfAssessmentRequest,
   SelfAssessmentResponse,
   SendNudgesRequest,
@@ -173,14 +172,7 @@ export const pulse = {
     api.get<AdoptionTrendsResponse>(
       `/practitioners/${practitioner_id}/adoption-trends?days=${days}`
     ),
-  rollups: (params?: { scope?: string; scope_ref?: string }) => {
-    const q = new URLSearchParams();
-    if (params?.scope) q.set("scope", params.scope);
-    if (params?.scope_ref) q.set("scope_ref", params.scope_ref);
-    const qs = q.toString() ? `?${q.toString()}` : "";
-    return api.get<Rollup[]>(`/rollups${qs}`);
-  },
-  getRollup: (rollup_id: string) => api.get<Rollup>(`/rollups/${rollup_id}`),
+  // Phase 9.1: rollups() and getRollup() removed — rollups table dropped.
 };
 
 // ── Profiles ───────────────────────────────────────────────────────────────────

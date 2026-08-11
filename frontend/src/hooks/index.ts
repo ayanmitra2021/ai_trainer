@@ -220,14 +220,8 @@ export const useApproveNudge = () => {
   });
 };
 
-export const useRollups = (params?: {
-  scope?: string;
-  scope_ref?: string;
-}) =>
-  useQuery({
-    queryKey: ["rollups", params],
-    queryFn: () => pulse.rollups(params),
-  });
+// Phase 9.1: useRollups hook removed — rollups table dropped and /rollups
+// API endpoints removed. Leadership users navigate to /nudges instead.
 
 // ── Profiles ───────────────────────────────────────────────────────────────────
 

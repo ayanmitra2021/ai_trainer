@@ -11,6 +11,9 @@ Phase 6 tables: practitioner_profiles, profile_skill_assessments.
 
 Phase 7 tables: nudge_categories, mastery_history.
              Altered: nudges (campaign columns).
+
+Phase 9.1: ``rollups`` table dropped — the Rollup model has been removed.
+           The RollupReporter agent is archived in agents/_deprecated/.
 """
 
 import uuid
@@ -938,50 +941,9 @@ class Nudge(Base):
 
 
 # ── rollups ───────────────────────────────────────────────────────────────────
-
-class Rollup(Base):
-    """Leadership-facing aggregate — never keyed to an individual.
-
-    The min_cohort_size_met boolean is a structural privacy control, not a
-    display-layer check. If False, metrics and narrative are withheld entirely —
-    this is a structural privacy commitment, not a display preference. Small cohorts
-    allow leaders to reverse-engineer individual scores from aggregates.
-    See docs/human-in-the-loop.md for the policy rationale.
-    """
-
-    __tablename__ = "rollups"
-
-    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
-    # team | practice
-    scope: Mapped[str] = mapped_column(sa.String(30), nullable=False)
-    # Identifies which team or practice (not an individual FK — by design)
-    scope_ref: Mapped[str] = mapped_column(sa.String(255), nullable=False, index=True)
-    period_start: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
-    period_end: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
-    # Populated only when min_cohort_size_met is True
-    metrics: Mapped[dict | None] = mapped_column(sa.JSON, nullable=True)
-    narrative: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    # Structural privacy gate — if False, metrics/narrative are withheld
-    min_cohort_size_met: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
-    # The minimum cohort size threshold used for this rollup (for auditability)
-    min_cohort_size: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=5)
-    created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False,
-        server_default=sa.text("now()"), default=_now_utc,
-    )
-
-    __table_args__ = (
-        sa.CheckConstraint(
-            "scope IN ('team','practice')",
-            name="ck_rollups_scope",
-        ),
-    )
-
-    def __repr__(self) -> str:
-        return (
-            f"<Rollup id={self.id!r} scope={self.scope!r} ref={self.scope_ref!r} "
-            f"cohort_met={self.min_cohort_size_met} cohort_size={self.min_cohort_size}>"
-        )
+# Phase 9.1: The Rollup ORM model has been removed.
+# The ``rollups`` table is dropped by migration 009_remove_rollups.py.
+# The archived model definition is in agents/_deprecated/rollup_reporter.py.
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
