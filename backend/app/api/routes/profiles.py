@@ -62,8 +62,7 @@ def _profile_read(
         created_at=profile.created_at,
         updated_at=profile.updated_at,
         mastery_pct=mastery_pct,
-        # Step 9.2: always False; Step 9.3 will wire to the DB column.
-        is_locked=False,
+        is_locked=profile.is_locked,
     )
 
 
@@ -208,8 +207,7 @@ async def get_profile(
         created_at=profile.created_at,
         updated_at=profile.updated_at,
         mastery_pct=mastery_pct,
-        # Step 9.2: always False; Step 9.3 will wire to the DB column.
-        is_locked=False,
+        is_locked=profile.is_locked,
         skill_assessments=[
             {
                 "id": sa.id,
@@ -239,6 +237,13 @@ async def update_profile(
     profile = await db.get(PractitionerProfile, profile_id)
     if profile is None or profile.practitioner_id != practitioner_id:
         raise HTTPException(status_code=404, detail="Profile not found")
+
+    # Phase 9.3: locked profiles are immutable — create a new profile to make changes.
+    if profile.is_locked:
+        raise HTTPException(
+            status_code=403,
+            detail="Profile is locked and cannot be edited. Create a new profile to make changes.",
+        )
 
     if body.name is not None:
         profile.name = body.name
@@ -319,6 +324,13 @@ async def upsert_skill_assessments(
     if profile is None or profile.practitioner_id != practitioner_id:
         raise HTTPException(status_code=404, detail="Profile not found")
 
+    # Phase 9.3: locked profiles cannot be re-rated.
+    if profile.is_locked:
+        raise HTTPException(
+            status_code=403,
+            detail="Profile is locked and cannot be edited. Create a new profile to make changes.",
+        )
+
     now = datetime.now(UTC)
     rows_written = 0
 
@@ -360,6 +372,14 @@ async def upsert_skill_assessments(
             .where(PractitionerProfile.id == profile_id)
             .values(is_active=True, updated_at=now)
         )
+
+    # Phase 9.3: saving skill ratings is the "done" moment — lock the profile
+    # in the same transaction so the lock and the rows are always consistent.
+    await db.execute(
+        update(PractitionerProfile)
+        .where(PractitionerProfile.id == profile_id)
+        .values(is_locked=True, updated_at=now)
+    )
 
     await db.commit()
     return SkillAssessmentUpsertResponse(rows_written=rows_written)

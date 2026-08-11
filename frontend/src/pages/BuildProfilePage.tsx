@@ -14,6 +14,7 @@ import {
   useProfiles,
 } from "../hooks";
 import ProfileWizard from "../components/ProfileBuilder/ProfileWizard";
+import type { PractitionerProfile } from "../api/types";
 
 export default function BuildProfilePage() {
   const { session } = useSession();
@@ -26,6 +27,8 @@ export default function BuildProfilePage() {
   const [showWizard, setShowWizard] = useState(false);
   const [editProfileId, setEditProfileId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  // Phase 9.3: read-only view modal for locked profiles
+  const [viewProfile, setViewProfile] = useState<PractitionerProfile | null>(null);
 
   if (isLoading) {
     return (
@@ -41,6 +44,11 @@ export default function BuildProfilePage() {
     setShowWizard(false);
     setEditProfileId(null);
     navigate(`/profile/${profileId}/skills`);
+  };
+
+  // Phase 9.3: locked profiles open a read-only view; only unlocked ones enter the wizard.
+  const handleView = (profile: PractitionerProfile) => {
+    setViewProfile(profile);
   };
 
   const handleEdit = (profileId: string) => {
@@ -66,6 +74,63 @@ export default function BuildProfilePage() {
           onComplete={handleWizardComplete}
           onCancel={() => { setShowWizard(false); setEditProfileId(null); }}
         />
+      </div>
+    );
+  }
+
+  // Phase 9.3 — read-only locked-profile modal
+  if (viewProfile !== null) {
+    return (
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "1.5rem" }}>
+        <div className="card" style={{ maxWidth: 520, margin: "0 auto" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              marginBottom: "1rem",
+            }}
+          >
+            <h2 style={{ margin: 0 }}>{viewProfile.name}</h2>
+            <span className="badge" style={{ background: "var(--surface-alt)", color: "var(--text-muted)", fontSize: "0.75rem" }}>
+              🔒 Locked
+            </span>
+          </div>
+
+          <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", margin: "0 0 1rem" }}>
+            This profile is saved and locked. To change your certification goal or skill ratings,
+            create a new profile.
+          </p>
+
+          <dl style={{ margin: "0 0 1.25rem", display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.375rem 1rem" }}>
+            <dt style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Certification</dt>
+            <dd style={{ margin: 0, fontWeight: 500 }}>
+              {viewProfile.certification_code ?? "None chosen"}
+            </dd>
+            <dt style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Created</dt>
+            <dd style={{ margin: 0 }}>
+              {new Date(viewProfile.created_at).toLocaleDateString()}
+            </dd>
+            {viewProfile.mastery_pct != null && (
+              <>
+                <dt style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Cert mastery</dt>
+                <dd style={{ margin: 0 }}>{(viewProfile.mastery_pct * 100).toFixed(0)}%</dd>
+              </>
+            )}
+          </dl>
+
+          <div style={{ display: "flex", gap: "0.75rem" }}>
+            <button className="btn btn-primary" onClick={() => setViewProfile(null)}>
+              Back to profiles
+            </button>
+            <button
+              className="btn btn-outline"
+              onClick={() => { setViewProfile(null); setShowWizard(true); setEditProfileId(null); }}
+            >
+              + New profile
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -174,13 +239,25 @@ export default function BuildProfilePage() {
                     Activate
                   </button>
                 )}
-                <button
-                  className="btn btn-outline"
-                  style={{ fontSize: "0.8125rem" }}
-                  onClick={() => handleEdit(profile.id)}
-                >
-                  Edit
-                </button>
+                {profile.is_locked ? (
+                  // Phase 9.3: locked profiles cannot be edited; show read-only view instead.
+                  <button
+                    className="btn btn-outline"
+                    style={{ fontSize: "0.8125rem" }}
+                    onClick={() => handleView(profile)}
+                    data-testid={`view-profile-${profile.id}`}
+                  >
+                    View
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-outline"
+                    style={{ fontSize: "0.8125rem" }}
+                    onClick={() => handleEdit(profile.id)}
+                  >
+                    Edit
+                  </button>
+                )}
                 {deleteConfirmId === profile.id ? (
                   <>
                     <button

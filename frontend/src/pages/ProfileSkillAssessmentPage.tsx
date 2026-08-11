@@ -54,8 +54,39 @@ export default function ProfileSkillAssessmentPage() {
     navigate("/profile", { state: { toast: "Profile saved and activated!" } });
   };
 
+  // Phase 9.3: locked profiles are shown in read-only mode with a prominent banner.
+  const isLocked = profile.is_locked;
+
   return (
     <div style={{ maxWidth: 780, margin: "0 auto", padding: "1.5rem" }}>
+      {isLocked && (
+        <div
+          role="status"
+          data-testid="profile-locked-banner"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.625rem",
+            padding: "0.75rem 1rem",
+            marginBottom: "1.25rem",
+            borderRadius: "var(--radius)",
+            background: "var(--surface-alt, #f9fafb)",
+            border: "1px solid var(--border)",
+            fontSize: "0.875rem",
+            color: "var(--text-muted)",
+          }}
+        >
+          <span style={{ fontSize: "1.1rem" }}>🔒</span>
+          <span>
+            This profile is saved and locked. Your skill ratings cannot be changed.{" "}
+            <a href="/ai_trainer/profile" style={{ color: "var(--primary)" }}>
+              Create a new profile
+            </a>{" "}
+            to make changes.
+          </span>
+        </div>
+      )}
+
       <div style={{ marginBottom: "1.5rem" }}>
         <h1 style={{ margin: "0 0 0.25rem" }}>Rate your skills</h1>
         <p style={{ color: "var(--text-muted)", margin: 0, fontSize: "0.875rem" }}>
@@ -72,6 +103,7 @@ export default function ProfileSkillAssessmentPage() {
         initialRatings={existingRatings}
         onSave={handleSave}
         isSaving={upsertSkills.isPending}
+        readOnly={isLocked}
       />
     </div>
   );

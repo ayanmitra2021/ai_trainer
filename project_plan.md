@@ -86,7 +86,7 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 **Phase 9 — Mastery Refinements: Quiz-Driven Radar, Profile Lockdown & Admin Simplification**
 - [x] 9.1 Remove Rollups & nightly auto-nudge pipeline
 - [x] 9.2 Admin/Leadership practitioner view — Skill Radar only (read-only)
-- [ ] 9.3 Profile lockdown after first full submission
+- [x] 9.3 Profile lockdown after first full submission
 - [ ] 9.4 Quiz-only mastery engine (Skill Radar driven solely by quiz answers)
 - [ ] 9.5 Progressive quiz-round scoring model (scores can rise AND fall)
 - [ ] 9.6 Auto-refresh quiz questions after round exhaustion

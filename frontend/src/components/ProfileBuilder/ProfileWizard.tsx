@@ -75,9 +75,17 @@ export default function ProfileWizard({ practitionerId, editProfileId, onComplet
   const updateProfile = useUpdateProfile(practitionerId);
   const { data: existingProfile } = useProfile(practitionerId, editProfileId ?? "");
 
-  // Pre-populate from existing profile when in edit mode
+  // Pre-populate from existing profile when in edit mode.
+  // Phase 9.3: if the profile is locked, bail out immediately — BuildProfilePage
+  // replaces "Edit" with "View" for locked profiles, but this guard covers any
+  // code path that might still reach the wizard with a locked profile_id.
   React.useEffect(() => {
     if (editProfileId && existingProfile) {
+      if (existingProfile.is_locked) {
+        // Locked profile: close the wizard and let the parent handle the toast.
+        onCancel();
+        return;
+      }
       setProfileName(existingProfile.name);
       if (existingProfile.questionnaire_snapshot) {
         setAnswers(existingProfile.questionnaire_snapshot as Partial<QuestionnaireAnswers>);
@@ -87,7 +95,7 @@ export default function ProfileWizard({ practitionerId, editProfileId, onComplet
         setSelectedCertCode(existingProfile.certification_code ?? null);
       }
     }
-  }, [editProfileId, existingProfile]);
+  }, [editProfileId, existingProfile, onCancel]);
 
   const handleGetRecommendation = async () => {
     const fullAnswers: QuestionnaireAnswers = {

@@ -93,6 +93,8 @@ class MeResponse(BaseModel):
     must_change_password: bool = False
     active_profile_id: str | None = None
     active_certification_code: str | None = None
+    # Phase 9.3: exposed so the frontend can gate wizard access without an extra round-trip.
+    active_profile_is_locked: bool | None = None
 
 
 # ── Practitioner login ─────────────────────────────────────────────────────────
@@ -306,6 +308,7 @@ async def me(
 
     active_profile_id: str | None = None
     active_certification_code: str | None = None
+    active_profile_is_locked: bool | None = None
 
     if session.identity_type == "practitioner" and session.practitioner_id:
         result = await db.execute(
@@ -317,6 +320,7 @@ async def me(
         active_profile = result.scalar_one_or_none()
         if active_profile is not None:
             active_profile_id = active_profile.id
+            active_profile_is_locked = active_profile.is_locked
             if active_profile.certification_id:
                 cert = await db.get(Certification, active_profile.certification_id)
                 if cert:
@@ -330,4 +334,5 @@ async def me(
         must_change_password=session.must_change_password,
         active_profile_id=active_profile_id,
         active_certification_code=active_certification_code,
+        active_profile_is_locked=active_profile_is_locked,
     )

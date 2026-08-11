@@ -25,9 +25,11 @@ function nearestLevel(score: number): number {
 function LevelPicker({
   value,
   onChange,
+  disabled = false,
 }: {
   value: number;
   onChange: (v: number) => void;
+  disabled?: boolean;
 }) {
   return (
     <div style={{ display: "flex", gap: "0.375rem", flexWrap: "wrap" }}>
@@ -35,7 +37,8 @@ function LevelPicker({
         <button
           key={lvl.value}
           type="button"
-          onClick={() => onChange(lvl.value)}
+          disabled={disabled}
+          onClick={() => !disabled && onChange(lvl.value)}
           style={{
             fontSize: "0.75rem",
             padding: "0.25rem 0.625rem",
@@ -43,7 +46,8 @@ function LevelPicker({
             border: `1px solid ${value === lvl.value ? "var(--primary)" : "var(--border)"}`,
             background: value === lvl.value ? "var(--primary)" : "transparent",
             color: value === lvl.value ? "#fff" : "var(--text)",
-            cursor: "pointer",
+            cursor: disabled ? "not-allowed" : "pointer",
+            opacity: disabled ? 0.6 : 1,
             transition: "all 0.15s",
           }}
         >
@@ -60,6 +64,8 @@ interface Props {
   initialRatings: Record<string, number>;
   onSave: (ratings: Record<string, number>) => Promise<void>;
   isSaving: boolean;
+  /** Phase 9.3: when true, all pickers are disabled and the Save button is hidden. */
+  readOnly?: boolean;
 }
 
 export default function ProfileSkillRater({
@@ -67,6 +73,7 @@ export default function ProfileSkillRater({
   initialRatings,
   onSave,
   isSaving,
+  readOnly = false,
 }: Props) {
   const { data: allSkills } = useSkills();
 
@@ -128,6 +135,7 @@ export default function ProfileSkillRater({
       <LevelPicker
         value={ratings[skill.id] ?? 0}
         onChange={(v) => setRating(skill.id, v)}
+        disabled={readOnly}
       />
     </div>
   );
@@ -175,14 +183,16 @@ export default function ProfileSkillRater({
         </div>
       )}
 
-      <button
-        className="btn btn-primary"
-        style={{ marginTop: "1.5rem" }}
-        disabled={isSaving}
-        onClick={() => onSave(ratings)}
-      >
-        {isSaving ? <><span className="spinner" /> Saving…</> : "Save assessment"}
-      </button>
+      {!readOnly && (
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: "1.5rem" }}
+          disabled={isSaving}
+          onClick={() => onSave(ratings)}
+        >
+          {isSaving ? <><span className="spinner" /> Saving…</> : "Save assessment"}
+        </button>
+      )}
     </div>
   );
 }

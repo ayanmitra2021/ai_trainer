@@ -1161,6 +1161,10 @@ class PractitionerProfile(Base):
     )
     name: Mapped[str] = mapped_column(sa.String(500), nullable=False)
     is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    # Phase 9.3: locked once skill-assessments are first saved via the full wizard.
+    # A locked profile cannot be edited or re-rated; only activation and deletion
+    # are still permitted.  Defaults to False so existing profiles stay editable.
+    is_locked: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
     # Optional: which certification this profile is targeting
     certification_id: Mapped[str | None] = mapped_column(
         sa.String(36),

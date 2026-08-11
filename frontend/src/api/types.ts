@@ -269,6 +269,8 @@ export interface MeResponse {
   must_change_password: boolean;
   active_profile_id?: string;
   active_certification_code?: string;
+  /** Phase 9.3: true when the active profile has been locked (skill-ratings saved). */
+  active_profile_is_locked?: boolean;
 }
 
 export interface ChangePasswordRequest {
@@ -361,8 +363,8 @@ export interface PractitionerProfile {
   created_at: string;
   updated_at: string;
   mastery_pct?: number;
-  /** Step 9.2 forward-compat: always false until Step 9.3 adds the DB column. */
-  is_locked?: boolean;
+  /** Phase 9.3: true once the practitioner saves skill ratings for this profile. */
+  is_locked: boolean;
 }
 
 export interface ProfileDetail extends PractitionerProfile {
