@@ -23,7 +23,8 @@ Each agent is a single-purpose, typed unit: one input contract, one output contr
 | 7 | Correlation | Compare "trained" vs. "adopting" per skill | `skill_profile_snapshots`, `usage_events` | `correlation_snapshots` |
 | 8 | Nudge Composer | Draft a campaign message (admin-initiated) | `correlation_snapshots`, `nudge_categories` | `nudges` (status: `sent`) |
 | 9 | Nudge Category Generator | Analyze aggregate KPI data and propose up to 10 nudge categories with machine-readable criteria | `practitioners`, `skill_profile_snapshots`, `attempts`, `usage_events`, `nudges` (aggregate counts only — no PII) | `nudge_categories` (via API) |
-| 10 | Domain Scorer | Map self-assessment proficiency ratings → initial certification domain scores at profile-lock time | `profile_skill_assessments`, `certification_domains` (for the active cert), domain descriptions | `certification_domain_scores` (source=`self_assessment_estimate`) |
+| 10 | Domain Scorer | Map self-assessment proficiency ratings → initial certification domain scores at profile-lock time; also pins the active `certification_domain_version` to the profile | `profile_skill_assessments`, `certification_domains` (filtered to the profile's pinned version), `certification_domain_versions` | `certification_domain_scores` (source=`self_assessment_estimate`); sets `practitioner_profiles.domain_version_id` |
+| 11 | Cert Domain Discovery | Research and propose updated exam domain definitions for any certification; called on demand by admin to keep domain data current as exams are revised or new certs are added | `certifications`, `certification_domain_versions` (current version, for comparison), `certification_domains` | `certification_domain_proposals` (status=`pending_review`) → on admin approval: new `certification_domain_versions` + `certification_domains` rows |
 
 > **Phase 9.1 note:** Agent 9 (Rollup Reporter) has been removed from the active product. The archived implementation lives in `backend/app/agents/_deprecated/rollup_reporter.py`.
 
@@ -31,6 +32,8 @@ Three active workflows compose them:
 - **`recommend_certification`**: Certification Advisor alone (Phase 2) — the actual front door for a new practitioner.
 - **`generate_learning_path`**: Skill Profiler → Domain Score computation → Curriculum Planner → Item-Writer (Phase 2, extended Phase 10) — reads the practitioner's active certification and its domains if set; computes both broad skill mastery and cert-domain readiness scores in the same run.
 - **`nudge_campaign`**: Nudge Category Generator → Nudge Composer (Phase 7) — admin-initiated; runs on demand, not on a schedule.
+
+The Cert Domain Discovery agent (Phase 10.3) is not part of a workflow — it is invoked directly by admin API endpoints (`POST /admin/cert-domains/discover` and `/discover-all`). Proposals are reviewed and approved/rejected via the Admin UI (Phase 10.4) before any domain data changes.
 
 > **Phase 9.1 note:** The `nightly_pulse` workflow (Usage-Signal → Correlation → Nudge Composer → Rollup Reporter) has been removed. Correlation snapshots still feed the admin nudge campaign system, but there is no longer a scheduled automated run.
 
@@ -147,6 +150,16 @@ A practitioner who answers a "good to know" question correctly grows their radar
 ### Mandatory certification at profile creation
 
 A practitioner profile **cannot be created without a certification associated** (`practitioner_profiles.certification_id` is NOT NULL from Phase 10.1 onward). The certification choice is the anchor that makes everything else in the system meaningful: it determines which exam domains to load, which quiz items to generate, and what the domain gap chart measures.
+
+### Domain versioning — why domain data is live-refreshable (Phase 10.2–10.4)
+
+AI certification exams change faster than seed files get updated. AWS retired its ML Specialty exam and replaced it with MLA-C01 in the same window this project was built; Google Cloud adds new credentials quarterly; Anthropic's CCAR-P credential didn't exist six months before it was added to the catalog. A hardcoded `certification_domains.py` that requires a code change and redeploy to update would go stale within one exam revision cycle (typically 6–12 months), silently producing quiz items for domains that no longer exist at the weights the exam currently assigns.
+
+**The solution: `certification_domain_versions`.** Each set of official domain definitions for a certification is a version row. The bootstrap seed from Phase 10.1 creates version 1 for each cert. From Phase 10.3 onward, an admin can trigger the Cert Domain Discovery Agent to research and propose updated domains; on approval, a new version is published without touching old rows.
+
+**Freeze semantics:** `practitioner_profiles.domain_version_id` is set at profile-lock time (Phase 10.5) to the cert's currently-active version. All domain scoring for that profile — initial self-assessment estimates (Domain Scorer Agent), quiz-derived scores (`compute_domain_scores`), and gap chart queries — use the `certification_domains` rows filtered to that pinned version. A subsequent admin refresh creates a new version; existing profiles are never retroactively shifted. New profiles inherit the latest version automatically.
+
+**New cert discovery:** the Cert Domain Discovery Agent can propose a certification that doesn't yet exist in the catalog. Approving such a proposal creates a `certifications` row with `is_active = false` and its first `certification_domain_versions` row. The admin must separately activate the cert (via the existing certs API) before it becomes selectable by practitioners.
 
 ### Item tagging (`is_cert_evaluated`)
 

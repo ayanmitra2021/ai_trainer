@@ -1,8 +1,8 @@
-"""Pydantic schemas for practitioner profiles — Phase 6.1."""
+"""Pydantic schemas for practitioner profiles — Phase 6.1 / Phase 10.1."""
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ProfileSkillRating(BaseModel):
@@ -13,7 +13,26 @@ class ProfileSkillRating(BaseModel):
 class ProfileCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=500)
     questionnaire_snapshot: dict | None = None
+    # Phase 10.1: certification_id is required at the API layer (422 if absent
+    # or null).  The DB column remains nullable to preserve existing data, but
+    # every new profile created via this endpoint must reference a cert — the
+    # certification is the anchor that drives domain scoring and item tagging.
+    #
+    # Enforcement uses @model_validator (not @field_validator) so the check
+    # fires even when the caller omits the field entirely (in which case
+    # Pydantic fills in the default None without invoking a field validator).
     certification_id: str | None = None
+
+    @model_validator(mode="after")
+    def certification_id_required(self) -> "ProfileCreate":
+        if self.certification_id is None or not self.certification_id.strip():
+            raise ValueError(
+                "certification_id is required. "
+                "A profile cannot be created without a certification — "
+                "the certification determines which exam domains to load "
+                "and what the domain gap chart measures."
+            )
+        return self
 
 
 class ProfileUpdate(BaseModel):

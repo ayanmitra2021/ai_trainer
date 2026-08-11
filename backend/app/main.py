@@ -59,7 +59,18 @@ app.add_middleware(
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # Log the full validation error so it appears in Render logs for debugging.
     _log.warning("422 Validation error on %s %s: %s", request.method, request.url.path, exc.errors())
-    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+    # Pydantic v2 includes non-JSON-serialisable objects (e.g. ValueError instances)
+    # inside ctx.error — stringify them so json.dumps never raises.
+    safe_errors = []
+    for err in exc.errors():
+        err_copy = dict(err)
+        if "ctx" in err_copy and "error" in err_copy.get("ctx", {}):
+            err_copy["ctx"] = {
+                **err_copy["ctx"],
+                "error": str(err_copy["ctx"]["error"]),
+            }
+        safe_errors.append(err_copy)
+    return JSONResponse(status_code=422, content={"detail": safe_errors})
 
 
 @app.exception_handler(Exception)

@@ -35,11 +35,11 @@ What a given certification actually covers, in terms of the skill graph above. T
 - `certification_id` (FK), `skill_id` (FK), `weight` (numeric — how central this skill is to that exam)
 
 ### `certification_domains`
-The official exam domains / modules for each certification — the concrete topics the exam actually tests, in the order and weighting the exam guide specifies. These are researched and seeded at catalog time (Step 10.1) and are the ground truth for the domain gap bar chart and for item tagging.
+The official exam domains / modules for each certification — the concrete topics the exam actually tests, in the order and weighting the exam guide specifies. From Phase 10.2 onward these are versioned: each domain row belongs to a specific `certification_domain_version`, and a practitioner's profile is pinned to the version that was current at lock time.
 
 They differ from `certification_skills` in specificity: `certification_skills` maps broad skill-graph nodes to a cert; `certification_domains` captures the actual sectioned content from the official exam guide (e.g. "Domain 2: Fundamentals of Generative AI — 24% of the exam").
 
-- `id`, `certification_id` (FK → certifications), `domain_name` (text — e.g. "Fundamentals of Generative AI"), `domain_description` (text — what the official guide says this domain covers), `weight_pct` (numeric — percentage of the exam, e.g. 24; all domains for one cert must sum to 100), `sequence_order` (integer — matches the official exam guide ordering, used for display)
+- `id`, `certification_id` (FK → certifications), `domain_version_id` (FK → certification_domain_versions — which version snapshot this row belongs to; set on insert, never changed), `domain_name` (text — e.g. "Fundamentals of Generative AI"), `domain_description` (text — what the official guide says this domain covers), `weight_pct` (numeric — percentage of the exam, e.g. 24; all domains for one version for one cert must sum to 100), `sequence_order` (integer — matches the official exam guide ordering, used for display)
 
 Seeded domains for each active cert (verified from official exam guides — see Step 10.1 and the 👤 flag in `docs/human-in-the-loop.md`):
 
@@ -53,7 +53,19 @@ Seeded domains for each active cert (verified from official exam guides — see 
 | AI-900 | 1: AI Workloads and Considerations (15–20%) · 2: Machine Learning in Azure (20–25%) · 3: Computer Vision Workloads (15–20%) · 4: Natural Language Processing Workloads (15–20%) · 5: Generative AI Workloads (15–20%) |
 | AI-102 | 1: Plan and Manage an Azure AI Solution (15–20%) · 2: Implement Content Moderation Solutions (10–15%) · 3: Implement Computer Vision Solutions (15–20%) · 4: Implement NLP Solutions (30–35%) · 5: Implement Knowledge Mining and Document Intelligence (10–15%) · 6: Implement Generative AI Solutions (10–15%) |
 
-> **Freshness note:** Domain weights shift when certs are revised. `certification_domains` inherits the same `last_verified_at` concern as `certifications` itself — re-verify before seeding any cert more than a few months old.
+> **Freshness note:** Domain weights shift when certs are revised. From Phase 10.3 onward, domain data is kept current via the Cert Domain Discovery Agent (admin-triggered, proposal-reviewed). The bootstrap seed from Phase 10.1 is version 1; every admin-approved refresh creates a new version in `certification_domain_versions`. Practitioners' existing scores are always anchored to the version in place when their profile was locked. Before Phase 10.3 is implemented, re-verify the seed file manually whenever a cert's `last_verified_at` is more than a few months old.
+
+### `certification_domain_versions`
+Tracks the history of exam domain data snapshots for each certification. Each version represents one approved point-in-time definition of the cert's domains. The bootstrap seed (Step 10.1) creates version 1 for each cert; subsequent admin refreshes via the Cert Domain Discovery Agent (Step 10.3) create new versions.
+
+- `id`, `certification_id` (FK → certifications), `version_label` (text — e.g. "bootstrap-step-10.1" or "2025-Q1-refresh"), `is_current` (boolean — partial unique index on `(certification_id) WHERE is_current = true` enforces exactly one current version per cert at all times), `source_notes` (text — where the data came from: exam guide URL, agent confidence notes, or "bootstrap seed"), `agent_run_id` (nullable FK → agent_runs — null for bootstrap; set when an agent-driven refresh was the source), `created_by_admin_id` (nullable FK → admin_users — null for bootstrap), `created_at`
+
+**Semantics on refresh:** when an admin approves a domain proposal (Step 10.4), the current version's `is_current` flips to false and the new version becomes `is_current = true`. Old domain rows for the superseded version are never deleted — profiles locked against them continue to reference them correctly.
+
+### `certification_domain_proposals`
+Pending domain refresh proposals produced by the Cert Domain Discovery Agent (Step 10.3). Each row represents one agent run's output for one certification, awaiting admin review. Approved proposals become new `certification_domain_versions` plus fresh `certification_domains` rows; rejected proposals are archived with a reason.
+
+- `id`, `certification_id` (nullable FK → certifications — null when proposing a brand-new cert not yet in the catalog), `cert_code` (text), `cert_name` (text), `proposed_domains` (JSONB — list of {sequence_order, domain_name, domain_description, weight_pct}), `source_notes` (text — agent's explanation of where data was found and confidence level), `agent_run_id` (FK → agent_runs), `status` (`pending_review` | `approved` | `rejected`), `reviewed_by_admin_id` (nullable FK → admin_users), `reviewed_at` (nullable timestamp), `rejection_notes` (nullable text), `created_at`
 
 ### `practitioner_certification_goals`
 A practitioner's history with a certification — recommended, chosen, in progress, or achieved. One practitioner can have several over a career; this is why it's a table and not a column on `practitioners`.
@@ -138,11 +150,13 @@ Every agent invocation, full stop.
 
 ```
 certification_providers ─< certifications ─< certification_skills >─ skills
-                                          └─< certification_domains
+                                          └─< certification_domain_versions ─< certification_domains
+                                          └─< certification_domain_proposals (pending admin review)
 
 practitioners ─┬─< certification_advisor_responses
                ├─< practitioner_certification_goals >─ certifications
-               ├─< practitioner_profiles ─── certification_id → certifications (NOT NULL, Phase 10.1)
+               ├─< practitioner_profiles ─┬─ certification_id → certifications (NOT NULL, Phase 10.1)
+               │                          └─ domain_version_id → certification_domain_versions (set at lock time, Phase 10.5)
                ├─< profile_skill_assessments >─ skills (per-profile ratings, preserved but not used for radar)
                ├─< skill_profile_events >─ skills
                ├─< skill_profile_snapshots >─ skills     (broad radar — all quiz signals)
@@ -150,7 +164,7 @@ practitioners ─┬─< certification_advisor_responses
                ├─< mastery_history >─ skills              (append-only time-series)
                ├─< learning_paths >─< learning_path_items >─ skills
                ├─< attempts >─ items ─┬─ skills
-               │                      └─ certification_domains (nullable — tagged in Phase 10.3)
+               │                      └─ certification_domains (nullable — tagged in Phase 10.6)
                ├─< usage_events >─ skills (nullable)
                ├─< correlation_snapshots >─ skills
                └─< nudges >─ nudge_categories (nullable)
@@ -158,9 +172,13 @@ practitioners ─┬─< certification_advisor_responses
 admin_users ─< sessions
 admin_users ─< nudge_categories
 admin_users ─< nudges (created_by_admin_id, nullable)
+admin_users ─< certification_domain_versions (created_by_admin_id, nullable)
+admin_users ─< certification_domain_proposals (reviewed_by_admin_id, nullable)
 practitioners ─< sessions   (sessions is polymorphic via identity_type)
 
 workflow_runs ─< agent_runs
+agent_runs ─< certification_domain_versions (agent_run_id, nullable — set for agent-driven refreshes)
+agent_runs ─< certification_domain_proposals (agent_run_id)
 rollups            (aggregated — no direct practitioner FK by design; removed Phase 9.1)
 ```
 

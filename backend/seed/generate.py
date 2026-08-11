@@ -35,6 +35,7 @@ from app.db.models import (
     Skill,
     SkillProfileEvent,
 )
+from seed.certification_domains import seed_certification_domains
 
 fake = Faker()
 random.seed(42)
@@ -553,6 +554,11 @@ async def seed(session: AsyncSession) -> None:
             session.add(cs)
         cert_count += 1
 
+    await session.commit()
+
+    # ── Seed certification exam domains (Phase 10.1) ───────────────────────
+    print("Inserting certification exam domains...")
+    await seed_certification_domains(session)
     await session.commit()
 
     # ── Seed starter admin account ─────────────────────────────────────────

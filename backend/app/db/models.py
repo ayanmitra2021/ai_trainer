@@ -14,6 +14,9 @@ Phase 7 tables: nudge_categories, mastery_history.
 
 Phase 9.1: ``rollups`` table dropped — the Rollup model has been removed.
            The RollupReporter agent is archived in agents/_deprecated/.
+
+Phase 10.1 tables: certification_domains, certification_domain_scores.
+               Altered: items (certification_domain_id, is_cert_evaluated).
 """
 
 import uuid
@@ -96,6 +99,9 @@ class Practitioner(Base):
         back_populates="practitioner", cascade="all, delete-orphan"
     )
     mastery_history: Mapped[list["MasteryHistory"]] = relationship(
+        back_populates="practitioner", cascade="all, delete-orphan"
+    )
+    certification_domain_scores: Mapped[list["CertificationDomainScore"]] = relationship(
         back_populates="practitioner", cascade="all, delete-orphan"
     )
 
@@ -415,6 +421,11 @@ class Certification(Base):
     practitioner_goals: Mapped[list["PractitionerCertificationGoal"]] = relationship(
         back_populates="certification", cascade="all, delete-orphan"
     )
+    domains: Mapped[list["CertificationDomain"]] = relationship(
+        back_populates="certification",
+        cascade="all, delete-orphan",
+        order_by="CertificationDomain.sequence_order",
+    )
 
     __table_args__ = (
         sa.CheckConstraint(
@@ -461,6 +472,49 @@ class CertificationSkill(Base):
         return (
             f"<CertificationSkill cert={self.certification_id!r} "
             f"skill={self.skill_id!r} weight={self.weight}>"
+        )
+
+
+# ── certification_domains ─────────────────────────────────────────────────────
+
+class CertificationDomain(Base):
+    """Official exam domain/module for a certification — Phase 10.1.
+
+    One row per domain section in the official exam guide.  The ``weight_pct``
+    values for all domains of a given certification must sum to 100 (allow ±1
+    for rounding differences between providers).
+
+    ``sequence_order`` matches the official exam guide numbering (Domain 1,
+    Domain 2, …) and is used for display ordering in the gap chart.
+    """
+
+    __tablename__ = "certification_domains"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    certification_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certifications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    domain_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    domain_description: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Percentage of the exam (0–100).  All rows for one cert must sum to 100.
+    weight_pct: Mapped[float] = mapped_column(sa.Numeric(5, 2), nullable=False)
+    # 1-based ordering from the official exam guide
+    sequence_order: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+
+    certification: Mapped["Certification"] = relationship(
+        back_populates="domains"
+    )
+    domain_scores: Mapped[list["CertificationDomainScore"]] = relationship(
+        back_populates="domain", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CertificationDomain cert={self.certification_id!r} "
+            f"name={self.domain_name!r} weight={self.weight_pct}%>"
         )
 
 
@@ -673,10 +727,26 @@ class Item(Base):
         sa.DateTime(timezone=True), nullable=False,
         server_default=sa.text("now()"), default=_now_utc,
     )
+    # Phase 10.1: domain alignment — NULL on legacy items (pre-10.3); set on all
+    # items generated after Step 10.3.
+    certification_domain_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certification_domains.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # True when the topic is directly assessed in the cert exam blueprint;
+    # False for supplementary items that build understanding only.
+    is_cert_evaluated: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False
+    )
 
     skill: Mapped["Skill"] = relationship()
     attempts: Mapped[list["Attempt"]] = relationship(
         back_populates="item", cascade="all, delete-orphan"
+    )
+    certification_domain: Mapped["CertificationDomain | None"] = relationship(
+        foreign_keys=[certification_domain_id]
     )
 
     __table_args__ = (
@@ -1024,6 +1094,89 @@ class MasteryHistory(Base):
         return (
             f"<MasteryHistory practitioner={self.practitioner_id!r} "
             f"skill={self.skill_id!r} score={self.mastery_score} at={self.recorded_at}>"
+        )
+
+
+# ── certification_domain_scores (derived) ─────────────────────────────────────
+
+class CertificationDomainScore(Base):
+    """Per-practitioner, per-domain mastery score — Phase 10.1.
+
+    Two lifecycle stages:
+    - ``self_assessment_estimate`` — written by the Domain Scorer Agent at
+      profile-lock time (Step 10.2).  Max confidence capped at 0.5.
+    - ``quiz_derived`` — written when the practitioner submits cert-evaluated
+      quiz answers for this domain (Step 10.4).  Takes precedence and is never
+      overwritten by a ``self_assessment_estimate``.
+
+    Unique constraint on (practitioner_id, certification_domain_id) so there
+    is at most one score row per practitioner × domain — the agent upserts.
+    """
+
+    __tablename__ = "certification_domain_scores"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    practitioner_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioners.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    certification_domain_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certification_domains.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mastery_score: Mapped[float] = mapped_column(
+        sa.Numeric(4, 3), nullable=False, comment="0–1 domain readiness estimate"
+    )
+    confidence: Mapped[float] = mapped_column(
+        sa.Numeric(4, 3),
+        nullable=False,
+        comment="0–1 confidence; capped at 0.5 for self_assessment_estimate",
+    )
+    # self_assessment_estimate | quiz_derived
+    source: Mapped[str] = mapped_column(sa.String(30), nullable=False)
+    last_computed_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True),
+        server_default=sa.text("now()"),
+        default=_now_utc,
+        nullable=False,
+    )
+
+    practitioner: Mapped["Practitioner"] = relationship(
+        back_populates="certification_domain_scores"
+    )
+    domain: Mapped["CertificationDomain"] = relationship(
+        back_populates="domain_scores"
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "mastery_score >= 0 AND mastery_score <= 1",
+            name="ck_cert_domain_scores_mastery",
+        ),
+        sa.CheckConstraint(
+            "confidence >= 0 AND confidence <= 1",
+            name="ck_cert_domain_scores_confidence",
+        ),
+        sa.CheckConstraint(
+            "source IN ('self_assessment_estimate','quiz_derived')",
+            name="ck_cert_domain_scores_source",
+        ),
+        sa.UniqueConstraint(
+            "practitioner_id",
+            "certification_domain_id",
+            name="uq_cert_domain_scores_practitioner_domain",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CertificationDomainScore practitioner={self.practitioner_id!r} "
+            f"domain={self.certification_domain_id!r} score={self.mastery_score} "
+            f"source={self.source!r}>"
         )
 
 

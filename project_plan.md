@@ -91,14 +91,17 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 *(Steps 9.5–9.7 merged into Phase 10 — see below)*
 
 **Phase 10 — Certification-Domain Alignment & Mastery Refinements**
-- [ ] 10.1 Certification exam domains data model & seed data 👤
-- [ ] 10.2 Domain Scorer Agent — self-assessment → initial domain scores
-- [ ] 10.3 Domain-aware item writer & tagging 👤
-- [ ] 10.4 Progressive quiz-round scoring model (scores can rise AND fall)
-- [ ] 10.5 Auto-refresh quiz questions after round exhaustion
-- [ ] 10.6 Certification domain gap scoring workflow & UI
-- [ ] 10.7 Quiz UI certification-domain awareness (color-coded tabs)
-- [ ] 10.8 Visual mastery trend indicators (↑ green / ↓ amber on radar + domain chart)
+- [x] 10.1 Certification exam domains data model & seed data 👤
+- [ ] 10.2 Domain versioning data model — live-refreshable domain versions
+- [ ] 10.3 Cert Domain Discovery Agent — LLM-driven exam domain research & refresh 👤
+- [ ] 10.4 Admin "Refresh Certification Domains" UI
+- [ ] 10.5 Domain Scorer Agent — self-assessment → initial domain scores
+- [ ] 10.6 Domain-aware item writer & tagging 👤
+- [ ] 10.7 Progressive quiz-round scoring model (scores can rise AND fall)
+- [ ] 10.8 Auto-refresh quiz questions after round exhaustion
+- [ ] 10.9 Certification domain gap scoring workflow & UI
+- [ ] 10.10 Quiz UI certification-domain awareness (color-coded tabs)
+- [ ] 10.11 Visual mastery trend indicators (↑ green / ↓ amber on radar + domain chart)
 
 ---
 
@@ -1477,24 +1480,28 @@ This phase tightens the product around three principles:
 ### Steps 9.5 / 9.6 / 9.7 — merged into Phase 10
 
 > These steps have been absorbed into Phase 10 in dependency order. Full specs live there:
-> - **9.5** (progressive scoring) → **Step 10.4**
-> - **9.6** (auto-refresh) → **Step 10.5**
-> - **9.7** (trend indicators) → **Step 10.8**
+> - **9.5** (progressive scoring) → **Step 10.7**
+> - **9.6** (auto-refresh) → **Step 10.8**
+> - **9.7** (trend indicators) → **Step 10.11**
 >
-> The domain foundation (10.1–10.3) must be in place before any of the above: the round-ceiling model applies to both skill and domain scores, auto-refresh items must be domain-tagged from generation one, and the trend chips decorate the domain gap chart (10.6) not the old skill-snapshot bars.
+> The domain foundation (10.1–10.6) must be in place before any of the above: the round-ceiling model applies to both skill and domain scores, auto-refresh items must be domain-tagged from generation one, and the trend chips decorate the domain gap chart (10.9) not the old skill-snapshot bars.
 
 ---
 
 # Phase 10 — Certification-Domain Alignment & Mastery Refinements
 
-This phase does two things at once, in dependency order:
+This phase does three things in dependency order:
 
-**Part A — Certification-Domain Alignment (Steps 10.1–10.3):** root every quiz item, every gap score, and the domain bar chart in the practitioner's chosen certification's official exam domains. Right now the radar and gap chart are driven by generic catalog skills that are loosely "related to" the cert — the actual exam domains are not modeled, so quiz questions can diverge from what the exam tests. These three steps fix that foundation.
+**Part A — Domain Model & Live Refresh (Steps 10.1–10.4):** model every certification's official exam domains, make that data live-refreshable rather than hardcoded forever, and give admins a one-click refresh flow. AI certifications change fast — CCAR-P didn't exist a few months ago; AWS retired ML Specialty and split it into MLA-C01 and a GenAI track in the same window; Google Cloud releases new credentials quarterly. A hardcoded seed file becomes stale within 6 months and requires a code change to update. Steps 10.2–10.4 replace the static seed with a versioned, admin-refreshable system driven by the Cert Domain Discovery Agent.
 
-**Part B — Mastery Refinements (Steps 10.4–10.8):** add the progressive-scoring model, auto-refresh, domain gap chart scoring, quiz color-coding, and visual trend indicators — all of which were originally Phase 9.5–9.7 but have been moved here because they depend on the Part A domain model being in place:
-- The round-ceiling model (10.4) must apply to both skill radar AND domain scores — so domain tables (10.1) come first.
-- Auto-refresh (10.5) generates new items that are domain-tagged from day one — so domain-aware item writer (10.3) comes first.
-- The domain gap chart (10.6) is what the trend indicators (10.8) decorate — so 10.6 before 10.8.
+**Domain versioning principle:** exam domain data is frozen per profile at lock time. When an admin refreshes domains (creating a new version), existing practitioners' domain scores are unaffected — their profiles reference the version that was current when they locked. New profiles automatically inherit the latest version. This guarantees a practitioner who started studying for AIF-C01 in Q1 is not silently re-evaluated against a Q3 exam revision they haven't seen.
+
+**Part B — Domain Scoring & Item Tagging (Steps 10.5–10.6):** once versioned domain infrastructure is in place, the Domain Scorer Agent maps self-assessments to initial domain readiness scores at profile-lock time, and the Item-Writer is extended to tag every generated item with its cert domain and whether it is directly exam-evaluated.
+
+**Part C — Mastery Refinements (Steps 10.7–10.11):** add the progressive-scoring model, auto-refresh, domain gap chart scoring, quiz color-coding, and visual trend indicators — all of which were originally Phase 9.5–9.7 but have been moved here because they depend on the Part A domain model being in place:
+- The round-ceiling model (10.7) must apply to both skill radar AND domain scores — so domain tables (10.1) come first.
+- Auto-refresh (10.8) generates new items that are domain-tagged from day one — so domain-aware item writer (10.6) comes first.
+- The domain gap chart (10.9) is what the trend indicators (10.11) decorate — so 10.9 before 10.11.
 
 **Preconditions:** 9.4 (quiz-only mastery engine; the two-tier scoring model built here depends on the quiz-first principle already being in place).
 
@@ -1526,16 +1533,128 @@ This phase does two things at once, in dependency order:
 
 **Definition of done:** all three pass; every active cert has seeded domain rows; `certification_domain_id` and `is_cert_evaluated` columns exist in `items`; `certification_domain_scores` table exists; migration runs clean.
 
-> 👤 **Human-in-the-loop:** validate the seeded domain data against each cert's official exam guide before implementing the steps that depend on it. See `docs/human-in-the-loop.md`.
+> 👤 **Human-in-the-loop:** validate the seeded domain data against each cert's official exam guide before implementing the steps that depend on it. This bootstrap data is version 1 — from Step 10.3 onward it is superseded by the Cert Domain Discovery Agent whenever an exam is revised or a new cert is added. See `docs/human-in-the-loop.md`.
 
 ---
 
-### Step 10.2 — Domain Scorer Agent — self-assessment → initial domain scores
+### Step 10.2 — Domain versioning data model — live-refreshable domain versions
+
+**Goal:** make certification domain data version-aware so that (a) a practitioner's domain scores always reference the exact domain definitions that were current when their profile was locked — no retroactive resets when an admin refreshes domain data; (b) an admin refresh creates a new version without breaking existing profiles or their domain scores; (c) new profiles automatically inherit the latest approved version; (d) the bootstrap seed from Step 10.1 becomes version 1, not a forever-immutable truth.
+
+**Preconditions:** 10.1.
+**Context to load:** `docs/data-model.md` (certification_domain_versions, certification_domain_proposals tables), `backend/alembic/versions/012_certification_domains.py`.
+
+**Build:**
+
+*New migration (013):*
+- New table `certification_domain_versions`:
+  - `id` (UUID PK), `certification_id` (FK → certifications), `version_label` (text — e.g. "bootstrap-step-10.1" or "2025-Q1-refresh"), `is_current` (boolean — partial unique index on `(certification_id) WHERE is_current = true` enforces exactly one current version per cert), `source_notes` (text — where the data came from), `agent_run_id` (nullable FK → agent_runs — null for bootstrap; set for agent-driven refreshes), `created_by_admin_id` (nullable FK → admin_users — null for bootstrap), `created_at`
+- Add `domain_version_id` (FK → certification_domain_versions, nullable) to `certification_domains`. All existing rows are backfilled: the migration creates one bootstrap `certification_domain_versions` row per cert (is_current = true, version_label = "bootstrap-step-10.1") and sets `domain_version_id` on each existing domain row accordingly.
+- Add `domain_version_id` (FK → certification_domain_versions, nullable) to `practitioner_profiles`. Null for profiles locked before this step; set at profile lock time from Step 10.5 onward.
+- New table `certification_domain_proposals`:
+  - `id` (UUID PK), `certification_id` (nullable FK → certifications — null when proposing a brand-new cert), `cert_code` (text), `cert_name` (text), `proposed_domains` (JSONB — list of {sequence_order, domain_name, domain_description, weight_pct}), `source_notes` (text), `agent_run_id` (FK → agent_runs), `status` (`pending_review` | `approved` | `rejected`), `reviewed_by_admin_id` (nullable FK → admin_users), `reviewed_at` (nullable timestamp), `rejection_notes` (nullable text), `created_at`
+
+*Update seed (`backend/seed/certification_domains.py`):*
+- After inserting domain rows, create one `certification_domain_versions` row per cert (is_current = true, version_label = "bootstrap-step-10.1") and set `domain_version_id` on each domain row. Idempotent: if a bootstrap version already exists for a cert, reuse it.
+
+*New ORM models:* `CertificationDomainVersion`, `CertificationDomainProposal`. Add `domain_version_id` FK to `CertificationDomain` and `PractitionerProfile` ORM models.
+
+*New API endpoints (admin-only, `require_admin`):*
+- `GET /admin/cert-domain-versions` — list all versions per cert, ordered newest-first per cert.
+- `GET /admin/cert-domain-proposals` — list proposals by status (default: `pending_review`).
+
+**Scenario tests:**
+- *The migration creates exactly one `certification_domain_versions` row per active cert, each with `is_current = true`.*
+- *Every existing `certification_domains` row has a non-null `domain_version_id` after migration — no orphaned domain rows.*
+- *Inserting a second `is_current = true` row for the same cert is rejected — the partial unique index fires.*
+
+**Definition of done:** all three pass; migration runs clean; `GET /admin/cert-domain-versions` returns versioned data; Step 10.1 scenario tests are still green.
+
+---
+
+### Step 10.3 — Cert Domain Discovery Agent — LLM-driven exam domain research & refresh 👤
+
+**Goal:** an LLM agent that researches the current official exam domains and weights for any certification and returns structured proposals for admin review. This removes the need to edit seed files when an exam is revised or a new certification enters the catalog. When the admin approves a proposal, a new version is published — existing profiles are unaffected, new profiles use the updated domains.
+
+**Preconditions:** 10.2.
+**Context to load:** `docs/architecture.md` (agent #11 — Cert Domain Discovery), `docs/human-in-the-loop.md` (Step 10.3 entry), `backend/app/agents/base.py`.
+
+**Build:**
+
+*New agent — `backend/app/agents/cert_domain_discovery.py` + `agents/prompts/cert_domain_discovery.md` 👤:*
+- `CertDomainDiscoveryInput`:
+  - `cert_code: str`, `cert_name: str`, `provider_name: str`
+  - `known_source_url: str | None` — official exam guide URL if already known; agent should prioritize this
+  - `current_domains: list[{domain_name, weight_pct}] | None` — existing data for comparison; agent notes any changes
+  - `refresh_reason: str | None` — context for the agent (e.g. "cert revised 2025-Q1", "initial discovery")
+- `CertDomainDiscoveryOutput`:
+  - `cert_code: str`
+  - `proposed_domains: list[{sequence_order, domain_name, domain_description, weight_pct}]`
+  - `source_notes: str` — where the agent found the data, with explicit acknowledgment of uncertainty
+  - `changes_from_current: list[str] | None` — bullet diff vs. current_domains; null if no previous
+  - `confidence: Literal["high", "medium", "low"]` — high = verified from official guide in training data; medium = inferred from curriculum; low = uncertain or no reliable source found
+  - `suggested_source_url: str | None` — URL the admin should verify before approving
+- Persist output to `certification_domain_proposals` (status = `pending_review`), linked to the `agent_runs` row.
+
+*New API endpoints (admin-only, `require_admin`):*
+- `POST /admin/cert-domains/discover` — body: `{cert_code, cert_name, provider_name, known_source_url?, refresh_reason?}` — triggers agent for one cert; returns the created proposal.
+- `POST /admin/cert-domains/discover-all` — triggers discovery for all active certs via `asyncio.gather`; returns list of proposals.
+- `POST /admin/cert-domain-proposals/{id}/approve` — creates new `certification_domain_versions` row (is_current = true) + new `certification_domains` rows; flips old version is_current = false; sets proposal status = `approved`. If `certification_id` is null (new cert), creates a `certifications` row with `is_active = false` for separate admin activation.
+- `POST /admin/cert-domain-proposals/{id}/reject` — body: `{rejection_notes: str}` — sets status = `rejected`; no domain rows are touched.
+
+**Scenario tests:**
+- *Given a stub agent response with 5 valid domain rows summing to 100%, the discover endpoint persists a `certification_domain_proposals` row with status `pending_review` linked to an `agent_runs` row.*
+- *Approving a proposal creates a new `certification_domain_versions` row with `is_current = true` and flips the previous version to `is_current = false` — exactly one current version per cert.*
+- *Approving a proposal for a cert_code not in `certifications` creates a new cert row with `is_active = false`.*
+- *Rejecting a proposal sets `status = 'rejected'` and persists rejection notes without touching any `certification_domains` rows.*
+
+**Definition of done:** all four pass against the stub Claude client; `cert_domain_discovery.py` and `prompts/cert_domain_discovery.md` exist; all four endpoints are guarded by `require_admin`.
+
+> 👤 **Human-in-the-loop:** write `agents/prompts/cert_domain_discovery.md` yourself before implementing. This agent's output (when approved) replaces the exam domain data all practitioners are tested against. A prompt that confidently fabricates plausible-sounding but incorrect domain names is more dangerous than one that says "I cannot find a reliable source" — at least a refusal is visible. Own the confidence-level vocabulary, the uncertainty language, and the rule that the agent must flag low-confidence outputs rather than filling in gaps from imagination. See `docs/human-in-the-loop.md`.
+
+---
+
+### Step 10.4 — Admin "Refresh Certification Domains" UI
+
+**Goal:** admins can trigger domain discovery for any certification, review proposed updates side-by-side with the current version, and publish or reject changes — all from a self-service UI page, with no code changes or redeployments required.
+
+**Preconditions:** 10.3.
+**Context to load:** `docs/architecture.md` (Auth §What each role can see).
+
+**Build:**
+
+*New page `frontend/src/pages/CertDomainManagementPage.tsx`*, routed at `/admin/cert-domains`. Route guard: Admin-only for refresh/approve/reject controls; Leadership sessions see read-only mode.
+
+- **Current Versions panel**: one card per active cert showing version label, published date, source notes, and confidence badge. Cards are collapsible to show the full domain list (sequence_order, domain_name, weight_pct).
+- **Refresh controls (admin only):** a primary **"Refresh all certs"** button calls `POST /admin/cert-domains/discover-all` with a spinner. Individual cert cards also have a **"Refresh this cert"** button. Both append results to the Proposals panel below.
+- **Proposals panel**: each pending proposal shows:
+  - Cert code + name + confidence badge (green = High, amber = Medium, red = Low).
+  - Side-by-side diff: current domains vs. proposed domains. New-cert proposals show only the proposed column.
+  - `source_notes` and a clickable **"Verify source ↗"** link (`suggested_source_url`) — admin should verify before approving.
+  - `changes_from_current` rendered as a bulleted diff (shown only if non-empty).
+  - **Approve** button with confirmation: *"Approving will create a new domain version for [cert code]. Practitioners with locked profiles won't be affected — their scores reference the version in place at lock time."*
+  - **Reject** button: requires a short rejection-notes field.
+- **Version history panel**: collapsible "Version history" per cert — version_label, created_at, created_by, agent run link.
+- **New cert proposals section**: discovery results for cert_codes not yet in the catalog. Approving creates the cert row (is_active = false); a separate "Activate cert" toggle calls the existing certs API once the admin is satisfied.
+
+*Admin nav:* add "Cert Domains" link under admin navigation, hidden from practitioner sessions.
+
+**Scenario tests (Playwright):**
+- *Admin clicks "Refresh all certs" and sees at least one proposal card appear with Approve and Reject controls.*
+- *Approving a proposal updates the Current Versions panel to show the new version label and date.*
+- *Rejecting a proposal with notes removes it from the pending list without changing the current version.*
+- *A Leadership user sees the Current Versions panel but Refresh/Approve/Reject controls are disabled.*
+
+**Definition of done:** all four pass; admin can complete the full refresh → review → approve flow against a live backend without touching any files.
+
+---
+
+### Step 10.5 — Domain Scorer Agent — self-assessment → initial domain scores
 
 **Goal:** when a practitioner locks their profile (after saving skill ratings in Step 6.5), use the self-assessment proficiency ratings to compute an initial estimate for each certification domain score. This gives the gap chart a non-zero, LLM-reasoned starting point before any quizzes are taken — so practitioners can immediately see where the model thinks they are relative to each exam domain, and which domains are the biggest gaps to close.
 
-**Preconditions:** 10.1.
-**Context to load:** `docs/architecture.md` (Domain Scorer Agent entry), `docs/data-model.md` (certification_domain_scores), `backend/app/agents/base.py`.
+**Preconditions:** 10.2.
+**Context to load:** `docs/architecture.md` (Domain Scorer Agent entry), `docs/data-model.md` (certification_domain_scores, certification_domain_versions), `backend/app/agents/base.py`.
 
 **Build:**
 
@@ -1551,7 +1670,7 @@ This phase does two things at once, in dependency order:
 - Persist output to `certification_domain_scores` with `source = 'self_assessment_estimate'`. **Never overwrite a row that already has `source = 'quiz_derived'`** — the self-assessment estimate is only the fallback / initial state; quiz performance takes permanent precedence.
 
 *Integration:*
-- In `POST /practitioners/{id}/profiles/{profile_id}/skill-assessments` (the profile-locking endpoint), after writing `profile_skill_assessments` rows and setting `is_locked = true`, call the Domain Scorer Agent and persist its output to `certification_domain_scores`. This is the only time self-assessment ratings influence scores — at lock time, one shot.
+- In `POST /practitioners/{id}/profiles/{profile_id}/skill-assessments` (the profile-locking endpoint), after writing `profile_skill_assessments` rows and setting `is_locked = true`: (a) look up the cert's current `certification_domain_versions` row and set `practitioner_profiles.domain_version_id` to its `id` — this freezes the domain version for this profile so a future admin refresh never retroactively shifts this practitioner's baseline; (b) call the Domain Scorer Agent using the `certification_domains` rows for that pinned version and persist its output to `certification_domain_scores`. This is the only time self-assessment ratings influence scores — at lock time, one shot.
 - `DomainScorerAgent` is not called by the `generate_learning_path` workflow — it runs only at lock time. The workflow uses the already-computed `certification_domain_scores` directly.
 
 **Scenario tests:**
@@ -1563,12 +1682,12 @@ This phase does two things at once, in dependency order:
 
 ---
 
-### Step 10.3 — Domain-aware item writer & tagging
+### Step 10.6 — Domain-aware item writer & tagging
 
 **Goal:** every item generated from this step forward carries its certification domain and whether it is directly evaluated in the exam. Items cover all of the practitioner's cert domains proportionally to their exam weight. Practitioners and the scoring system can distinguish "this question counts toward my exam readiness" from "this is useful context."
 
-**Preconditions:** 10.2.
-**Context to load:** `docs/architecture.md` (Item-Writer agent, Certification-Domain Alignment section), `backend/app/agents/item_writer.py`, `backend/app/agents/prompts/item_writer.md`, `docs/human-in-the-loop.md` (Step 10.3 entry).
+**Preconditions:** 10.5.
+**Context to load:** `docs/architecture.md` (Item-Writer agent, Certification-Domain Alignment section), `backend/app/agents/item_writer.py`, `backend/app/agents/prompts/item_writer.md`, `docs/human-in-the-loop.md` (Step 10.6 entry).
 
 **Build:**
 
@@ -1598,16 +1717,16 @@ This phase does two things at once, in dependency order:
 
 ---
 
-### Step 10.4 — Progressive quiz-round scoring model (scores can rise AND fall)
+### Step 10.7 — Progressive quiz-round scoring model (scores can rise AND fall)
 
 **Goal:** a practitioner cannot achieve 100% mastery on a skill from a single set of quiz questions. Mastery rises progressively across multiple completed rounds, following a ceiling formula that guarantees meaningful effort is required to approach full mastery. The same ceiling logic applies to both the broad Skill Radar (skill-level scores) and the domain gap chart (domain-level scores).
 
-**Preconditions:** 10.3 (domain-aware items exist; `generation` column from this migration is also needed by the auto-refresh step that follows).
+**Preconditions:** 10.6 (domain-aware items exist; `generation` column from this migration is also needed by the auto-refresh step that follows).
 **Context to load:** `docs/data-model.md` (items, attempts tables), `backend/app/agents/skill_profiler.py`.
 
 **Design — round-based ceiling model:**
 
-A **round** is defined as: the practitioner has attempted every available item in the current generation for a skill at least once (see Step 10.5 for the generation concept). The mastery ceiling after N completed rounds follows:
+A **round** is defined as: the practitioner has attempted every available item in the current generation for a skill at least once (see Step 10.8 for the generation concept). The mastery ceiling after N completed rounds follows:
 
 ```
 ceiling(N) = 1 − (0.5)^N
@@ -1649,7 +1768,7 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 - Update `generate_learning_path` workflow: after querying quiz-attempt events (Step 9.4), also call `compute_round_metrics` for each skill and pass the results to `SkillProfilerInput` as `quiz_round_metrics: list[RoundMetricsPerSkill]`.
 - Update `SkillProfilerInput` to include `quiz_round_metrics` alongside raw attempt events.
 - Update `prompts/skill_profiler.md` to instruct the agent to use `mastery_ceiling` and `current_mastery_score` from `quiz_round_metrics` as the primary mastery signal and to note that scores can decrease when recent round accuracy is poor.
-- Also return `previous_mastery_score` in `RoundMetrics` (the value from the previous `skill_profile_snapshots` row before this profiler run) so the API can expose the delta to the frontend for visual indicators (Step 10.8).
+- Also return `previous_mastery_score` in `RoundMetrics` (the value from the previous `skill_profile_snapshots` row before this profiler run) so the API can expose the delta to the frontend for visual indicators (Step 10.11).
 
 **Scenario tests:**
 - *A practitioner who answers all generation-1 items for skill X with 100% accuracy achieves `current_mastery_score ≤ 0.50` — the round-1 ceiling is enforced.*
@@ -1660,11 +1779,11 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 
 ---
 
-### Step 10.5 — Auto-refresh quiz questions after round exhaustion
+### Step 10.8 — Auto-refresh quiz questions after round exhaustion
 
-**Goal:** when a practitioner has answered all available items for a skill, the system automatically generates a new set of questions (next generation) so the practitioner can continue progressing. New items are domain-tagged from day one (using the domain-aware Item-Writer from Step 10.3) so the domain gap chart stays accurate across all rounds. The Quiz Runner surfaces a brief "round complete" moment before presenting the new items.
+**Goal:** when a practitioner has answered all available items for a skill, the system automatically generates a new set of questions (next generation) so the practitioner can continue progressing. New items are domain-tagged from day one (using the domain-aware Item-Writer from Step 10.6) so the domain gap chart stays accurate across all rounds. The Quiz Runner surfaces a brief "round complete" moment before presenting the new items.
 
-**Preconditions:** 10.4.
+**Preconditions:** 10.7.
 **Context to load:** `docs/architecture.md` (Item-Writer agent, Certification-Domain Alignment section), `backend/app/agents/item_writer.py`.
 
 **Build:**
@@ -1697,12 +1816,12 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 
 ---
 
-### Step 10.6 — Certification domain gap scoring workflow & UI
+### Step 10.9 — Certification domain gap scoring workflow & UI
 
-**Goal:** compute per-domain readiness scores from cert-evaluated quiz answers and replace the current "Top skill gaps" bar chart with a domain gap chart that shows the practitioner exactly how ready they are for each section of their certification exam. Domain scores respect the same round-ceiling model established in Step 10.4.
+**Goal:** compute per-domain readiness scores from cert-evaluated quiz answers and replace the current "Top skill gaps" bar chart with a domain gap chart that shows the practitioner exactly how ready they are for each section of their certification exam. Domain scores respect the same round-ceiling model established in Step 10.7.
 
-**Preconditions:** 10.5.
-**Context to load:** `docs/data-model.md` (certification_domain_scores, two-tier scoring table), `backend/app/workflows/generate_learning_path.py`, Step 10.4 (round-based ceiling model that domain scoring also respects).
+**Preconditions:** 10.8.
+**Context to load:** `docs/data-model.md` (certification_domain_scores, two-tier scoring table), `backend/app/workflows/generate_learning_path.py`, Step 10.7 (round-based ceiling model that domain scoring also respects).
 
 **Build:**
 
@@ -1710,7 +1829,7 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 - New utility function `compute_domain_scores(practitioner_id, certification_id, db) → list[DomainScore]`:
   - Queries `attempts` joined to `items` where `is_cert_evaluated = true` and `items.certification_domain_id` belongs to the given cert.
   - Groups by `certification_domain_id`.
-  - Applies the recency-weighted accuracy formula from Step 10.4 (and the round ceiling if round metrics are available — domain scores respect the same ceiling model as broad skill scores).
+  - Applies the recency-weighted accuracy formula from Step 10.7 (and the round ceiling if round metrics are available — domain scores respect the same ceiling model as broad skill scores).
   - Upserts `certification_domain_scores` with `source = 'quiz_derived'`. **Never overwrites** an existing `quiz_derived` row with a `self_assessment_estimate`.
 - Call `compute_domain_scores` in the `generate_learning_path` workflow after the Skill Profiler step.
 - New API endpoint: `GET /practitioners/{id}/certification-domain-scores?certification_id={id}` — returns `[{domain_name, weight_pct, sequence_order, mastery_score, gap_score, source}]` ordered by `sequence_order`. Used by the gap chart.
@@ -1733,11 +1852,11 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 
 ---
 
-### Step 10.7 — Quiz UI certification-domain awareness
+### Step 10.10 — Quiz UI certification-domain awareness
 
 **Goal:** the quiz experience clearly communicates which questions count toward exam readiness and which are supplementary context. Color-coded tab badges and item-level labels give practitioners informed control over where to focus their session.
 
-**Preconditions:** 10.6.
+**Preconditions:** 10.9.
 **Context to load:** `frontend/src/components/QuizRunner/`, Step 6.8 (cert-ordered skill selector, already places cert skills first).
 
 **Build:**
@@ -1771,12 +1890,12 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 
 ---
 
-### Step 10.8 — Visual mastery trend indicators (↑ green / ↓ amber on radar + domain chart)
+### Step 10.11 — Visual mastery trend indicators (↑ green / ↓ amber on radar + domain chart)
 
 **Goal:** every skill row in the Skill Radar and every domain bar in the domain gap chart clearly shows whether it is trending up, down, or stable since the last profiler run — using color and directional labels so a practitioner immediately sees what is improving and what is declining.
 
-**Preconditions:** 10.7 (domain gap chart from Step 10.6 is in place and the quiz UI is complete; `mastery_history` table contains the data to compute deltas; Step 10.4's scoring model provides `previous_mastery_score`).
-**Context to load:** Step 10.4 (delta computation), `frontend/src/components/SkillRadar/`, the `CertDomainGapChart` component from Step 10.6.
+**Preconditions:** 10.10 (domain gap chart from Step 10.9 is in place and the quiz UI is complete; `mastery_history` table contains the data to compute deltas; Step 10.7's scoring model provides `previous_mastery_score`).
+**Context to load:** Step 10.7 (delta computation), `frontend/src/components/SkillRadar/`, the `CertDomainGapChart` component from Step 10.9.
 
 **Design — three trend states:**
 
