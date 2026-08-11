@@ -1,6 +1,7 @@
 import React from "react";
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { SessionProvider, useSession } from "./context/SessionContext";
+import AdminPractitionerPage from "./pages/AdminPractitionerPage";
 import HomePage from "./pages/HomePage";
 import PractitionerPage from "./pages/PractitionerPage";
 import NudgesPage from "./pages/NudgesPage";
@@ -234,6 +235,17 @@ function AppRoutes() {
             <RequireAdmin>
               <PortalLayout>
                 <ObservabilityPage />
+              </PortalLayout>
+            </RequireAdmin>
+          }
+        />
+        {/* Step 9.2 — Admin/Leadership read-only practitioner view */}
+        <Route
+          path="/admin/practitioners/:id"
+          element={
+            <RequireAdmin>
+              <PortalLayout>
+                <AdminPractitionerPage />
               </PortalLayout>
             </RequireAdmin>
           }

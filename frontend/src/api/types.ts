@@ -361,6 +361,8 @@ export interface PractitionerProfile {
   created_at: string;
   updated_at: string;
   mastery_pct?: number;
+  /** Step 9.2 forward-compat: always false until Step 9.3 adds the DB column. */
+  is_locked?: boolean;
 }
 
 export interface ProfileDetail extends PractitionerProfile {

@@ -45,6 +45,8 @@ class ProfileRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     mastery_pct: float | None = None  # mean mastery of cert's skills; None if no cert
+    # Step 9.2 forward-compat: always False until Step 9.3 adds the DB column.
+    is_locked: bool = False
 
     model_config = {"from_attributes": True}
 

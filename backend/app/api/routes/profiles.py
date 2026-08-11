@@ -62,6 +62,8 @@ def _profile_read(
         created_at=profile.created_at,
         updated_at=profile.updated_at,
         mastery_pct=mastery_pct,
+        # Step 9.2: always False; Step 9.3 will wire to the DB column.
+        is_locked=False,
     )
 
 
@@ -206,6 +208,8 @@ async def get_profile(
         created_at=profile.created_at,
         updated_at=profile.updated_at,
         mastery_pct=mastery_pct,
+        # Step 9.2: always False; Step 9.3 will wire to the DB column.
+        is_locked=False,
         skill_assessments=[
             {
                 "id": sa.id,

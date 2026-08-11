@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useCreatePractitioner, usePractitioners } from "../hooks";
+import { useSession } from "../context/SessionContext";
 import type { PractitionerCreate } from "../api/types";
 
 const shell: React.CSSProperties = {
@@ -19,7 +20,14 @@ const grid: React.CSSProperties = {
 export default function HomePage() {
   const { data: people, isLoading, isError } = usePractitioners();
   const create = useCreatePractitioner();
+  const { session } = useSession();
   const [showForm, setShowForm] = useState(false);
+
+  // Step 9.2: admins see the read-only practitioner view; practitioners see their own dashboard.
+  const practitionerLink = (id: string) =>
+    session?.identity_type === "admin"
+      ? `/admin/practitioners/${id}`
+      : `/practitioners/${id}/skills`;
   const [form, setForm] = useState<PractitionerCreate>({
     name: "",
     email: "",
@@ -152,7 +160,7 @@ export default function HomePage() {
           {people.map((p) => (
             <Link
               key={p.id}
-              to={`/practitioners/${p.id}/skills`}
+              to={practitionerLink(p.id)}
               style={{ textDecoration: "none", color: "inherit" }}
             >
               <div

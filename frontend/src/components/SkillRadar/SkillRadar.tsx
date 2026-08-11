@@ -20,6 +20,14 @@ import LearningPathRoad from "./LearningPathRoad";
 
 interface Props {
   practitionerId: string;
+  /**
+   * Step 9.2 — when true, all interactive controls are hidden:
+   *   - ProfileBanner (with "Edit profile →") is not rendered.
+   *   - "Regenerate path" / "Generate path" button is not rendered.
+   *   - Learning Journey section is not rendered.
+   * Used by AdminPractitionerPage for the read-only admin view.
+   */
+  readOnly?: boolean;
 }
 
 // ── Radar geometry ─────────────────────────────────────────────────────────────
@@ -148,7 +156,7 @@ function guidanceMessage(pct: number): string {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
-export default function SkillRadar({ practitionerId }: Props) {
+export default function SkillRadar({ practitionerId, readOnly = false }: Props) {
   const { data: snapshots, isLoading, isError } = useSkillProfile(practitionerId);
   const { data: paths } = useLearningPaths(practitionerId);
   const { data: profilesList, isLoading: profilesLoading } = useProfiles(practitionerId);
@@ -164,6 +172,13 @@ export default function SkillRadar({ practitionerId }: Props) {
   }
 
   if (!activeProfile) {
+    if (readOnly) {
+      return (
+        <div className="card" style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
+          No active profile for this practitioner.
+        </div>
+      );
+    }
     return (
       <div className="card card-3d" style={{ textAlign: "center", padding: "3rem 2rem", maxWidth: 520, margin: "0 auto" }}>
         <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>🎯</div>
@@ -186,16 +201,22 @@ export default function SkillRadar({ practitionerId }: Props) {
   if (!snapshots || snapshots.length === 0) {
     return (
       <div>
-        <ProfileBanner profile={activeProfile} onEdit={() => navigate("/profile")} />
+        {!readOnly && <ProfileBanner profile={activeProfile} onEdit={() => navigate("/profile")} />}
         <div className="empty-state">
-          <p style={{ marginBottom: "0.5rem" }}>No skill data yet. Generate your learning path to build the radar.</p>
-          <button className="btn btn-primary btn-3d" disabled={generatePath.isPending} onClick={() => generatePath.mutate()}>
-            {generatePath.isPending ? <><span className="spinner" /> Generating…</> : "Generate learning path"}
-          </button>
-          {generatePath.isError && (
-            <p style={{ color: "var(--danger)", marginTop: "0.75rem", fontSize: "0.875rem" }}>
-              {(generatePath.error as Error).message}
-            </p>
+          {readOnly ? (
+            <p style={{ marginBottom: "0.5rem" }}>No skill data yet for this practitioner.</p>
+          ) : (
+            <>
+              <p style={{ marginBottom: "0.5rem" }}>No skill data yet. Generate your learning path to build the radar.</p>
+              <button className="btn btn-primary btn-3d" disabled={generatePath.isPending} onClick={() => generatePath.mutate()}>
+                {generatePath.isPending ? <><span className="spinner" /> Generating…</> : "Generate learning path"}
+              </button>
+              {generatePath.isError && (
+                <p style={{ color: "var(--danger)", marginTop: "0.75rem", fontSize: "0.875rem" }}>
+                  {(generatePath.error as Error).message}
+                </p>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -216,7 +237,9 @@ export default function SkillRadar({ practitionerId }: Props) {
 
   return (
     <div>
-      <ProfileBanner profile={activeProfile} onEdit={() => navigate("/profile")} />
+      {/* ProfileBanner is suppressed in read-only (admin) mode — the admin page
+          renders its own read-only profile panel above the radar. */}
+      {!readOnly && <ProfileBanner profile={activeProfile} onEdit={() => navigate("/profile")} />}
 
       {/* ── Radar + side panel ─────────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: "2rem", flexWrap: "wrap" }}>
@@ -382,45 +405,47 @@ export default function SkillRadar({ practitionerId }: Props) {
         </div>
       </div>
 
-      {/* ── Learning Journey ───────────────────────────────────────────── */}
-      <div style={{ marginTop: "2.5rem" }}>
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1rem" }}>
-          <div>
-            <h2 style={{ marginBottom: "0.25rem" }}>Your learning journey</h2>
-            <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", margin: 0 }}>
-              {activePath
-                ? `${activePath.items.length} milestone${activePath.items.length !== 1 ? "s" : ""} · generated ${new Date(activePath.generated_at).toLocaleDateString()}`
-                : "Generate a personalised path toward " + (certCode ?? "your certification") + "."}
+      {/* ── Learning Journey — hidden in read-only (admin) view ──────── */}
+      {!readOnly && (
+        <div style={{ marginTop: "2.5rem" }}>
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1rem" }}>
+            <div>
+              <h2 style={{ marginBottom: "0.25rem" }}>Your learning journey</h2>
+              <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", margin: 0 }}>
+                {activePath
+                  ? `${activePath.items.length} milestone${activePath.items.length !== 1 ? "s" : ""} · generated ${new Date(activePath.generated_at).toLocaleDateString()}`
+                  : "Generate a personalised path toward " + (certCode ?? "your certification") + "."}
+              </p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
+              <button
+                className="btn btn-primary btn-3d"
+                disabled={generatePath.isPending}
+                onClick={() => generatePath.mutate()}
+              >
+                {generatePath.isPending ? <><span className="spinner" /> Generating…</> : activePath ? "Regenerate path" : "Generate path"}
+              </button>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                Refresh after quizzes or profile edits.
+              </span>
+            </div>
+          </div>
+
+          {generatePath.isError && (
+            <p style={{ color: "var(--danger)", marginBottom: "0.75rem", fontSize: "0.875rem" }}>
+              {(generatePath.error as Error).message}
             </p>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
-            <button
-              className="btn btn-primary btn-3d"
-              disabled={generatePath.isPending}
-              onClick={() => generatePath.mutate()}
-            >
-              {generatePath.isPending ? <><span className="spinner" /> Generating…</> : activePath ? "Regenerate path" : "Generate path"}
-            </button>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-              Refresh after quizzes or profile edits.
-            </span>
-          </div>
+          )}
+
+          {activePath ? (
+            <LearningPathRoad path={activePath} />
+          ) : (
+            <div style={{ border: "2px dashed var(--border)", borderRadius: "12px", padding: "2.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.875rem" }}>
+              Click "Generate path" to map your journey to {certCode ?? "certification"}.
+            </div>
+          )}
         </div>
-
-        {generatePath.isError && (
-          <p style={{ color: "var(--danger)", marginBottom: "0.75rem", fontSize: "0.875rem" }}>
-            {(generatePath.error as Error).message}
-          </p>
-        )}
-
-        {activePath ? (
-          <LearningPathRoad path={activePath} />
-        ) : (
-          <div style={{ border: "2px dashed var(--border)", borderRadius: "12px", padding: "2.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.875rem" }}>
-            Click "Generate path" to map your journey to {certCode ?? "certification"}.
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
