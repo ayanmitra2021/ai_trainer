@@ -148,7 +148,8 @@ function AxisLabels({ labels }: { labels: { name: string; score: number }[] }) {
 // ── Guidance copy ──────────────────────────────────────────────────────────────
 
 function guidanceMessage(pct: number): string {
-  if (pct < 0.4) return "Keep building — take more quizzes and update your skill self-assessment to give the radar a fuller picture.";
+  // Phase 9.4: guidance is based solely on quiz-derived mastery.
+  if (pct < 0.4) return "Keep building — take more quizzes and click 'Regenerate path' to see your mastery levels grow.";
   if (pct < 0.7) return "Good progress. Focus on the weakest skills shown above and keep answering quizzes in those areas.";
   if (pct < 0.9) return "You're getting close. Review the remaining gaps and aim for a practice run soon.";
   return "Strong profile — you look ready to schedule your certification exam.";
@@ -207,7 +208,7 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
             <p style={{ marginBottom: "0.5rem" }}>No skill data yet for this practitioner.</p>
           ) : (
             <>
-              <p style={{ marginBottom: "0.5rem" }}>No skill data yet. Generate your learning path to build the radar.</p>
+              <p style={{ marginBottom: "0.5rem" }}>Your radar starts at zero. Answer quiz questions and click 'Regenerate path' to see your mastery levels fill in.</p>
               <button className="btn btn-primary btn-3d" disabled={generatePath.isPending} onClick={() => generatePath.mutate()}>
                 {generatePath.isPending ? <><span className="spinner" /> Generating…</> : "Generate learning path"}
               </button>
@@ -426,7 +427,7 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
                 {generatePath.isPending ? <><span className="spinner" /> Generating…</> : activePath ? "Regenerate path" : "Generate path"}
               </button>
               <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                Refresh after quizzes or profile edits.
+                Updates after you answer quizzes.
               </span>
             </div>
           </div>

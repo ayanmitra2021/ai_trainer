@@ -61,12 +61,13 @@ async def workflow_event(
     workflow_practitioner: Practitioner,
     workflow_skill: Skill,
 ) -> SkillProfileEvent:
+    # Phase 9.4: only quiz_attempt events are used to compute the radar.
     event = SkillProfileEvent(
         id=str(uuid.uuid4()),
         practitioner_id=workflow_practitioner.id,
         skill_id=workflow_skill.id,
-        source="self_assessment",
-        signal_strength=0.5,
+        source="quiz_attempt",
+        signal_strength=0.75,
         occurred_at=datetime.now(UTC) - timedelta(days=5),
     )
     db_session.add(event)

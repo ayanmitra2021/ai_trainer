@@ -2,7 +2,9 @@
 
 ## What this is
 
-One app built from two ideas that share a skill graph. **Mastery Mesh** starts by helping a practitioner pick the right certification for their background and goals — Anthropic, AWS, Google Cloud, Microsoft, or anything else in the catalog, not Anthropic-only — then profiles their skills, builds a personalized learning path targeting it, and writes/grades practice items (with a trap-reveal mechanic for common misconceptions). **Adoption Pulse** watches real usage signals (Claude Code activity, commit patterns) to see whether that mastery shows up in actual work, and turns the gap into individual nudges and leadership rollups. The two halves close a loop — Adoption Pulse's findings feed back into what the Curriculum Planner prioritizes next.
+One app built from two ideas that share a skill graph. **Mastery Mesh** starts by helping a practitioner pick the right certification for their background and goals — Anthropic, AWS, Google Cloud, Microsoft, or anything else in the catalog, not Anthropic-only — then profiles their skills, builds a personalized learning path targeting it, and writes/grades practice items (with a trap-reveal mechanic for common misconceptions). **Adoption Pulse** watches real usage signals (Claude Code activity, commit patterns) to see whether that mastery shows up in actual work, and turns the gap into individual nudges. The two halves close a loop — Adoption Pulse's findings feed back into what the Curriculum Planner prioritizes next.
+
+**Certification-domain alignment (Phase 10 design constraint):** a profile cannot exist without a certification associated. Quiz items are tagged against the cert's official exam domains; the domain gap bar chart shows readiness by exam domain, driven only by cert-evaluated quiz answers. The broad Skill Radar (10–15 overarching skills) is updated by all quiz answers. Self-assessment at profile creation time gives an initial domain-score estimate; ongoing score changes come only from quiz performance.
 
 "Mastery Pulse" is a working title. Rename freely — it's a find-and-replace, not a decision.
 
@@ -10,7 +12,7 @@ Built mostly via Claude Code, with a few parts (marked 👤 in `project_plan.md`
 
 ## Tech stack
 
-Python 3.11+ / FastAPI / SQLAlchemy / Alembic · Postgres (+ `pgvector`) · React + TypeScript (Vite) · nine LLM-API-backed agents orchestrated by plain async Python (no LangGraph/Temporal) · custom local MCP servers for internal data sources · **dual-model support: Anthropic Claude (default) or NVIDIA Nemotron 3 Ultra via `APP_BRAIN_MODEL` env var**.
+Python 3.11+ / FastAPI / SQLAlchemy / Alembic · Postgres (+ `pgvector`) · React + TypeScript (Vite) · ten LLM-API-backed agents orchestrated by plain async Python (no LangGraph/Temporal) · custom local MCP servers for internal data sources · **dual-model support: Anthropic Claude (default) or NVIDIA Nemotron 3 Ultra via `APP_BRAIN_MODEL` env var**.
 
 ## Repo map
 

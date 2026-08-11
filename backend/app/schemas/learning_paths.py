@@ -61,15 +61,17 @@ class CertGoalContext(BaseModel):
 
 
 class SkillProfilerInput(BaseModel):
-    """Input to the Skill Profiler agent."""
+    """Input to the Skill Profiler agent.
+
+    Phase 9.4: only quiz_attempt events are passed. Self-assessment ratings,
+    certification completions, and project-history signals are no longer
+    included in the profiler input — the radar is driven exclusively by
+    demonstrated quiz performance.
+    """
 
     practitioner_id: str
-    # Serialised events from skill_profile_events
+    # Serialised quiz_attempt events from skill_profile_events (source='quiz_attempt' only)
     events: list[dict]
-    # Optional enrichment from mcp-learning-portal (may be empty)
-    portal_certifications: list[dict] = []
-    portal_completions: list[dict] = []
-    portal_self_assessments: list[dict] = []
 
 
 class SkillScoreOutput(BaseModel):

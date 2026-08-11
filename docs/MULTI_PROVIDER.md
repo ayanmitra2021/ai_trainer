@@ -11,7 +11,7 @@ This guide explains how to switch between Anthropic Claude and NVIDIA Nemotron 3
 APP_BRAIN_MODEL=NVIDIA
 NVIDIA_API_KEY=nvapi-your-key-here
 # NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1  # optional, defaults to this
-# NVIDIA_MODEL_ID=nvidia/nemotron-3-ultra-550b-a55b  # optional, defaults to this
+# NVIDIA_MODEL_ID=nvidia/llama-3.1-nemotron-ultra-253b-v1  # optional, defaults to this
 ```
 
 ### Switching to Anthropic (default)
@@ -30,7 +30,7 @@ ANTHROPIC_API_KEY=sk-ant-your-key-here
 | `ANTHROPIC_API_KEY` | When ANTHROPIC | - | Anthropic API key from console.anthropic.com |
 | `NVIDIA_API_KEY` | When NVIDIA | - | NVIDIA API key from integrate.api.nvidia.com |
 | `NVIDIA_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | NVIDIA API endpoint (OpenAI-compatible) |
-| `NVIDIA_MODEL_ID` | No | `nvidia/nemotron-3-ultra-550b-a55b` | Model identifier |
+| `NVIDIA_MODEL_ID` | No | `nvidia/llama-3.1-nemotron-ultra-253b-v1` | Model identifier |
 
 ## Known Limitations (v1)
 
@@ -55,16 +55,16 @@ The `nightly_pulse` workflow uses the Anthropic Message Batches API for 50% cost
 
 | Agent | Anthropic Default | NVIDIA Default |
 |-------|-------------------|----------------|
-| Certification Advisor | `claude-sonnet-5` | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Skill Profiler | `claude-sonnet-5` | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Curriculum Planner | `claude-sonnet-5` | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Item-Writer | `claude-sonnet-5` (Opus 5 for hard items) | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Grader | `claude-opus-5` / `claude-haiku-4.5` | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Usage-Signal | `claude-haiku-4.5` | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Correlation | `claude-opus-5` | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Nudge Composer | `claude-sonnet-5` | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Rollup Reporter | `claude-sonnet-5` | `nvidia/nemotron-3-ultra-550b-a55b` |
-| Nudge Category Generator | `claude-sonnet-5` | `nvidia/nemotron-3-ultra-550b-a55b` |
+| Certification Advisor | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Skill Profiler | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Curriculum Planner | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Item-Writer | `claude-sonnet-5` (Opus 5 for hard items) | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Grader | `claude-opus-5` / `claude-haiku-4.5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Usage-Signal | `claude-haiku-4.5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Correlation | `claude-opus-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Nudge Composer | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Rollup Reporter | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Nudge Category Generator | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
 
 ## Prompt Tuning for Nemotron
 

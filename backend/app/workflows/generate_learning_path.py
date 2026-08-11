@@ -28,7 +28,6 @@ from app.db.models import (
     MasteryHistory,
     Practitioner,
     PractitionerCertificationGoal,
-    PractitionerProfile,
     Skill,
     SkillProfileEvent,
     SkillProfileSnapshot,
@@ -110,10 +109,17 @@ async def _run_steps(
     claude_client: ModelClient,
 ) -> GenerateLearningPathResponse:
     # ── 2. Skill Profiler ─────────────────────────────────────────────────
-    # Fetch raw events
+    # Phase 9.4: fetch ONLY quiz_attempt events. Self-assessment, certification,
+    # and project-history signals are no longer used to compute the radar —
+    # mastery is driven exclusively by demonstrated quiz performance.
+    # Self-assessment ratings stored in profile_skill_assessments are preserved
+    # in the DB as part of the locked profile record but are not passed here.
     events_result = await db.execute(
         select(SkillProfileEvent)
-        .where(SkillProfileEvent.practitioner_id == practitioner_id)
+        .where(
+            SkillProfileEvent.practitioner_id == practitioner_id,
+            SkillProfileEvent.source == "quiz_attempt",
+        )
         .order_by(SkillProfileEvent.occurred_at.desc())
     )
     events = events_result.scalars().all()
@@ -127,38 +133,6 @@ async def _run_steps(
         }
         for e in events
     ]
-
-    # Check if the practitioner has an active profile with skill assessments.
-    # If so, inject those ratings as additional self_assessment events so the
-    # Skill Profiler naturally weights them higher than older events.
-    profile_result = await db.execute(
-        select(PractitionerProfile)
-        .options(selectinload(PractitionerProfile.skill_assessments))
-        .where(
-            PractitionerProfile.practitioner_id == practitioner_id,
-            PractitionerProfile.is_active.is_(True),
-        )
-    )
-    active_profile = profile_result.scalar_one_or_none()
-
-    if active_profile is not None and active_profile.skill_assessments:
-        # Profile skill ratings override loose self_assessment events for those skills.
-        # Remove any existing self_assessment events for skills the profile covers.
-        profile_skill_ids = {psa.skill_id for psa in active_profile.skill_assessments}
-        events_data = [
-            e for e in events_data
-            if not (e["source"] == "self_assessment" and e["skill_id"] in profile_skill_ids)
-        ]
-        # Add profile assessments as self_assessment signals using their actual
-        # updated_at timestamp (when the practitioner rated themselves), not now().
-        for psa in active_profile.skill_assessments:
-            events_data.append({
-                "skill_id": psa.skill_id,
-                "source": "self_assessment",
-                "signal_strength": float(psa.signal_strength),
-                "occurred_at": psa.updated_at.isoformat(),
-                "metadata": {"source": "active_profile", "profile_id": active_profile.id},
-            })
 
     profiler_input = SkillProfilerInput(
         practitioner_id=practitioner_id,

@@ -1,8 +1,12 @@
 """Step 2.4 — Skill Profiler Agent scenarios.
 
-Scenario: New practitioner with a completed certification gets an initial profile.
-Scenario: Conflicting signals are weighted, not overwritten by the latest one.
-Scenario: Re-running is idempotent absent new signals.
+Updated for Phase 9.4 (quiz-only mastery engine):
+  All events passed to the profiler are now source='quiz_attempt'.
+  Self-assessment and certification signals are no longer sent to the agent.
+
+Scenario: New practitioner with a quiz attempt gets an initial profile.
+Scenario: Multiple quiz attempts are weighted, with recency and consistency mattering.
+Scenario: Re-running is idempotent absent new quiz signals.
 """
 
 from __future__ import annotations
@@ -41,10 +45,11 @@ async def practitioner_and_skill(db_session: AsyncSession):
     return p, s
 
 
-def _event(practitioner_id: str, skill_id: str, source: str, strength: float, days_ago: int = 1):
+def _quiz_event(practitioner_id: str, skill_id: str, strength: float, days_ago: int = 1):
+    """Create a quiz_attempt event dict (the only source used post-Phase 9.4)."""
     return {
         "skill_id": skill_id,
-        "source": source,
+        "source": "quiz_attempt",
         "signal_strength": strength,
         "occurred_at": (datetime.now(UTC) - timedelta(days=days_ago)).isoformat(),
         "metadata": None,
@@ -52,20 +57,20 @@ def _event(practitioner_id: str, skill_id: str, source: str, strength: float, da
 
 
 class TestSkillProfilerScenarios:
-    async def test_new_practitioner_with_certification_gets_initial_profile(
+    async def test_new_practitioner_with_quiz_attempt_gets_initial_profile(
         self,
         db_session: AsyncSession,
         practitioner_and_skill,
     ):
         """
-        Scenario: New practitioner with a completed certification gets an initial profile.
-          Given no existing snapshot and one certification signal
+        Scenario: New practitioner with a quiz attempt gets an initial profile.
+          Given no existing snapshot and one high-scoring quiz attempt
           When the Skill Profiler Agent runs for that practitioner
           Then a skill score is returned with mastery_score > 0
         """
         # Given
         practitioner, skill = practitioner_and_skill
-        events = [_event(practitioner.id, skill.id, "certification", 0.85, days_ago=10)]
+        events = [_quiz_event(practitioner.id, skill.id, 0.85, days_ago=10)]
 
         stub_client = StubClaudeClient(
             response_data={
@@ -73,11 +78,11 @@ class TestSkillProfilerScenarios:
                     {
                         "skill_id": skill.id,
                         "mastery_score": 0.75,
-                        "confidence": 0.6,
-                        "reasoning": "One certification signal indicates solid foundational mastery.",
+                        "confidence": 0.4,
+                        "reasoning": "One strong quiz attempt indicates solid foundational performance.",
                     }
                 ],
-                "summary": "One skill with moderate mastery from a single certification.",
+                "summary": "One skill with moderate mastery from a single quiz attempt.",
             }
         )
         agent_input = SkillProfilerInput(
@@ -95,25 +100,25 @@ class TestSkillProfilerScenarios:
         assert len(scores_for_skill) == 1
         assert scores_for_skill[0].mastery_score > 0
 
-    async def test_conflicting_signals_are_weighted_not_overwritten(
+    async def test_multiple_quiz_attempts_are_weighted_by_recency_and_consistency(
         self,
         db_session: AsyncSession,
         practitioner_and_skill,
     ):
         """
-        Scenario: Conflicting signals are weighted, not overwritten by the latest one.
-          Given a low quiz score and a relevant certification for the same skill
+        Scenario: Multiple quiz attempts are weighted — recent poor performance tempers earlier success.
+          Given a high-scoring older quiz attempt and a low-scoring recent one
           When the Skill Profiler Agent runs
-          Then the resulting score reflects both, not just one
+          Then the resulting score reflects both — lower than the early high alone
         """
         # Given
         practitioner, skill = practitioner_and_skill
         events = [
-            _event(practitioner.id, skill.id, "certification", 0.9, days_ago=30),
-            _event(practitioner.id, skill.id, "quiz_attempt", 0.2, days_ago=5),  # recent low score
+            _quiz_event(practitioner.id, skill.id, 0.9, days_ago=30),  # older high score
+            _quiz_event(practitioner.id, skill.id, 0.2, days_ago=5),   # recent low score
         ]
 
-        # The stub returns a blended score — neither the cert high nor the quiz low
+        # The stub returns a blended score — not just the early high or the recent low
         blended_score = 0.55
         stub_client = StubClaudeClient(
             response_data={
@@ -121,14 +126,14 @@ class TestSkillProfilerScenarios:
                     {
                         "skill_id": skill.id,
                         "mastery_score": blended_score,
-                        "confidence": 0.65,
+                        "confidence": 0.5,
                         "reasoning": (
-                            "Certification evidence suggests strong foundational mastery; "
-                            "the recent low quiz score tempers this — blended estimate."
+                            "Earlier quiz scored well; recent quiz shows a gap — "
+                            "recency-weighted estimate is lower than the early peak."
                         ),
                     }
                 ],
-                "summary": "Mixed signals: high cert, low quiz for the same skill.",
+                "summary": "Mixed quiz results: high older score, low recent score for the same skill.",
             }
         )
         agent_input = SkillProfilerInput(
@@ -144,7 +149,7 @@ class TestSkillProfilerScenarios:
         scores_for_skill = [s for s in result.skill_scores if s.skill_id == skill.id]
         assert len(scores_for_skill) == 1
         score = scores_for_skill[0].mastery_score
-        # Not the cert high alone (0.9), not the quiz low alone (0.2)
+        # Not the old high alone (0.9), not the recent low alone (0.2)
         assert 0.2 < score < 0.9, (
             f"Expected a blended score between 0.2 and 0.9, got {score}"
         )
@@ -156,24 +161,24 @@ class TestSkillProfilerScenarios:
     ):
         """
         Scenario: Re-running is idempotent absent new signals.
-          Given a practitioner already profiled with no new events since
+          Given a practitioner already profiled with no new quiz events since
           When the agent runs again with the same events
           Then the output skill scores are the same as the first run
         """
         # Given
         practitioner, skill = practitioner_and_skill
-        events = [_event(practitioner.id, skill.id, "self_assessment", 0.6, days_ago=20)]
+        events = [_quiz_event(practitioner.id, skill.id, 0.6, days_ago=20)]
 
         fixed_response = {
             "skill_scores": [
                 {
                     "skill_id": skill.id,
                     "mastery_score": 0.6,
-                    "confidence": 0.5,
-                    "reasoning": "Single self-assessment signal.",
+                    "confidence": 0.4,
+                    "reasoning": "Single quiz attempt signal.",
                 }
             ],
-            "summary": "One skill with moderate confidence.",
+            "summary": "One skill with moderate confidence from quiz.",
         }
 
         # When — run twice with the same events and same stub response

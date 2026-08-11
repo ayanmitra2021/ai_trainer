@@ -34,6 +34,27 @@ One row per credential, regardless of provider.
 What a given certification actually covers, in terms of the skill graph above. This is what lets the Curriculum Planner weight a learning path toward a chosen certification instead of treating every skill as equally relevant.
 - `certification_id` (FK), `skill_id` (FK), `weight` (numeric — how central this skill is to that exam)
 
+### `certification_domains`
+The official exam domains / modules for each certification — the concrete topics the exam actually tests, in the order and weighting the exam guide specifies. These are researched and seeded at catalog time (Step 10.1) and are the ground truth for the domain gap bar chart and for item tagging.
+
+They differ from `certification_skills` in specificity: `certification_skills` maps broad skill-graph nodes to a cert; `certification_domains` captures the actual sectioned content from the official exam guide (e.g. "Domain 2: Fundamentals of Generative AI — 24% of the exam").
+
+- `id`, `certification_id` (FK → certifications), `domain_name` (text — e.g. "Fundamentals of Generative AI"), `domain_description` (text — what the official guide says this domain covers), `weight_pct` (numeric — percentage of the exam, e.g. 24; all domains for one cert must sum to 100), `sequence_order` (integer — matches the official exam guide ordering, used for display)
+
+Seeded domains for each active cert (verified from official exam guides — see Step 10.1 and the 👤 flag in `docs/human-in-the-loop.md`):
+
+| Cert | Domains |
+|---|---|
+| AIF-C01 | 1: Fundamentals of AI and ML (20%) · 2: Fundamentals of Generative AI (24%) · 3: Applications of Foundation Models (28%) · 4: Guidelines for Responsible AI (14%) · 5: Security, Compliance, and Governance for AI Solutions (14%) |
+| CCAO-F | 1: Introduction to AI and Claude (20%) · 2: Prompt Engineering Fundamentals (25%) · 3: Claude API and Tool Use Essentials (20%) · 4: Responsible AI and Safety (20%) · 5: Deploying Claude in Practice (15%) |
+| CCDV-F | 1: Claude API and SDK Essentials (25%) · 2: Advanced Prompt Engineering (20%) · 3: Tool Use and Function Calling (20%) · 4: Building and Testing Production Applications (20%) · 5: Evaluation and Monitoring (15%) |
+| CCAF | 1: System Design with Claude (20%) · 2: Multi-Agent and Agentic Architectures (25%) · 3: RAG and Knowledge Integration (20%) · 4: Production Architecture Patterns (20%) · 5: Safety Engineering and Responsible Design (15%) |
+| CCAR-P | 1: Advanced Agentic Systems at Scale (25%) · 2: Enterprise Integration Patterns (20%) · 3: Safety Engineering and Risk Management (20%) · 4: Performance Optimization and Cost Control (20%) · 5: Multi-Provider and Platform Strategies (15%) |
+| AI-900 | 1: AI Workloads and Considerations (15–20%) · 2: Machine Learning in Azure (20–25%) · 3: Computer Vision Workloads (15–20%) · 4: Natural Language Processing Workloads (15–20%) · 5: Generative AI Workloads (15–20%) |
+| AI-102 | 1: Plan and Manage an Azure AI Solution (15–20%) · 2: Implement Content Moderation Solutions (10–15%) · 3: Implement Computer Vision Solutions (15–20%) · 4: Implement NLP Solutions (30–35%) · 5: Implement Knowledge Mining and Document Intelligence (10–15%) · 6: Implement Generative AI Solutions (10–15%) |
+
+> **Freshness note:** Domain weights shift when certs are revised. `certification_domains` inherits the same `last_verified_at` concern as `certifications` itself — re-verify before seeding any cert more than a few months old.
+
 ### `practitioner_certification_goals`
 A practitioner's history with a certification — recommended, chosen, in progress, or achieved. One practitioner can have several over a career; this is why it's a table and not a column on `practitioners`.
 - `id`, `practitioner_id` (FK), `certification_id` (FK), `status` (`recommended` | `selected` | `in_progress` | `achieved` | `abandoned`), `recommended_at`, `selected_at` (nullable), `achieved_at` (nullable)
@@ -47,8 +68,15 @@ Raw evidence of what a practitioner knows, from any source.
 - `id`, `practitioner_id` (FK), `skill_id` (FK), `source` (`certification` | `self_assessment` | `quiz_attempt` | `project_history`), `signal_strength` (0–1), `occurred_at`, `metadata` (jsonb — e.g. which cert, which attempt id)
 
 ### `skill_profile_snapshots` (derived)
-Current best estimate per practitioner × skill. Rebuilt by the Skill Profiler Agent, never hand-edited.
+Current best estimate per practitioner × skill. Rebuilt by the Skill Profiler Agent from quiz-attempt events only (Phase 9.4). Drives the Skill Radar, which shows the ~10–15 top-level overarching skills (root nodes in the skill graph where `parent_skill_id IS NULL`). Never hand-edited.
 - `practitioner_id` (FK), `skill_id` (FK), `mastery_score` (0–1), `confidence` (0–1), `last_computed_at` — PK on (`practitioner_id`, `skill_id`)
+
+### `certification_domain_scores` (derived)
+Per-practitioner, per-domain mastery scores. Computed exclusively from quiz attempts for items where `is_cert_evaluated = true` (Phase 10.4). Drives the certification domain gap bar chart — a separate, exam-specific view from the broad skill radar.
+
+- `id`, `practitioner_id` (FK), `certification_domain_id` (FK → certification_domains), `mastery_score` (float 0–1), `confidence` (float 0–1), `source` (`self_assessment_estimate` | `quiz_derived`), `last_computed_at` — Unique constraint on (`practitioner_id`, `certification_domain_id`).
+
+**Source semantics:** When a profile is first locked, the Domain Scorer Agent writes `self_assessment_estimate` rows as a starting baseline (derived from the self-assessment ratings via LLM reasoning — max confidence 0.5). Once a practitioner submits cert-evaluated quiz answers for a domain, those rows are updated with `source = 'quiz_derived'` and take precedence. A `quiz_derived` row is never overwritten by a `self_assessment_estimate`.
 
 ### `mastery_history` (append-only, time-series)
 A historical record appended by the Skill Profiler every time it upserts `skill_profile_snapshots`. Used to drive the Progress Trend Chart on the practitioner's Adoption Trends tab.
@@ -62,7 +90,9 @@ The Curriculum Planner's output.
 
 ### `items`
 The question/scenario bank the Item-Writer agent populates.
-- `id`, `skill_id` (FK), `item_type` (`mcq` | `free_text` | `scenario`), `prompt`, `answer_key` (jsonb), `trap_explanation` (nullable text — the reveal copy for the trap mechanic), `difficulty` (numeric), `calibration_stats` (jsonb — running accuracy, used to recalibrate difficulty over time)
+- `id`, `skill_id` (FK), `item_type` (`mcq` | `free_text` | `scenario`), `prompt`, `answer_key` (jsonb), `trap_explanation` (nullable text — the reveal copy for the trap mechanic), `difficulty` (numeric), `calibration_stats` (jsonb — running accuracy, used to recalibrate difficulty over time), `generation` (integer, default 1 — the round this item belongs to; see Step 9.5), `certification_domain_id` (nullable FK → `certification_domains` — which exam domain this item tests; NULL for legacy or non-cert items), `is_cert_evaluated` (boolean, default false — `true` if this topic is directly assessed in the certification exam, `false` for supplementary/context items that support understanding but aren't in the exam blueprint)
+
+Items with `is_cert_evaluated = true` are the only ones that change a practitioner's `certification_domain_scores`. Items with `is_cert_evaluated = false` still affect the broad Skill Radar via `skill_profile_snapshots`, but do not improve exam-domain readiness scores.
 
 ### `attempts`
 - `id`, `practitioner_id` (FK), `item_id` (FK), `response` (jsonb), `score` (numeric), `grader_rationale` (text), `is_trap_selected` (nullable boolean), `attempted_at`
@@ -108,14 +138,19 @@ Every agent invocation, full stop.
 
 ```
 certification_providers ─< certifications ─< certification_skills >─ skills
+                                          └─< certification_domains
 
 practitioners ─┬─< certification_advisor_responses
                ├─< practitioner_certification_goals >─ certifications
+               ├─< practitioner_profiles ─── certification_id → certifications (NOT NULL, Phase 10.1)
+               ├─< profile_skill_assessments >─ skills (per-profile ratings, preserved but not used for radar)
                ├─< skill_profile_events >─ skills
-               ├─< skill_profile_snapshots >─ skills
-               ├─< mastery_history >─ skills         (append-only time-series)
+               ├─< skill_profile_snapshots >─ skills     (broad radar — all quiz signals)
+               ├─< certification_domain_scores >─ certification_domains  (gap chart — cert-eval only)
+               ├─< mastery_history >─ skills              (append-only time-series)
                ├─< learning_paths >─< learning_path_items >─ skills
-               ├─< attempts >─ items ─ skills
+               ├─< attempts >─ items ─┬─ skills
+               │                      └─ certification_domains (nullable — tagged in Phase 10.3)
                ├─< usage_events >─ skills (nullable)
                ├─< correlation_snapshots >─ skills
                └─< nudges >─ nudge_categories (nullable)
@@ -126,8 +161,18 @@ admin_users ─< nudges (created_by_admin_id, nullable)
 practitioners ─< sessions   (sessions is polymorphic via identity_type)
 
 workflow_runs ─< agent_runs
-rollups            (aggregated — no direct practitioner FK by design)
+rollups            (aggregated — no direct practitioner FK by design; removed Phase 9.1)
 ```
+
+### Two-tier scoring model (Phase 10)
+
+| Signal | Radar (`skill_profile_snapshots`) | Domain gap chart (`certification_domain_scores`) |
+|---|---|---|
+| Cert-evaluated quiz answer (`is_cert_evaluated = true`) | ✓ moves mastery score | ✓ moves domain readiness score |
+| Supplementary quiz answer (`is_cert_evaluated = false`) | ✓ moves mastery score | — no effect |
+| Self-assessment ratings (profile lock) | — not used (Phase 9.4) | Initial estimate only (`self_assessment_estimate`, max confidence 0.5; `quiz_derived` takes precedence) |
+
+The radar shows the broad learning picture across ~10–15 overarching skills. The domain gap chart shows exam-specific readiness that matters for passing the actual certification.
 
 ## Seed catalog (Step 2.2)
 

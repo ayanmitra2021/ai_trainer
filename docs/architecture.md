@@ -15,20 +15,21 @@ Each agent is a single-purpose, typed unit: one input contract, one output contr
 | # | Agent | Job | Reads | Writes |
 |---|---|---|---|---|
 | 1 | Certification Advisor | Match a short questionnaire to a best-fit certification | `certifications`, `certification_providers`, `certification_skills` | `certification_advisor_responses`, `practitioner_certification_goals` (status `recommended`) |
-| 2 | Skill Profiler | Turn raw signals into a current mastery estimate | `skill_profile_events`, MCP: `mcp-learning-portal` | `skill_profile_snapshots`, `mastery_history` |
-| 3 | Curriculum Planner | Pick what a practitioner should work on next | `skill_profile_snapshots`, `correlation_snapshots`, `practitioner_certification_goals` (if set) | `learning_paths`, `learning_path_items` |
-| 4 | Item-Writer | Generate/calibrate practice items, incl. trap-reveal | `items`, `attempts` (calibration stats) | `items` |
+| 2 | Skill Profiler | Turn quiz-attempt signals into broad skill mastery estimates | `skill_profile_events` (source=`quiz_attempt` only, Phase 9.4) | `skill_profile_snapshots`, `mastery_history` |
+| 3 | Curriculum Planner | Pick what a practitioner should work on next | `skill_profile_snapshots`, `correlation_snapshots`, `practitioner_certification_goals`, `certification_domains` | `learning_paths`, `learning_path_items` |
+| 4 | Item-Writer | Generate/calibrate practice items, incl. trap-reveal; tags items with `certification_domain_id` and `is_cert_evaluated` | `items`, `attempts` (calibration stats), `certification_domains` | `items` |
 | 5 | Grader | Score an attempt, incl. free-text, with rationale | `items`, submitted response | `attempts` |
 | 6 | Usage-Signal | Ingest real usage evidence, map it to skill nodes | MCP: `mcp-usage-signals` | `usage_events` |
 | 7 | Correlation | Compare "trained" vs. "adopting" per skill | `skill_profile_snapshots`, `usage_events` | `correlation_snapshots` |
 | 8 | Nudge Composer | Draft a campaign message (admin-initiated) | `correlation_snapshots`, `nudge_categories` | `nudges` (status: `sent`) |
 | 9 | Nudge Category Generator | Analyze aggregate KPI data and propose up to 10 nudge categories with machine-readable criteria | `practitioners`, `skill_profile_snapshots`, `attempts`, `usage_events`, `nudges` (aggregate counts only — no PII) | `nudge_categories` (via API) |
+| 10 | Domain Scorer | Map self-assessment proficiency ratings → initial certification domain scores at profile-lock time | `profile_skill_assessments`, `certification_domains` (for the active cert), domain descriptions | `certification_domain_scores` (source=`self_assessment_estimate`) |
 
 > **Phase 9.1 note:** Agent 9 (Rollup Reporter) has been removed from the active product. The archived implementation lives in `backend/app/agents/_deprecated/rollup_reporter.py`.
 
 Three active workflows compose them:
 - **`recommend_certification`**: Certification Advisor alone (Phase 2) — the actual front door for a new practitioner.
-- **`generate_learning_path`**: Skill Profiler → Curriculum Planner → Item-Writer (Phase 2) — reads the practitioner's active certification goal if `recommend_certification` has already run, but doesn't require it.
+- **`generate_learning_path`**: Skill Profiler → Domain Score computation → Curriculum Planner → Item-Writer (Phase 2, extended Phase 10) — reads the practitioner's active certification and its domains if set; computes both broad skill mastery and cert-domain readiness scores in the same run.
 - **`nudge_campaign`**: Nudge Category Generator → Nudge Composer (Phase 7) — admin-initiated; runs on demand, not on a schedule.
 
 > **Phase 9.1 note:** The `nightly_pulse` workflow (Usage-Signal → Correlation → Nudge Composer → Rollup Reporter) has been removed. Correlation snapshots still feed the admin nudge campaign system, but there is no longer a scheduled automated run.
@@ -128,6 +129,49 @@ For the nightly `nightly_pulse` workflow specifically: it's not latency-sensitiv
 
 ---
 
+## Certification-Domain Alignment (Phase 10)
+
+**The core principle:** skills, scores, and gaps must be rooted in the actual exam domains of the practitioner's chosen certification — not in arbitrary catalog skills or generic proficiency areas. This is what makes exam readiness meaningful rather than decorative.
+
+### Why two tiers
+
+The product maintains two parallel scoring dimensions that serve different purposes:
+
+| Dimension | What it shows | Driven by | Where it appears |
+|---|---|---|---|
+| **Skill Radar** | Broad, evolving knowledge across ~10–15 overarching skills | All quiz answers (cert-evaluated AND supplementary) | Radar polygon, mastery trend chart |
+| **Domain Gap Chart** | Exam-specific readiness across the certification's official exam domains | Cert-evaluated quiz answers only (`is_cert_evaluated = true`) | Gap bar chart below the radar |
+
+A practitioner who answers a "good to know" question correctly grows their radar but does not move their exam-domain readiness score. Only questions tagged `is_cert_evaluated = true` — items that map directly to the certification's official exam blueprint — improve the domain gap chart.
+
+### Mandatory certification at profile creation
+
+A practitioner profile **cannot be created without a certification associated** (`practitioner_profiles.certification_id` is NOT NULL from Phase 10.1 onward). The certification choice is the anchor that makes everything else in the system meaningful: it determines which exam domains to load, which quiz items to generate, and what the domain gap chart measures.
+
+### Item tagging (`is_cert_evaluated`)
+
+Every item in the bank carries two domain-alignment fields:
+- `certification_domain_id` — which of the cert's official exam domains this item tests
+- `is_cert_evaluated` — `true` if the topic is directly tested in the exam; `false` for supplementary items that build conceptual understanding but aren't in the exam blueprint
+
+The Item-Writer Agent receives the active cert's domain list and generates items that span all domains. It tags each item based on whether the topic appears in the official exam guide. 👤 The judgment call ("does this concept appear in the exam guide?") is encoded in `prompts/item_writer.md` — see `docs/human-in-the-loop.md`.
+
+### Domain Scorer Agent (Phase 10.2)
+
+At profile-lock time, the Domain Scorer Agent bridges the gap between the practitioner's self-assessment (generic proficiency ratings) and the cert's official domains. It receives the self-assessment skill ratings plus the cert's domain descriptions and reasons about the mapping: "a practitioner who rates themselves Advanced in Prompt Engineering likely has initial domain-level readiness in Domain 2: Fundamentals of Generative AI."
+
+This provides a non-zero starting baseline in the domain gap chart — better than forcing every new practitioner to start from 0% before they've taken a single quiz. The estimate carries a confidence cap of 0.5 (never more than halfway confident based on self-assessment alone). The first cert-evaluated quiz answer for any domain immediately sets `source = 'quiz_derived'`, which takes full precedence over the estimate.
+
+### Quiz UI: color-coded cert relevance (Phase 10.5)
+
+Each quiz item card displays a relevance badge:
+- **"📋 Exam relevant"** (blue) — `is_cert_evaluated = true`; answering this moves the domain readiness score
+- **"💡 Good to know"** (grey) — `is_cert_evaluated = false`; answering this builds understanding but doesn't move domain readiness
+
+The skill selector tabs are ordered: cert-domain skills first (with a colored "Exam" pill), supplementary skills below a section divider. This lets practitioners choose whether to focus their session on exam-critical topics or broader understanding.
+
+---
+
 ## Multi-Model Provider Support (Phase 8)
 
 The system supports two LLM providers selectable at runtime via the `APP_BRAIN_MODEL` environment variable:
@@ -135,7 +179,7 @@ The system supports two LLM providers selectable at runtime via the `APP_BRAIN_M
 | Provider | Env Value | API Key | Base URL | Default Model |
 |---|---|---|---|---|
 | Anthropic (default) | `ANTHROPIC` | `ANTHROPIC_API_KEY` | `https://api.anthropic.com` | `claude-sonnet-5` |
-| NVIDIA Nemotron | `NVIDIA` | `NVIDIA_API_KEY` | `https://integrate.api.nvidia.com/v1` | `nvidia/nemotron-3-ultra-550b-a55b` |
+| NVIDIA Nemotron | `NVIDIA` | `NVIDIA_API_KEY` | `https://integrate.api.nvidia.com/v1` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
 
 ### Abstraction Layer
 
@@ -168,7 +212,7 @@ APP_BRAIN_MODEL=ANTHROPIC  # or NVIDIA
 ANTHROPIC_API_KEY=...      # required when ANTHROPIC
 NVIDIA_API_KEY=...         # required when NVIDIA
 NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_MODEL_ID=nvidia/nemotron-3-ultra-550b-a55b
+NVIDIA_MODEL_ID=nvidia/llama-3.1-nemotron-ultra-253b-v1
 ```
 
 ---

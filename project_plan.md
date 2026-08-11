@@ -87,10 +87,18 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 9.1 Remove Rollups & nightly auto-nudge pipeline
 - [x] 9.2 Admin/Leadership practitioner view — Skill Radar only (read-only)
 - [x] 9.3 Profile lockdown after first full submission
-- [ ] 9.4 Quiz-only mastery engine (Skill Radar driven solely by quiz answers)
-- [ ] 9.5 Progressive quiz-round scoring model (scores can rise AND fall)
-- [ ] 9.6 Auto-refresh quiz questions after round exhaustion
-- [ ] 9.7 Visual mastery trend indicators (↑ green / ↓ amber on radar + bar chart)
+- [x] 9.4 Quiz-only mastery engine (Skill Radar driven solely by quiz answers)
+*(Steps 9.5–9.7 merged into Phase 10 — see below)*
+
+**Phase 10 — Certification-Domain Alignment & Mastery Refinements**
+- [ ] 10.1 Certification exam domains data model & seed data 👤
+- [ ] 10.2 Domain Scorer Agent — self-assessment → initial domain scores
+- [ ] 10.3 Domain-aware item writer & tagging 👤
+- [ ] 10.4 Progressive quiz-round scoring model (scores can rise AND fall)
+- [ ] 10.5 Auto-refresh quiz questions after round exhaustion
+- [ ] 10.6 Certification domain gap scoring workflow & UI
+- [ ] 10.7 Quiz UI certification-domain awareness (color-coded tabs)
+- [ ] 10.8 Visual mastery trend indicators (↑ green / ↓ amber on radar + domain chart)
 
 ---
 
@@ -1328,9 +1336,10 @@ The following test scenarios must be added/modified across the test suite:
 This phase tightens the product around three principles:
 1. **Profile immutability** — a submitted profile is a permanent record; to change course, create a new one.
 2. **Quiz-first mastery** — the Skill Radar reflects only what the practitioner has demonstrated through answers, not what they claimed in a self-assessment.
-3. **Progressive difficulty** — mastery cannot reach 100% from a single round of questions; it must be earned across multiple rounds, preventing trivially saturated radars.
-4. **Focused admin view** — when leadership or admins look at a practitioner, they see one thing: the Skill Radar.
-5. **Leaner signal loop** — the automated nightly nudge pipeline and leadership rollup reports are removed; the admin campaign nudge system (Phase 7) remains.
+3. **Focused admin view** — when leadership or admins look at a practitioner, they see one thing: the Skill Radar.
+4. **Leaner signal loop** — the automated nightly nudge pipeline and leadership rollup reports are removed; the admin campaign nudge system (Phase 7) remains.
+
+> **Steps 9.1–9.4 are complete.** The remaining items originally scoped here — progressive scoring (was 9.5), auto-refresh (was 9.6), and visual trend indicators (was 9.7) — have been absorbed into **Phase 10**, where the certification-domain alignment foundation must be in place first. See Phase 10 for the full implementation sequence.
 
 ---
 
@@ -1438,7 +1447,8 @@ This phase tightens the product around three principles:
 **Context to load:** `docs/architecture.md` (Skill Profiler agent entry), `docs/data-model.md` (skill_profile_events, profile_skill_assessments).
 
 **Design note — starting state:**
-- A new practitioner who has just locked their first profile will have all mastery scores at 0% until they answer quiz questions. This is intentional.
+- A new practitioner who has just locked their first profile will have all Skill Radar mastery scores at 0% until they answer quiz questions. This is intentional — the radar is earned, not estimated.
+- The **domain gap chart** (added in Phase 10) is different: it starts with an LLM-derived estimate from the self-assessment ratings (Domain Scorer Agent, Step 10.2), so the gap chart is not empty on day one. This estimate is flagged as tentative and is replaced domain-by-domain as cert-evaluated quiz answers come in.
 - The Skill Radar empty state (Step 6.7) should be updated to say: *"Your radar starts at zero and grows as you answer quiz questions. Click "Regenerate path" after each quiz session to update it."*
 - "Regenerate path" remains the manual trigger — there is no background re-profiling.
 
@@ -1464,16 +1474,140 @@ This phase tightens the product around three principles:
 
 ---
 
-### Step 9.5 — Progressive quiz-round scoring model
+### Steps 9.5 / 9.6 / 9.7 — merged into Phase 10
 
-**Goal:** a practitioner cannot achieve 100% mastery on a skill from a single set of quiz questions. Mastery rises progressively across multiple completed rounds, following a ceiling formula that guarantees meaningful effort is required to approach full mastery.
+> These steps have been absorbed into Phase 10 in dependency order. Full specs live there:
+> - **9.5** (progressive scoring) → **Step 10.4**
+> - **9.6** (auto-refresh) → **Step 10.5**
+> - **9.7** (trend indicators) → **Step 10.8**
+>
+> The domain foundation (10.1–10.3) must be in place before any of the above: the round-ceiling model applies to both skill and domain scores, auto-refresh items must be domain-tagged from generation one, and the trend chips decorate the domain gap chart (10.6) not the old skill-snapshot bars.
+
+---
+
+# Phase 10 — Certification-Domain Alignment & Mastery Refinements
+
+This phase does two things at once, in dependency order:
+
+**Part A — Certification-Domain Alignment (Steps 10.1–10.3):** root every quiz item, every gap score, and the domain bar chart in the practitioner's chosen certification's official exam domains. Right now the radar and gap chart are driven by generic catalog skills that are loosely "related to" the cert — the actual exam domains are not modeled, so quiz questions can diverge from what the exam tests. These three steps fix that foundation.
+
+**Part B — Mastery Refinements (Steps 10.4–10.8):** add the progressive-scoring model, auto-refresh, domain gap chart scoring, quiz color-coding, and visual trend indicators — all of which were originally Phase 9.5–9.7 but have been moved here because they depend on the Part A domain model being in place:
+- The round-ceiling model (10.4) must apply to both skill radar AND domain scores — so domain tables (10.1) come first.
+- Auto-refresh (10.5) generates new items that are domain-tagged from day one — so domain-aware item writer (10.3) comes first.
+- The domain gap chart (10.6) is what the trend indicators (10.8) decorate — so 10.6 before 10.8.
+
+**Preconditions:** 9.4 (quiz-only mastery engine; the two-tier scoring model built here depends on the quiz-first principle already being in place).
+
+---
+
+### Step 10.1 — Certification exam domains data model & seed data 👤
+
+**Goal:** model every active certification's official exam domains (the real sections the exam grades you on) and make those domains the organizing principle for items, gap scores, and readiness reporting. Make certification mandatory on profiles.
 
 **Preconditions:** 9.4.
+**Context to load:** `docs/data-model.md` (certification_domains, certification_domain_scores), `docs/human-in-the-loop.md` (Step 10.1 entry).
+
+**Build:**
+
+*Schema (new migration):*
+- `certification_domains` table — see `docs/data-model.md` for column list and seeded domain content.
+- Add `certification_domain_id` (nullable FK → `certification_domains`) and `is_cert_evaluated` (boolean, default `false`) to `items`. Existing items get `NULL / false` — these are legacy; new items generated after this step must always have both fields set.
+- Make `practitioner_profiles.certification_id` NOT NULL. Migration: if any existing profiles have `certification_id = NULL`, require a default cert to be set before the migration runs (or block on this interactively).
+- `certification_domain_scores` table — see `docs/data-model.md` for column list and source enum.
+
+*Seed data (`backend/seed/certification_domains.py`):*
+- Populate `certification_domains` for every `is_active = true` cert in the catalog, using the domain list in `docs/data-model.md` as the starting point.
+- Verify each entry against the official exam guide PDF before committing the seed — do not rely solely on the table in `docs/data-model.md` if the cert has been updated since it was written. `last_verified_at` on the parent `certifications` row is your staleness indicator.
+
+**Scenario tests:**
+- *Every active certification has at least 3 domain rows* — no cert is left with an empty domain list.
+- *Domain weights sum to 100 per certification* — `SUM(weight_pct) = 100` (allow ±1 for rounding) for every `certification_id` group in `certification_domains`.
+- *`practitioner_profiles.certification_id` accepts NULL in the schema — this is rejected at the API layer (422 validation), not the DB layer* — or, if the column is made truly NOT NULL at the DB level, a migration guard must handle existing null rows before applying the constraint.
+
+**Definition of done:** all three pass; every active cert has seeded domain rows; `certification_domain_id` and `is_cert_evaluated` columns exist in `items`; `certification_domain_scores` table exists; migration runs clean.
+
+> 👤 **Human-in-the-loop:** validate the seeded domain data against each cert's official exam guide before implementing the steps that depend on it. See `docs/human-in-the-loop.md`.
+
+---
+
+### Step 10.2 — Domain Scorer Agent — self-assessment → initial domain scores
+
+**Goal:** when a practitioner locks their profile (after saving skill ratings in Step 6.5), use the self-assessment proficiency ratings to compute an initial estimate for each certification domain score. This gives the gap chart a non-zero, LLM-reasoned starting point before any quizzes are taken — so practitioners can immediately see where the model thinks they are relative to each exam domain, and which domains are the biggest gaps to close.
+
+**Preconditions:** 10.1.
+**Context to load:** `docs/architecture.md` (Domain Scorer Agent entry), `docs/data-model.md` (certification_domain_scores), `backend/app/agents/base.py`.
+
+**Build:**
+
+*New agent — `backend/app/agents/domain_scorer.py` + `prompts/domain_scorer.md`:*
+- `DomainScorerInput`:
+  - `certification_id: str`
+  - `certification_domains: list[{id, name, description, weight_pct}]` — passed in from the workflow, not fetched inside the agent.
+  - `skill_assessments: list[{skill_name, signal_strength}]` — the practitioner's self-ratings from `profile_skill_assessments`.
+- `DomainScorerOutput`:
+  - `domain_scores: list[{certification_domain_id, initial_score: float, confidence: float, rationale: str}]`
+  - Confidence is capped at 0.5 — these are estimates, not measured performance.
+- The agent reasons over the mapping: given the domain description (e.g., "Fundamentals of Generative AI — covers tokenization, fine-tuning, RAG, and prompt engineering concepts") and the skill ratings, what initial readiness score is plausible for this domain?
+- Persist output to `certification_domain_scores` with `source = 'self_assessment_estimate'`. **Never overwrite a row that already has `source = 'quiz_derived'`** — the self-assessment estimate is only the fallback / initial state; quiz performance takes permanent precedence.
+
+*Integration:*
+- In `POST /practitioners/{id}/profiles/{profile_id}/skill-assessments` (the profile-locking endpoint), after writing `profile_skill_assessments` rows and setting `is_locked = true`, call the Domain Scorer Agent and persist its output to `certification_domain_scores`. This is the only time self-assessment ratings influence scores — at lock time, one shot.
+- `DomainScorerAgent` is not called by the `generate_learning_path` workflow — it runs only at lock time. The workflow uses the already-computed `certification_domain_scores` directly.
+
+**Scenario tests:**
+- *A practitioner who rates themselves Advanced (signal_strength ≥ 0.8) in skills that map to Domain 1 gets an initial domain score above 0.3 for Domain 1 after profile lock.*
+- *A practitioner who rates themselves None (signal_strength = 0.0) on all skills gets initial domain scores ≤ 0.1 on all domains.*
+- *Running the Domain Scorer again after the practitioner has taken cert-evaluated quizzes does not overwrite any `quiz_derived` domain score row.*
+
+**Definition of done:** all three pass; `domain_scorer.py`, `prompts/domain_scorer.md`, and the profile-locking integration exist; the stub Claude client fixture covers `DomainScorerAgent`.
+
+---
+
+### Step 10.3 — Domain-aware item writer & tagging
+
+**Goal:** every item generated from this step forward carries its certification domain and whether it is directly evaluated in the exam. Items cover all of the practitioner's cert domains proportionally to their exam weight. Practitioners and the scoring system can distinguish "this question counts toward my exam readiness" from "this is useful context."
+
+**Preconditions:** 10.2.
+**Context to load:** `docs/architecture.md` (Item-Writer agent, Certification-Domain Alignment section), `backend/app/agents/item_writer.py`, `backend/app/agents/prompts/item_writer.md`, `docs/human-in-the-loop.md` (Step 10.3 entry).
+
+**Build:**
+
+*Backend:*
+- Extend `ItemWriterInput` with:
+  - `certification_id: str | None`
+  - `certification_domains: list[{id, name, description, weight_pct}] | None` — the cert's domains; `None` for non-cert-aware generation (legacy path, fallback only).
+- Extend `ItemWriterOutput` per-item with:
+  - `certification_domain_id: str | None`
+  - `is_cert_evaluated: bool`
+- After the Item-Writer Agent returns its output, persist `certification_domain_id` and `is_cert_evaluated` to the `items` table rows.
+- Domain coverage policy (encoded in `prompts/item_writer.md`):
+  - Generate at least one item per domain, proportionally distributed by `weight_pct` (a domain worth 28% gets roughly 1.4× as many items as a domain worth 20%).
+  - Supplementary items (`is_cert_evaluated = false`) may be generated for context — e.g., conceptual background that helps understanding but isn't in the exam blueprint. These still get `certification_domain_id` (they're related to a domain, just not directly tested).
+- In `generate_learning_path` workflow: when the practitioner has an active cert, pass that cert's `certification_domains` to `ItemWriterInput`.
+
+*Prompt update (`prompts/item_writer.md`):*
+- Add domain-tagging instructions: the agent must label each item with the domain it tests and set `is_cert_evaluated = true` if the topic appears in the official exam blueprint, `false` if it supports understanding but isn't directly assessed.
+- 👤 This is the critical judgment call: the prompt must teach the agent to distinguish "in the blueprint" from "related but not evaluated" correctly. Review the prompt against the official exam guide for your primary cert before accepting it at scale.
+
+**Scenario tests:**
+- *Given a cert with 5 domains and a request for 10 items, at least 5 distinct `certification_domain_id` values appear in the output — no single domain monopolizes all items.*
+- *Every item in the output has `is_cert_evaluated` set (not null or missing).*
+- *An item whose `is_cert_evaluated = false` still has a `certification_domain_id` — it is domain-aware even though it's supplementary.*
+
+**Definition of done:** all three pass; `certification_domain_id` and `is_cert_evaluated` are populated on all items generated after this step; legacy items remain `NULL / false` and are handled gracefully by scoring logic.
+
+---
+
+### Step 10.4 — Progressive quiz-round scoring model (scores can rise AND fall)
+
+**Goal:** a practitioner cannot achieve 100% mastery on a skill from a single set of quiz questions. Mastery rises progressively across multiple completed rounds, following a ceiling formula that guarantees meaningful effort is required to approach full mastery. The same ceiling logic applies to both the broad Skill Radar (skill-level scores) and the domain gap chart (domain-level scores).
+
+**Preconditions:** 10.3 (domain-aware items exist; `generation` column from this migration is also needed by the auto-refresh step that follows).
 **Context to load:** `docs/data-model.md` (items, attempts tables), `backend/app/agents/skill_profiler.py`.
 
 **Design — round-based ceiling model:**
 
-A **round** is defined as: the practitioner has attempted every available item in the current generation for a skill at least once (see Step 9.6 for the generation concept). The mastery ceiling after N completed rounds follows:
+A **round** is defined as: the practitioner has attempted every available item in the current generation for a skill at least once (see Step 10.5 for the generation concept). The mastery ceiling after N completed rounds follows:
 
 ```
 ceiling(N) = 1 − (0.5)^N
@@ -1506,7 +1640,7 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 **Build:**
 
 *Backend:*
-- New migration: add `generation` (integer, default 1, non-nullable) column to `items`. All existing items get `generation = 1`. When new items are generated for a skill (Step 9.6), they receive `generation = max(existing for that skill) + 1`.
+- New migration: add `generation` (integer, default 1, non-nullable) column to `items`. All existing items get `generation = 1`. When new items are generated for a skill (Step 10.5), they receive `generation = max(existing for that skill) + 1`.
 - New utility function `backend/app/agents/round_metrics.py` — `compute_round_metrics(practitioner_id: UUID, skill_id: UUID, db: AsyncSession) -> RoundMetrics`:
   - Queries `attempts` joined to `items` for this practitioner and skill.
   - Groups by `items.generation` to determine which rounds are fully completed (all items in that generation have at least one attempt).
@@ -1515,7 +1649,7 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 - Update `generate_learning_path` workflow: after querying quiz-attempt events (Step 9.4), also call `compute_round_metrics` for each skill and pass the results to `SkillProfilerInput` as `quiz_round_metrics: list[RoundMetricsPerSkill]`.
 - Update `SkillProfilerInput` to include `quiz_round_metrics` alongside raw attempt events.
 - Update `prompts/skill_profiler.md` to instruct the agent to use `mastery_ceiling` and `current_mastery_score` from `quiz_round_metrics` as the primary mastery signal and to note that scores can decrease when recent round accuracy is poor.
-- Also return `previous_mastery_score` in `RoundMetrics` (the value from the previous `skill_profile_snapshots` row before this profiler run) so the API can expose the delta to the frontend for visual indicators (Step 9.7).
+- Also return `previous_mastery_score` in `RoundMetrics` (the value from the previous `skill_profile_snapshots` row before this profiler run) so the API can expose the delta to the frontend for visual indicators (Step 10.8).
 
 **Scenario tests:**
 - *A practitioner who answers all generation-1 items for skill X with 100% accuracy achieves `current_mastery_score ≤ 0.50` — the round-1 ceiling is enforced.*
@@ -1526,12 +1660,12 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 
 ---
 
-### Step 9.6 — Auto-refresh quiz questions after round exhaustion
+### Step 10.5 — Auto-refresh quiz questions after round exhaustion
 
-**Goal:** when a practitioner has answered all available items for a skill, the system automatically generates a new set of questions (next generation) so the practitioner can continue progressing. The Quiz Runner surfaces a brief "round complete" moment before presenting the new items.
+**Goal:** when a practitioner has answered all available items for a skill, the system automatically generates a new set of questions (next generation) so the practitioner can continue progressing. New items are domain-tagged from day one (using the domain-aware Item-Writer from Step 10.3) so the domain gap chart stays accurate across all rounds. The Quiz Runner surfaces a brief "round complete" moment before presenting the new items.
 
-**Preconditions:** 9.5.
-**Context to load:** `docs/architecture.md` (Item-Writer agent), `backend/app/agents/item_writer.py`.
+**Preconditions:** 10.4.
+**Context to load:** `docs/architecture.md` (Item-Writer agent, Certification-Domain Alignment section), `backend/app/agents/item_writer.py`.
 
 **Build:**
 
@@ -1541,7 +1675,7 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
   1. Call `get_unanswered_items(practitioner_id, skill_id)`.
   2. If the result is non-empty: return those items normally with `generation_refreshed: false`.
   3. If the result is empty (all current-generation items answered): trigger `ItemWriterAgent` synchronously to generate a new set for this skill with `generation = max_existing + 1`. Cap generation size via env var `QUIZ_ITEMS_PER_GENERATION` (default: 5). Return the new items with `generation_refreshed: true` and `new_generation: int`.
-- The Item-Writer prompt for refresh rounds should receive context that these are follow-up items (the agent already knows the skill; the new items should be harder or approach the topic from a different angle). Pass `is_refresh_round: true` and `prior_generation_count: int` to the agent input.
+- The Item-Writer prompt for refresh rounds should receive context that these are follow-up items (harder, or approaching the topic from a different angle). Pass `is_refresh_round: true`, `prior_generation_count: int`, and the cert's `certification_domains` so refreshed items are also domain-tagged and `is_cert_evaluated` is set correctly.
 - New `agent_runs` row is written for each Item-Writer call (existing behavior — no change needed).
 - Env var `QUIZ_ITEMS_PER_GENERATION` defaults to 5; document in `.env.example`.
 
@@ -1556,21 +1690,95 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 **Scenario tests:**
 - *When a practitioner has answered all generation-1 items for skill X, the quiz endpoint returns generation-2 items with `generation_refreshed: true` — no error, no empty response.*
 - *The generation-2 items have different `id` values from the generation-1 items — they are new questions, not duplicates.*
+- *Generation-2 items have `certification_domain_id` set (not NULL) — domain tagging carries over to refreshed rounds.*
 - *The `QuizRunner` displays the "Round complete" interstitial when `generation_refreshed = true` and then shows the new questions.*
 
-**Definition of done:** all three pass; `QUIZ_ITEMS_PER_GENERATION` is documented in `.env.example`; a failed Item-Writer call surfaces a user-facing error message rather than a crash.
+**Definition of done:** all four pass; `QUIZ_ITEMS_PER_GENERATION` is documented in `.env.example`; a failed Item-Writer call surfaces a user-facing error message rather than a crash; refreshed items always carry domain tags.
 
 ---
 
-### Step 9.7 — Visual mastery trend indicators (rising, falling, stable)
+### Step 10.6 — Certification domain gap scoring workflow & UI
 
-**Goal:** every skill row in the Skill Radar and the skill-gap bar chart clearly shows whether that skill is trending up, down, or stable since the last profiler run — using color and directional labels so a practitioner immediately sees what is improving and what is declining.
+**Goal:** compute per-domain readiness scores from cert-evaluated quiz answers and replace the current "Top skill gaps" bar chart with a domain gap chart that shows the practitioner exactly how ready they are for each section of their certification exam. Domain scores respect the same round-ceiling model established in Step 10.4.
 
-**Preconditions:** 9.6 (scoring model produces `current_mastery_score` and `previous_mastery_score`; `mastery_history` table contains the data to compute deltas).
+**Preconditions:** 10.5.
+**Context to load:** `docs/data-model.md` (certification_domain_scores, two-tier scoring table), `backend/app/workflows/generate_learning_path.py`, Step 10.4 (round-based ceiling model that domain scoring also respects).
 
-**Context to load:** Step 9.5 (delta computation), `frontend/src/components/SkillRadar/`, `frontend/src/components/TrendDashboard/`.
+**Build:**
 
-**Design — three trend states per skill:**
+*Backend:*
+- New utility function `compute_domain_scores(practitioner_id, certification_id, db) → list[DomainScore]`:
+  - Queries `attempts` joined to `items` where `is_cert_evaluated = true` and `items.certification_domain_id` belongs to the given cert.
+  - Groups by `certification_domain_id`.
+  - Applies the recency-weighted accuracy formula from Step 10.4 (and the round ceiling if round metrics are available — domain scores respect the same ceiling model as broad skill scores).
+  - Upserts `certification_domain_scores` with `source = 'quiz_derived'`. **Never overwrites** an existing `quiz_derived` row with a `self_assessment_estimate`.
+- Call `compute_domain_scores` in the `generate_learning_path` workflow after the Skill Profiler step.
+- New API endpoint: `GET /practitioners/{id}/certification-domain-scores?certification_id={id}` — returns `[{domain_name, weight_pct, sequence_order, mastery_score, gap_score, source}]` ordered by `sequence_order`. Used by the gap chart.
+- The existing `GET /practitioners/{id}/skill-profile` endpoint remains unchanged — it continues to drive the Skill Radar.
+
+*Frontend:*
+- New component `CertDomainGapChart` — replaces the current "Top skill gaps" progress-bar panel when an active certification is set.
+- Each bar shows: domain name, weight percentage badge (e.g. "28%"), mastery fill (colored), gap (remaining grey fill). Bars appear in `sequence_order` (Domain 1, 2, 3…), not sorted by gap size — practitioners should know which domain is Domain 1, not need to figure it out from sorted bars.
+- Source indicator: if any bar has `source = 'self_assessment_estimate'`, show a note below the chart: *"Shaded domains show initial estimates from your self-assessment. Take cert-relevant quizzes to refine them."* Remove the note once all domains have `quiz_derived` scores.
+- Tooltip on hover: "Domain X: [name] · [weight]% of exam · Last updated: [date]".
+- Fallback: if no certification is set on the active profile, render the original skill-gap bars (top skills by gap score from `skill_profile_snapshots`).
+
+**Scenario tests:**
+- *A practitioner with 3 correct cert-evaluated answers in Domain 1 has `mastery_score > 0` for Domain 1 in `certification_domain_scores` after regenerating the path.*
+- *A non-cert-evaluated quiz answer (`is_cert_evaluated = false`) does not change any `certification_domain_scores` row.*
+- *The `CertDomainGapChart` renders domains in `sequence_order`, not sorted by gap size.*
+- *If all domain scores have `source = 'quiz_derived'`, the "initial estimates" note is absent from the chart.*
+
+**Definition of done:** all four pass; `compute_domain_scores` utility has its own unit test; the `CertDomainGapChart` renders correctly for both practitioner and admin views; existing skill-gap chart remains as fallback for no-cert profiles.
+
+---
+
+### Step 10.7 — Quiz UI certification-domain awareness
+
+**Goal:** the quiz experience clearly communicates which questions count toward exam readiness and which are supplementary context. Color-coded tab badges and item-level labels give practitioners informed control over where to focus their session.
+
+**Preconditions:** 10.6.
+**Context to load:** `frontend/src/components/QuizRunner/`, Step 6.8 (cert-ordered skill selector, already places cert skills first).
+
+**Build:**
+
+*Frontend:*
+- **Skill selector tabs** (extending Step 6.8): add a colored badge to each skill tab that has items tagged `is_cert_evaluated = true` for that skill:
+  - Cert-domain skills with exam-relevant items: blue **"Exam"** pill next to the skill name.
+  - Skills with only supplementary items (`is_cert_evaluated = false`): grey **"Supplementary"** pill, or no pill if the distinction is already clear from the section divider (UX judgment call).
+  - Section divider between cert skills and supplementary skills (already present from Step 6.8) is labeled: **"Exam-critical ↑ · Good to know ↓"**.
+
+- **Item card badges**: each question card shows a small badge at the top-left:
+  - `is_cert_evaluated = true` → **"📋 Exam relevant"** (blue/teal background)
+  - `is_cert_evaluated = false` → **"💡 Good to know"** (grey background)
+  - Tooltip on "Exam relevant": *"Answering this correctly improves your [cert code] [domain name] readiness score."*
+  - Tooltip on "Good to know": *"This topic supports understanding but isn't directly evaluated in [cert code]."*
+
+- **Post-answer score-impact note** (shown in the answer reveal / grader result panel):
+  - Cert-evaluated correct answer: *"✅ Counts toward your [domain name] readiness score."*
+  - Supplementary correct answer: *"ℹ️ Builds your understanding. Doesn't change your exam-domain readiness scores."*
+
+*Backend:*
+- Extend the quiz items endpoint response to include `is_cert_evaluated: bool` and `certification_domain_name: str | None` per item, so the frontend can render badges without a separate lookup.
+
+**Scenario tests (Playwright):**
+- *A quiz item where `is_cert_evaluated = true` shows a blue "Exam relevant" badge; an item where `is_cert_evaluated = false` shows a grey "Good to know" badge.*
+- *After submitting a correct answer for an "Exam relevant" item, the post-answer panel contains the text "Counts toward your" and the domain name.*
+- *After submitting a correct answer for a "Good to know" item, the post-answer panel contains "Doesn't change your exam-domain readiness scores".*
+- *In dark mode, both badge types remain readable (contrast ≥ 4.5:1 against card background).*
+
+**Definition of done:** all four pass; badge CSS uses design-system tokens, not hardcoded hex colors; the quiz UI works correctly when `certification_domain_id` is NULL (legacy items — show no badge, no post-answer note, no tooltip).
+
+---
+
+### Step 10.8 — Visual mastery trend indicators (↑ green / ↓ amber on radar + domain chart)
+
+**Goal:** every skill row in the Skill Radar and every domain bar in the domain gap chart clearly shows whether it is trending up, down, or stable since the last profiler run — using color and directional labels so a practitioner immediately sees what is improving and what is declining.
+
+**Preconditions:** 10.7 (domain gap chart from Step 10.6 is in place and the quiz UI is complete; `mastery_history` table contains the data to compute deltas; Step 10.4's scoring model provides `previous_mastery_score`).
+**Context to load:** Step 10.4 (delta computation), `frontend/src/components/SkillRadar/`, the `CertDomainGapChart` component from Step 10.6.
+
+**Design — three trend states:**
 
 | State | Condition | Color | Label / Icon |
 |---|---|---|---|
@@ -1578,43 +1786,38 @@ Example: rounds 1–3 accuracy = [1.0, 0.9, 0.4] → weights = [1, 2, 4] → wei
 | Declining | `current < previous − 0.01` | Amber/red | `↓ −X%` |
 | Stable | within ±0.01 of previous | Grey | `→ No change` |
 
-A ±1% dead-band prevents cosmetic noise from triggering indicators after rounding. The exact threshold (0.01) is a configuration constant, not a magic number.
+A ±1% dead-band prevents cosmetic noise from triggering indicators after rounding. The threshold (0.01) is a named configuration constant, not a magic number.
 
 **Build:**
 
 *Backend:*
-- `GET /practitioners/{id}/skill-profile` response (or a new `GET /practitioners/{id}/skill-profile/deltas` endpoint — whichever the frontend already hits for radar data): extend the per-skill payload to include:
-  - `mastery_score`: float — current score (already present)
-  - `previous_mastery_score`: float | null — the second-most-recent `mastery_history` row for this skill, null if only one history row exists
+- `GET /practitioners/{id}/skill-profile` response: extend the per-skill payload to include:
+  - `previous_mastery_score`: float | null — the second-most-recent `mastery_history` row for this skill; null if only one history row exists
   - `mastery_delta`: float | null — `current − previous`, null when no previous
-  - `trend`: `"improving"` | `"declining"` | `"stable"` | `"new"` — computed server-side using the ±0.01 threshold; `"new"` when no `previous_mastery_score` exists
-- This computation is a lightweight SQL query over `mastery_history` — no LLM call.
+  - `trend`: `"improving"` | `"declining"` | `"stable"` | `"new"` — computed server-side; `"new"` when no previous score exists
+- `GET /practitioners/{id}/certification-domain-scores` response (from Step 10.6): extend similarly with `mastery_delta` and `trend` per domain row — domain history is derived from the `certification_domain_scores.last_computed_at` + a new lightweight `certification_domain_score_history` append-only log, or simply the delta between the current row and the previous computed value stored as `previous_mastery_score` on the row itself. Keep it simple: add `previous_mastery_score` as a column on `certification_domain_scores`, updated on each compute pass.
+- Both computations are lightweight SQL — no LLM call.
 
 *Frontend — Skill Radar (`SkillRadar` component):*
-- Radar polygon: each axis / spoke uses the trend color for its label text and its filled data point:
+- Each radar axis / spoke uses the trend color for its label text and filled data point:
   - `improving` → green label and point
   - `declining` → amber/red label and point
-  - `stable` → default theme color
-  - `new` → default theme color, no indicator (first time filling in)
-- Below or beside each axis label on the radar, show the delta tag: `↑ +12%` or `↓ −8%`. If the chart is too compact for per-axis labels, show the delta in a legend table below the chart instead — one row per skill.
-- The radar legend table (below the chart): columns: Skill name | Current | Change | Trend icon. Rows where trend = `declining` are highlighted with a subtle amber row background.
+  - `stable` / `new` → default theme color, no indicator on `new`
+- Delta tag below or beside each axis label: `↑ +12%` or `↓ −8%`. If the chart is too compact, fall back to a legend table below the chart (columns: Skill name | Current | Change | Trend icon). Rows where trend = `declining` get a subtle amber row background.
 
-*Frontend — Skill-gap bar chart (progress bars on the side panel, Step 6.7):*
-- Each bar now renders a **delta chip** to the right of the bar: `+12%` in green, `−8%` in red, or nothing when stable/new.
-- The bar fill color changes based on trend:
-  - `declining` bars use an amber/red fill instead of the default accent color.
-  - `improving` bars use a green fill (or a green overlay/stripe on top of the standard fill).
-  - `stable` and `new` bars keep the standard fill.
-- Tooltip on hover: shows the full detail — "Previous: 58% → Current: 50% (−8%) · Last updated: [date]".
+*Frontend — Domain gap chart (`CertDomainGapChart` component, Step 10.6):*
+- Each bar renders a **delta chip** to the right: `+12%` in green, `−8%` in red, or nothing when stable/new.
+- Bar fill color follows trend: `declining` → amber/red fill; `improving` → green fill (or green overlay); `stable`/`new` → standard fill.
+- Tooltip on hover: "Previous: 58% → Current: 50% (−8%) · Last updated: [date]".
 
 *Theme-awareness:*
-- All trend colors must work in both light and dark modes using CSS variables, not hardcoded hex values.
+- All trend colors must work in both light and dark modes via CSS variables — no hardcoded hex.
 - `--color-trend-up`: green token; `--color-trend-down`: amber/red token; `--color-trend-neutral`: muted text token.
 
 **Scenario tests (Playwright):**
-- *A practitioner whose mastery on skill X dropped from 70% to 55% after a bad quiz round sees an amber `↓ −15%` indicator on skill X's radar axis and bar — not the default color.*
-- *A practitioner whose mastery on skill Y rose from 40% to 58% sees a green `↑ +18%` indicator on skill Y.*
-- *A brand-new skill (first time appearing in the radar — no previous score) shows no trend indicator — only the current score.*
+- *A practitioner whose mastery on skill X dropped from 70% to 55% after a bad quiz round sees an amber `↓ −15%` indicator on skill X's radar axis — not the default color.*
+- *A practitioner whose Domain 2 readiness rose from 40% to 58% sees a green `↑ +18%` delta chip on the Domain 2 bar in the domain gap chart.*
+- *A brand-new skill or domain (first time appearing — no previous score) shows no trend indicator, only the current score.*
 - *In dark mode, trend colors remain readable (contrast ≥ 4.5:1 against the background).*
 
-**Definition of done:** all four pass; trend color tokens are defined as CSS variables; the delta chip in both the radar legend and the bar chart shows the correct sign, magnitude, and color in both light and dark mode.
+**Definition of done:** all four pass; trend color tokens are defined as CSS variables; the delta chip renders correctly on both the radar legend and the domain gap chart in both light and dark mode; `previous_mastery_score` column exists on `certification_domain_scores`.
