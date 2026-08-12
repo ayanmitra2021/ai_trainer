@@ -55,5 +55,9 @@ class SkillSnapshotRead(BaseModel):
     mastery_score: float
     confidence: float
     last_computed_at: datetime
+    # Phase 10.3: trend info — derived from mastery_history comparison
+    previous_mastery_score: float | None = None
+    mastery_delta: float | None = None
+    trend: str = "new"  # improving | declining | stable | new
 
     model_config = {"from_attributes": True}

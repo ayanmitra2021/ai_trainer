@@ -182,11 +182,50 @@ class AnthropicModelClient(BaseModelClient, ModelClient):
 # ── NVIDIA (OpenAI-compatible) implementation ────────────────────────────────
 
 
+def _strip_thinking_tags(content: str) -> str:
+    """Remove <think>…</think> blocks that Nemotron Ultra and similar reasoning
+    models emit before their actual answer.
+
+    These blocks contain the model's chain-of-thought and should never be
+    parsed as part of the JSON output.  We strip all occurrences (there is
+    usually only one) before handing the content to _extract_json_from_content.
+    """
+    import re
+    # Remove <think>…</think> blocks (non-greedy, DOTALL so newlines match)
+    content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
+    return content.strip()
+
+
+def _normalize_json_keys(data: object) -> object:
+    """Recursively strip trailing ': ' / ':' from JSON keys.
+
+    Nemotron Ultra sometimes emits keys like ``"item_type: ": "mcq"`` —
+    echoing a field-description colon into the key name.  This normaliser
+    converts ``'item_type: '`` → ``'item_type'`` without touching key
+    bodies that legitimately contain colons in the middle (e.g. URL keys).
+
+    Uses a regex so that only a *trailing* ``:<whitespace>`` sequence is
+    removed, preventing rstrip(': ') from eating trailing characters such
+    as the trailing 's' in ``'items: '`` → would wrongly become ``'item'``.
+    """
+    import re as _re
+    if isinstance(data, dict):
+        return {
+            _re.sub(r":\s*$", "", k).strip(): _normalize_json_keys(v)
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_normalize_json_keys(item) for item in data]
+    return data
+
+
 def _extract_json_from_content(content: str) -> str:
     """Extract a JSON object from an LLM response that may contain surrounding text.
 
-    Handles three output patterns:
+    Handles these output patterns (in order):
 
+    0. ``<think>…</think>`` reasoning blocks — stripped first by
+       _strip_thinking_tags before this function is called.
     1. ````json ... ``` ` fences — strips the fences (some models add these
        despite being told not to).
     2. Pure JSON starting with ``{`` — returned as-is.
@@ -233,10 +272,12 @@ def _extract_json_from_content(content: str) -> str:
 class NVIDIAMessagesClient(MessagesClient):
     """Wrapper around openai.AsyncOpenAI for NVIDIA Nemotron Structured Outputs.
 
-    NVIDIA's NIM API is OpenAI-compatible but doesn't support
-    ``beta.chat.completions.parse`` or ``response_format`` JSON-schema mode.
-    Instead we embed the JSON schema in the system prompt and parse the response
-    manually.
+    NVIDIA's NIM API is OpenAI-compatible.  We use ``response_format`` JSON-object
+    mode to force valid JSON output, and embed the Pydantic schema in the system
+    prompt so the model knows which fields to populate.
+
+    Nemotron Ultra emits ``<think>…</think>`` reasoning blocks before the JSON
+    answer; we strip those before parsing so they never contaminate the output.
 
     The ``model`` argument received from agent code is intentionally IGNORED —
     agents carry hardcoded Claude model strings; the NVIDIA client must always
@@ -260,10 +301,14 @@ class NVIDIAMessagesClient(MessagesClient):
         # Convert Pydantic model to JSON schema for the prompt
         schema = output_format.model_json_schema()
 
-        # Build messages with system prompt + JSON schema instruction
+        # Embed the schema as an explicit instruction.  response_format below
+        # guarantees valid JSON; the schema text tells the model which fields
+        # to fill and what types they must have.
         schema_instruction = (
-            f"\n\nYou must respond with a valid JSON object that matches this schema "
-            f"exactly. Output only raw JSON — no markdown fences, no explanation:\n"
+            f"\n\nRespond with a single JSON object — no markdown fences, no prose "
+            f"outside the JSON, no explanation.  The object must contain exactly "
+            f"these fields (fill every required field; use null for optional ones "
+            f"you cannot determine):\n"
             f"{json.dumps(schema, indent=2)}"
         )
 
@@ -271,21 +316,25 @@ class NVIDIAMessagesClient(MessagesClient):
             {"role": "system", "content": system + schema_instruction}
         ] + messages
 
-        # Use standard chat completions with the configured NVIDIA model ID.
-        # Agents pass a Claude model string; we discard it and use self._model_id.
+        # response_format=json_object forces the model to emit valid JSON in the
+        # main content channel, keeping any chain-of-thought in the thinking block
+        # (which we strip separately) rather than mixing prose into the JSON value.
         response = await self._client.chat.completions.create(
             model=self._model_id,
             messages=openai_messages,
             max_tokens=max_tokens,
+            response_format={"type": "json_object"},
             **kwargs,
         )
 
-        # Parse and validate the JSON response
+        # Parse and validate the JSON response.
+        # Strip <think>…</think> reasoning blocks that Nemotron Ultra emits
+        # before the answer, then extract the JSON object.
         content = response.choices[0].message.content
         if content is None:
             raise ValueError("Empty response from NVIDIA API")
 
-        # Strip markdown fences that the model may add despite instructions
+        content = _strip_thinking_tags(content)
         content = _extract_json_from_content(content)
 
         try:
@@ -295,6 +344,10 @@ class NVIDIAMessagesClient(MessagesClient):
                 f"Failed to parse JSON from NVIDIA response: {e}\n"
                 f"Raw content (first 500 chars): {content[:500]}"
             )
+
+        # Nemotron sometimes emits keys with trailing ': ' (e.g. "item_type: ").
+        # Normalise before validation so Pydantic sees the correct field names.
+        parsed_data = _normalize_json_keys(parsed_data)
 
         # Validate against the Pydantic model
         validated = output_format.model_validate(parsed_data)

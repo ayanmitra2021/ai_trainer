@@ -65,18 +65,52 @@ async def db_session(sqlite_engine) -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(scope="session")
 async def pg_engine():
-    """Real Postgres engine — used only by @pytest.mark.integration tests."""
-    test_url = os.environ.get(
-        "TEST_DATABASE_URL",
-        "postgresql+asyncpg://mastery:mastery@localhost:5432/mastery_pulse_test",
+    """Real Postgres engine — used only by @pytest.mark.integration tests.
+
+    SAFETY RULES
+    ------------
+    1. The URL must contain ``_test`` — this guard prevents accidentally wiping
+       the development database when TEST_DATABASE_URL is misconfigured.
+    2. Tables are dropped-and-recreated at the START of the session so every
+       integration run begins with a clean slate.
+    3. Tables are NOT dropped at teardown — the dev database is left intact so
+       the developer can inspect results.  The next run will drop-and-recreate
+       anyway, so there is no persistent state problem.
+    """
+    from app.config import get_settings
+
+    # Prefer the settings object (reads the project-root .env) over os.environ
+    # directly, because pydantic-settings loads .env but does not write back to
+    # os.environ, so os.environ.get() would miss .env values.
+    cfg = get_settings()
+    # Fall back to env var then hardcoded test default.
+    test_url = (
+        cfg.test_database_url
+        if "mastery_pulse_test" in cfg.test_database_url or "_test" in cfg.test_database_url
+        else os.environ.get(
+            "TEST_DATABASE_URL",
+            "postgresql+asyncpg://mastery:mastery@localhost:5432/mastery_pulse_test",
+        )
     )
+
+    # Hard guard: refuse to run against any database whose name does not include
+    # "_test".  This prevents a misconfigured TEST_DATABASE_URL from silently
+    # wiping the development database.
+    if "_test" not in test_url:
+        raise RuntimeError(
+            f"pg_engine fixture refuses to connect to '{test_url}': the database "
+            f"name must contain '_test' to prevent accidental data loss on the dev "
+            f"database.  Set TEST_DATABASE_URL to a test-only database and retry."
+        )
+
     engine = create_async_engine(test_url, echo=False)
+    # Drop-and-recreate at the START of the session for a clean slate.
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield engine
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    # Do NOT drop tables at teardown — leave them for post-run inspection.
+    # The next integration run will drop-and-recreate anyway.
     await engine.dispose()
 
 

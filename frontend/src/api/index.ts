@@ -11,6 +11,9 @@ import type {
   Attempt,
   AttemptCreate,
   Certification,
+  CertificationDomainProposal,
+  CertificationDomainScore,
+  CertificationDomainVersion,
   CertificationGoal,
   ChangePasswordRequest,
   ComposePreviewResponse,
@@ -20,6 +23,8 @@ import type {
   LearningPath,
   MasteryHistoryResponse,
   MeResponse,
+  MockExamQuestion,
+  MockExamSession,
   Nudge,
   NudgeCategory,
   NudgeExtended,
@@ -60,6 +65,26 @@ export const practitioners = {
     api.get<SkillSnapshot[]>(`/practitioners/${id}/skill-profile`),
   submitSelfAssessment: (id: string, body: SelfAssessmentRequest) =>
     api.post<SelfAssessmentResponse>(`/practitioners/${id}/self-assessment`, body),
+  certDomainScores: (practitionerId: string, certificationId: string) =>
+    api.get<CertificationDomainScore[]>(
+      `/practitioners/${practitionerId}/certification-domain-scores?certification_id=${encodeURIComponent(certificationId)}`
+    ),
+  mockExams: {
+    start: (practitionerId: string) =>
+      api.post<MockExamSession>(`/practitioners/${practitionerId}/mock-exams`, {}),
+    getActive: (practitionerId: string) =>
+      api.get<MockExamSession>(`/practitioners/${practitionerId}/mock-exams/active`),
+    getById: (practitionerId: string, sessionId: string) =>
+      api.get<MockExamSession>(`/practitioners/${practitionerId}/mock-exams/${sessionId}`),
+    pause: (practitionerId: string, sessionId: string) =>
+      api.patch<MockExamSession>(`/practitioners/${practitionerId}/mock-exams/${sessionId}/pause`, {}),
+    resume: (practitionerId: string, sessionId: string) =>
+      api.patch<MockExamSession>(`/practitioners/${practitionerId}/mock-exams/${sessionId}/resume`, {}),
+    answer: (practitionerId: string, sessionId: string, questionId: string, selectedIndex: number) =>
+      api.post<MockExamQuestion>(`/practitioners/${practitionerId}/mock-exams/${sessionId}/answer/${questionId}`, { selected_index: selectedIndex }),
+    complete: (practitionerId: string, sessionId: string) =>
+      api.post<MockExamSession>(`/practitioners/${practitionerId}/mock-exams/${sessionId}/complete`, {}),
+  },
 };
 
 // ── Skills ─────────────────────────────────────────────────────────────────────
@@ -102,6 +127,12 @@ export const learningPaths = {
     }),
   list: (practitioner_id: string) =>
     api.get<LearningPath[]>(`/practitioners/${practitioner_id}/learning-paths`),
+  /** Phase 12.2: generate one starter MCQ per skill for the active path. */
+  generateQuizBatch: (practitioner_id: string, path_id: string) =>
+    api.post<{ item_ids: string[] }>(
+      `/practitioners/${practitioner_id}/learning-paths/${path_id}/quiz-batch`,
+      {}
+    ),
 };
 
 // ── Items ──────────────────────────────────────────────────────────────────────
@@ -226,6 +257,44 @@ export const observability = {
   agentRuns: (hours?: number) => {
     const qs = hours != null ? `?hours=${hours}` : "";
     return api.get<ObservabilityReport>(`/observability/agent-runs${qs}`);
+  },
+};
+
+// ── Cert Domain Management (Phase 10) ─────────────────────────────────────────
+
+export const certDomains = {
+  discover: (
+    certCode: string,
+    certName: string,
+    providerName: string,
+    knownSourceUrl?: string,
+    refreshReason?: string,
+  ) =>
+    api.post<CertificationDomainProposal>("/admin/cert-domains/discover", {
+      cert_code: certCode,
+      cert_name: certName,
+      provider_name: providerName,
+      known_source_url: knownSourceUrl,
+      refresh_reason: refreshReason,
+    }),
+
+  discoverAll: () =>
+    api.post<CertificationDomainProposal[]>("/admin/cert-domains/discover-all", {}),
+
+  approveProposal: (proposalId: string) =>
+    api.post<unknown>(`/admin/cert-domain-proposals/${proposalId}/approve`, {}),
+
+  rejectProposal: (proposalId: string, rejectionNotes: string) =>
+    api.post<unknown>(`/admin/cert-domain-proposals/${proposalId}/reject`, {
+      rejection_notes: rejectionNotes,
+    }),
+
+  listVersions: () =>
+    api.get<CertificationDomainVersion[]>("/admin/cert-domain-versions"),
+
+  listProposals: (status?: string) => {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+    return api.get<CertificationDomainProposal[]>(`/admin/cert-domain-proposals${qs}`);
   },
 };
 

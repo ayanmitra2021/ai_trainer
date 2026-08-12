@@ -121,3 +121,8 @@ app.include_router(nudge_routes.router, prefix="/api/v1")
 from app.api.routes import cert_domain_versions
 
 app.include_router(cert_domain_versions.router, prefix="/api/v1")
+
+# ── Phase 11 routes ────────────────────────────────────────────────────────────
+from app.api.routes import mock_exams
+
+app.include_router(mock_exams.router, prefix="/api/v1")

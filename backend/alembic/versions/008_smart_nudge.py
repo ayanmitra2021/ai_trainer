@@ -82,6 +82,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Before re-adding the pre-008 constraint (which excludes 'campaign'),
+    # reclassify any 'campaign' nudge rows to 'reminder' so the constraint
+    # can be created cleanly.  Deleting them would lose data; remapping is safer.
+    op.execute(
+        "UPDATE nudges SET nudge_type = 'reminder' WHERE nudge_type = 'campaign'"
+    )
     op.drop_constraint("ck_nudges_type", "nudges", type_="check")
     op.create_check_constraint(
         "ck_nudges_type",

@@ -93,15 +93,26 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 **Phase 10 — Certification-Domain Alignment & Mastery Refinements**
 - [x] 10.1 Certification exam domains data model & seed data 👤
 - [x] 10.2 Domain versioning data model — live-refreshable domain versions
-- [ ] 10.3 Cert Domain Discovery Agent — LLM-driven exam domain research & refresh 👤
-- [ ] 10.4 Admin "Refresh Certification Domains" UI
-- [ ] 10.5 Domain Scorer Agent — self-assessment → initial domain scores
-- [ ] 10.6 Domain-aware item writer & tagging 👤
-- [ ] 10.7 Progressive quiz-round scoring model (scores can rise AND fall)
-- [ ] 10.8 Auto-refresh quiz questions after round exhaustion
-- [ ] 10.9 Certification domain gap scoring workflow & UI
-- [ ] 10.10 Quiz UI certification-domain awareness (color-coded tabs)
-- [ ] 10.11 Visual mastery trend indicators (↑ green / ↓ amber on radar + domain chart)
+- [x] 10.3 Cert Domain Discovery Agent — LLM-driven exam domain research & refresh 👤
+- [x] 10.4 Admin "Refresh Certification Domains" UI
+- [x] 10.5 Domain Scorer Agent — self-assessment → initial domain scores
+- [x] 10.6 Domain-aware item writer & tagging 👤
+- [x] 10.7 Progressive quiz-round scoring model (scores can rise AND fall)
+- [x] 10.8 Auto-refresh quiz questions after round exhaustion
+- [x] 10.9 Certification domain gap scoring workflow & UI
+- [x] 10.10 Quiz UI certification-domain awareness (color-coded tabs)
+- [x] 10.11 Visual mastery trend indicators (↑ green / ↓ amber on radar + domain chart)
+
+**Phase 11 — Mock Exam System**
+- [x] 11.1 Exam config data model, migration & seed (question count, duration, passing score per cert)
+- [x] 11.2 MockExamGenerator Agent + mock exam API routes (create / pause / resume / answer / complete)
+- [x] 11.3 Quiz tab answered-questions log + stable tab ordering
+- [x] 11.4 Skill Radar 80%-mastery CTA + MockExamPage (timer, instant feedback, completion recording)
+
+**Phase 12 — Quiz Generation: Decoupled, Batched, Fast**
+- [x] 12.1 Decouple ItemWriter from path generation — path generation becomes < 30 s
+- [x] 12.2 QuizBatchGeneratorAgent — one LLM call generates 1 starter question per skill for the whole path
+- [x] 12.3 Quiz tab loading UX — "Generating quiz…" screen on first open; all tabs populate at once when batch completes
 
 ---
 
@@ -1940,3 +1951,364 @@ A ±1% dead-band prevents cosmetic noise from triggering indicators after roundi
 - *In dark mode, trend colors remain readable (contrast ≥ 4.5:1 against the background).*
 
 **Definition of done:** all four pass; trend color tokens are defined as CSS variables; the delta chip renders correctly on both the radar legend and the domain gap chart in both light and dark mode; `previous_mastery_score` column exists on `certification_domain_scores`.
+
+---
+
+# Phase 11 — Mock Exam System
+
+### Step 11.1 — Exam config data model, migration & seed
+
+**Goal:** every certification carries the three pieces of information needed to administer a properly-scoped mock exam — question count, time limit, and passing threshold — stored in the `certifications` table and populated by the seed script.
+
+**Preconditions:** 10.11.
+**Context to load:** `backend/app/db/models.py`, `backend/alembic/versions/015_progressive_scoring.py`, `backend/seed/generate.py`.
+
+**Build:**
+
+*Alembic migration 016:*
+- Add to `certifications`: `exam_question_count INTEGER`, `exam_duration_minutes INTEGER`, `exam_passing_score_pct NUMERIC(5,2)`
+- Create `mock_exam_sessions`: id PK, practitioner_id FK, certification_id FK, status (in_progress/paused/completed), time_elapsed_seconds, last_resumed_at, score, correct_count, total_count, started_at, completed_at, created_at
+- Create `mock_exam_questions`: id PK, session_id FK (CASCADE), sequence_order, certification_domain_name, skill_name, prompt, answer_key JSONB, trap_explanation, difficulty, response JSONB, score, answered_at
+
+*Seed exam configs per cert:*
+
+| Code    | Questions | Duration | Pass % |
+|---------|-----------|----------|--------|
+| CCAO-F  | 60        | 120 min  | 70.00  |
+| CCDV-F  | 60        | 120 min  | 70.00  |
+| CCAF    | 60        | 120 min  | 70.00  |
+| CCAR-P  | 70        | 150 min  | 75.00  |
+| AIF-C01 | 65        | 90 min   | 70.00  |
+| MLA-C01 | 65        | 130 min  | 72.00  |
+| GCGAIL  | 50        | 120 min  | 70.00  |
+| GCPMLE  | 60        | 120 min  | 70.00  |
+| AI-900  | 45        | 45 min   | 70.00  |
+| AI-102  | 60        | 120 min  | 70.00  |
+
+**Definition of done:** migration applies cleanly; seed writes all three columns for all 10 certs; both new tables exist.
+
+---
+
+### Step 11.2 — MockExamGenerator Agent + mock exam API routes
+
+**Goal:** a practitioner can start a mock exam, answer each question with instant feedback, pause/resume, and complete it. Only one active session at a time. Completion writes adoption-trend records.
+
+**Preconditions:** 11.1.
+**Context to load:** `backend/app/agents/base.py`, `backend/app/agents/item_writer.py`, `backend/app/api/routes/learning_paths.py`.
+
+**Build:**
+
+*MockExamGeneratorAgent:* generates hard-difficulty (0.70–1.00) MCQ batches of 15. Input: cert_code, cert_name, batch_size, domain_focus, batch_number. Output: list of question specs (prompt, 4 options, correct_index, trap_index, trap_explanation, difficulty).
+
+*Orchestration:* on POST /mock-exams, run batches concurrently via asyncio.gather (60 questions = 4 parallel calls, each targeting a cert domain proportionally).
+
+*API routes (`mock_exams.py`):*
+- POST create (409 if active session exists)
+- GET active session (404 if none)
+- PATCH pause / resume
+- POST answer a question (grade, reveal correct_index + trap; 409 if already answered)
+- POST complete (all answered required; write SkillProfileEvents for Adoption Trend)
+
+Security: correct_index excluded from response until question is answered.
+
+**Definition of done:** `py -m pytest` passes; app starts cleanly; mock exam router registered at `/api/v1`.
+
+---
+
+### Step 11.3 — Quiz tab answered-questions log + stable tab ordering
+
+**Goal:** tab ordering never shifts; each tab shows (answered/total) progress; a collapsible "Answered" section below the active question lets practitioners review prior answers.
+
+**Preconditions:** 10.10.
+**Context to load:** `frontend/src/components/QuizRunner/QuizRunner.tsx`.
+
+**Build:**
+1. Stable tab ordering — cert/supp partition computed once at mount; never re-sorted as attempts arrive
+2. Progress badge on each tab: `Skill Name (2/5)` — turns green when fully answered
+3. Answered accordion below active question — rows: `[Q3] Correct 85%` or `[Q3] Incorrect 0%`; expand to reveal prompt, chosen answer, correct answer (if wrong), trap explanation
+4. Next button skips already-answered items; shows completion message when skill fully answered
+
+**Definition of done:** `npx tsc --noEmit` clean; tabs stable; badge accurate; accordion shows all answered items.
+
+---
+
+### Step 11.4 — Skill Radar 80%-mastery CTA + MockExamPage
+
+**Goal:** practitioners at 80%+ mastery see a "Take a Mock Exam" prompt on the Skill Radar, which opens a full-screen exam in a new browser tab with timer, per-question feedback, pause/resume, and a final score screen.
+
+**Preconditions:** 11.2, 11.3.
+**Context to load:** `frontend/src/components/SkillRadar/SkillRadar.tsx`, `frontend/src/App.tsx`, `frontend/src/api/types.ts`, `frontend/src/api/index.ts`, `frontend/src/hooks/index.ts`.
+
+**Build:**
+- Types: MockExamQuestion, MockExamSession (with exam_question_count, exam_duration_minutes, exam_passing_score_pct)
+- API client: mockExams.start, getActive, pause, resume, answer, complete
+- Hooks: useStartMockExam, useActiveMockExam (polls while in_progress), usePauseMockExam, useResumeMockExam, useAnswerMockExamQuestion, useCompleteMockExam
+- SkillRadar CTA: when avg mastery >= 80%, show exam-ready card with cert exam metadata + Start/Resume button; opens new tab at /mock-exam/{session_id}; spinner during generation
+- MockExamPage (/mock-exam/:sessionId): header with timer (counts up, pauses on pause), question card with 4 options + submit, overview grid (white/green/red squares), answered accordion; paused state shows Resume screen; completion screen shows score + Pass/Fail + "Saved to Adoption Trend"; no browser storage used
+- App.tsx: add /mock-exam/:sessionId route
+
+**Definition of done:** `npx tsc --noEmit` clean; exam starts, timer runs, pause/resume works, all questions answerable with feedback, completion confirmed, Adoption Trend shows mock_exam events.
+
+---
+
+
+# Phase 12 — Quiz Generation: Decoupled, Batched, Fast
+
+## Design rationale
+
+### The bounded nature of quiz questions
+
+A certification path is bounded by its exam blueprint: typically 4–5 official domains,
+each covered by 3–4 skills, giving a maximum of ~16 skill nodes.  The Quiz tab needs
+**one starter question per skill** — that is both the minimum useful amount and the
+correct ceiling.  Generating more questions than this upfront is wasteful; generating
+fewer leaves skill tabs empty.
+
+The original design called Item-Writer once per skill during path generation, sequentially.
+Sixteen sequential LLM calls at 2–4 minutes each = 32–64 minutes of wall time — far too
+slow for what is conceptually a < 30 second "refresh my radar" action.
+
+### Why not batch all questions in a single very large call?
+
+The appeal of generating 5 questions per skill × 16 skills = 80 questions in one call is
+understandable, but wrong in two ways:
+
+1. **Scale mismatch.** 80 MCQs at ~500 tokens each = 40,000 output tokens.  Both
+   Nemotron and Claude become unreliable at that output size: timeouts, truncation, and
+   malformed JSON all increase sharply beyond ~10,000 output tokens.
+2. **Purpose mismatch.** The quiz tab is not the mock exam.  The mock exam (Phase 11)
+   has 60–70 carefully generated hard questions.  The quiz tab exists to assess mastery
+   and generate adaptive practice — one question per skill is the right granularity.
+   When the practitioner exhausts a skill's current question, the existing auto-refresh
+   path (Step 10.8) generates the next one in the background.
+
+### Why not generate per-skill-tab on demand (Option B from the discussion)?
+
+This appears responsive (first question in ~15 seconds) but merely hides the problem:
+16 tabs × 1 call each = 16 sequential calls behind the scenes if the practitioner
+browses all tabs.  State management also becomes complex (each tab has an independent
+loading state, race conditions on shared cache keys).
+
+### Chosen design — single batch call, all questions at once
+
+| Event | Action | Wall time |
+|---|---|---|
+| Click "Generate / Regenerate path" | Profiler → Planner → persist; **no Item-Writer** | **< 30 seconds** |
+| Click Quiz tab (first open, no items) | Show friendly loading screen; fire **one** QuizBatchGeneratorAgent call covering all skills | **~20–30 seconds** |
+| Quiz tab after batch returns | All skill sub-tabs populated simultaneously | **< 1 second** |
+| Practitioner exhausts a skill's question(s) | Auto-refresh (Step 10.8): single Item-Writer call for that skill only | **~15–20 seconds** |
+
+One call for 16 questions at 500 tokens each = 8,000 output tokens — well within every
+supported model's reliable range and fast enough that a single "Generating your quiz…"
+loading screen is acceptable.
+
+---
+
+### Step 12.1 — Decouple ItemWriter from path generation
+
+**Goal:** "Generate Learning Path" completes in under 30 seconds.  No quiz questions are
+written during this step; the workflow is Profiler → Domain Score computation → Planner →
+persist path + snapshots → done.
+
+**Preconditions:** 11.4.
+**Context to load:** `backend/app/workflows/generate_learning_path.py`,
+`backend/app/api/routes/learning_paths.py`, `docs/architecture.md`.
+
+**Build:**
+
+*`generate_learning_path.py` — `_run_steps`:*
+- Remove the entire Item-Writer block (step 4) and all associated code:
+  `ItemWriterAgent`, `ItemWriterInput` imports, the `writer_tasks` list,
+  `_run_writer_concurrent`, `_run_writer_sequential`, `asyncio.Semaphore`,
+  `items_by_skill` dict, and the `item_id` look-up when writing `LearningPathItem` rows.
+- `LearningPathItem.item_id` becomes null on creation (the column is already nullable;
+  the auto-refresh workflow (Step 10.8) sets it when the first item is generated).
+- Remove `item_writer_session_factory` parameter from `run_generate_learning_path`
+  and `_run_steps` — no longer needed.
+- Remove `AsyncSessionLocal` import from the workflow.
+- Update the docstring: sequence is now Profiler → Domain Scorer → Planner → persist.
+
+*`learning_paths.py` API route:*
+- Remove `item_writer_session_factory=AsyncSessionLocal` argument.
+- Remove `AsyncSessionLocal` import from this file.
+
+*Scenario test (`test_learning_path_workflow.py`):*
+- Rename `test_full_workflow_creates_workflow_run_and_three_agent_runs`
+  → `test_full_workflow_creates_workflow_run_and_two_agent_runs`.
+- Update stub to provide only 2 side-effects (profiler + planner).
+- Assert `agent_runs.count == 2` (was 3).
+- Assert that no `items` rows are written.
+
+**Definition of done:** `py -m pytest` green; "Generate path" in the running app
+completes and the browser returns control to the user within 90 seconds.
+
+---
+
+### Step 12.2 — QuizBatchGeneratorAgent
+
+**Goal:** a single LLM call generates one well-calibrated starter question for every skill
+in the practitioner's active learning path, covering all cert domains proportionally.
+
+**Preconditions:** 12.1.
+**Context to load:** `backend/app/agents/base.py`,
+`backend/app/agents/item_writer.py` (for AnswerKey / ItemWriterOutput schema),
+`backend/app/agents/prompts/item_writer.md`,
+`backend/app/api/routes/learning_paths.py`.
+
+**Build:**
+
+*Agent (`backend/app/agents/quiz_batch_generator.py`):*
+
+Input:
+```python
+class QuizBatchGeneratorInput(BaseModel):
+    skills: list[SkillQuizSpec]     # one entry per skill in the path
+    cert_code: str
+    cert_name: str
+    certification_domains: list[dict] | None   # [{id, name, description, weight_pct}]
+
+class SkillQuizSpec(BaseModel):
+    skill_id: str
+    skill_name: str
+    skill_description: str | None
+    mastery_score: float            # 0.0–1.0 — drives target difficulty
+    certification_domain_id: str | None
+    certification_domain_name: str | None
+    is_cert_evaluated: bool
+    prior_generation_count: int = 0 # how many batches have already been generated
+```
+
+Output:
+```python
+class QuizBatchGeneratorOutput(BaseModel):
+    items: list[BatchQuizItem]
+
+class BatchQuizItem(BaseModel):
+    skill_id: str
+    item_type: str                  # always "mcq"
+    prompt: str
+    answer_key: AnswerKey           # reuse existing AnswerKey Pydantic model
+    trap_explanation: str | None
+    difficulty: float               # calibrated to mastery_score band
+    certification_domain_id: str | None
+    is_cert_evaluated: bool
+```
+
+`max_tokens = 12000` (16 items × ~700 tokens each with breathing room).
+
+Prompt file: `backend/app/agents/prompts/quiz_batch_generator.md`
+
+Prompt instructions:
+- Generate exactly one MCQ per skill in the `skills` list, in the same order.
+- Calibrate difficulty to `mastery_score`:
+  - 0–0.25 → target 0.30–0.45 (foundation — build confidence)
+  - 0.25–0.55 → target 0.45–0.65 (solidifying — apply concepts)
+  - 0.55–0.80 → target 0.65–0.80 (challenge — nuanced scenarios)
+  - 0.80–1.00 → target 0.80–0.95 (exam-hard — same bar as mock exam)
+- Each question: 4 options, one correct, one plausible trap, a concise trap explanation.
+- If `certification_domain_id` is set, the question must directly test the domain concept.
+- If `prior_generation_count > 0`, vary the question style from previous rounds
+  (use "EXCEPT", "MOST appropriate", "FIRST step", scenario-based formats to avoid
+  repeating similar phrasings).
+- Output MUST include one item per skill — never skip a skill or add extras.
+- Output field: `items` array in the same order as the input `skills` array.
+
+*New endpoint:*
+
+`POST /practitioners/{practitioner_id}/learning-paths/{path_id}/quiz-batch`
+
+In `backend/app/api/routes/learning_paths.py`:
+- Require the path to belong to the practitioner; 404 otherwise.
+- Fetch all path skills with their current mastery scores from `skill_profile_snapshots`.
+- Compute `prior_generation_count` per skill = count of existing `items` rows for that skill.
+- Call `QuizBatchGeneratorAgent`.
+- Persist each `BatchQuizItem` as an `Item` row (same columns as existing `items` table).
+- Update `LearningPathItem.item_id` for each skill to point to the newly created item.
+- Return list of created `Item` ids (frontend fetches via existing `useItems` hooks).
+
+**Scenario test:**
+```
+Scenario: Batch generates exactly one item per skill for the active path
+  Given a practitioner with a locked profile and an active learning path of 3 skills
+    and no existing items for those skills
+  When POST /practitioners/{id}/learning-paths/{path_id}/quiz-batch is called
+  Then exactly 3 Item rows are created, one per skill
+    and each Item has difficulty calibrated to the skill's mastery_score band
+    and each Item is linked to its LearningPathItem via item_id
+```
+
+**Definition of done:** scenario test green; a real call to the endpoint produces N items
+in the DB in under 60 seconds.
+
+---
+
+### Step 12.3 — Quiz tab loading UX
+
+**Goal:** when the Quiz tab is opened with no items, a friendly loading screen covers the
+full quiz panel while the batch endpoint is called; all skill tabs populate simultaneously
+when the call returns; the loading state is isolated from the rest of the dashboard.
+
+**Preconditions:** 12.2.
+**Context to load:** `frontend/src/components/QuizRunner/QuizRunner.tsx`,
+`frontend/src/api/index.ts`, `frontend/src/hooks/index.ts`.
+
+**Build:**
+
+*`api/index.ts`:*
+```typescript
+generateQuizBatch: (practitionerId: string, pathId: string) =>
+  api.post<{ item_ids: string[] }>(
+    `/practitioners/${practitionerId}/learning-paths/${pathId}/quiz-batch`,
+    {}
+  ),
+```
+
+*`hooks/index.ts`:*
+```typescript
+export function useGenerateQuizBatch(practitionerId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pathId: string) =>
+      practitioners.generateQuizBatch(practitionerId, pathId),
+    onSuccess: () => {
+      // Invalidate all items queries so skill tabs re-fetch
+      qc.invalidateQueries({ queryKey: ["items"] });
+    },
+  });
+}
+```
+
+*`QuizRunner.tsx` — batch-loading gate:*
+
+At the top of the quiz panel, before rendering skill tabs, check whether any skill in the
+path has items.  If NO skill has items AND the active path exists:
+
+1. Auto-trigger `useGenerateQuizBatch(practitionerId).mutate(activePath.id)` once on mount
+   (guard with a `useEffect` + `hasTriggered` ref to fire exactly once).
+2. While the mutation is pending, render a full-panel loading screen:
+   ```
+   ┌────────────────────────────────────────────────────────┐
+   │                                                        │
+   │   ☕  Generating your quiz — one moment               │
+   │                                                        │
+   │   We're crafting one question per skill,               │
+   │   calibrated to your current mastery level.           │
+   │                                                        │
+   │   ████████████░░░░░░░░░░  preparing 16 questions…     │
+   │   (indeterminate progress bar)                         │
+   │                                                        │
+   └────────────────────────────────────────────────────────┘
+   ```
+   The message shows `activePath.items.length` as the question count.
+3. On success: `queryClient.invalidateQueries` causes all `useItems(skillId)` hooks
+   to refetch → skill tabs populate with their questions automatically.
+4. On error: show inline error card with "Retry" button that calls mutate again.
+
+*No changes to the per-skill auto-refresh path* (Step 10.8) — that already shows a
+per-skill loading skeleton when a new single question is being generated.
+
+**Scenario tests:** none (visual component — TypeScript compile is the gate).
+**Definition of done:** `npx tsc --noEmit` clean; opening the Quiz tab on a fresh path
+triggers exactly one batch call; all skill tabs are populated when it returns; a Retry
+button appears on network failure; revisiting the tab (items already in DB) renders
+immediately with no loading screen.

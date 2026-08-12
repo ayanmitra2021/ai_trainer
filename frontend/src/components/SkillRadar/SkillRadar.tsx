@@ -10,13 +10,17 @@
 
 import { useNavigate } from "react-router-dom";
 import {
+  useActiveMockExam,
+  useCertifications,
   useGenerateLearningPath,
   useLearningPaths,
   useProfiles,
   useSkillProfile,
+  useStartMockExam,
 } from "../../hooks";
 import { useSession } from "../../context/SessionContext";
 import LearningPathRoad from "./LearningPathRoad";
+import CertDomainGapChart from "../CertDomainGapChart";
 
 interface Props {
   practitionerId: string;
@@ -114,16 +118,30 @@ function RadarPolygon({
   );
 }
 
-function AxisLabels({ labels }: { labels: { name: string; score: number }[] }) {
+function AxisLabels({
+  labels,
+}: {
+  labels: {
+    name: string;
+    score: number;
+    mastery_delta?: number | null;
+    trend?: "improving" | "declining" | "stable" | "new";
+  }[];
+}) {
   const n = labels.length;
   return (
     <g>
-      {labels.map(({ name, score }, i) => {
+      {labels.map(({ name, score, mastery_delta, trend }, i) => {
         const angle = (2 * Math.PI * i) / n;
         const p = polar(angle, 1.22);
         const textAnchor =
           Math.abs(p.x - CENTER) < 8 ? "middle" : p.x < CENTER ? "end" : "start";
         const displayName = name.length > 16 ? name.slice(0, 15) + "…" : name;
+
+        // Trend chip — only show when meaningfully improving or declining
+        const showTrendUp = trend === "improving" && mastery_delta != null && mastery_delta > 0.01;
+        const showTrendDown = trend === "declining" && mastery_delta != null && mastery_delta < -0.01;
+
         return (
           <text
             key={i}
@@ -138,6 +156,28 @@ function AxisLabels({ labels }: { labels: { name: string; score: number }[] }) {
             <tspan x={p.x} dy="1.3em" fill="var(--text-muted)" fontSize={10} fontWeight={400}>
               {(score * 100).toFixed(0)}%
             </tspan>
+            {showTrendUp && (
+              <tspan
+                x={p.x}
+                dy="1.2em"
+                fontSize={9}
+                fontWeight={600}
+                fill="var(--color-trend-up, #22c55e)"
+              >
+                ↑ +{(mastery_delta! * 100).toFixed(0)}%
+              </tspan>
+            )}
+            {showTrendDown && (
+              <tspan
+                x={p.x}
+                dy="1.2em"
+                fontSize={9}
+                fontWeight={600}
+                fill="var(--color-trend-down, #f59e0b)"
+              >
+                ↓ {(mastery_delta! * 100).toFixed(0)}%
+              </tspan>
+            )}
           </text>
         );
       })}
@@ -161,7 +201,23 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
   const { data: snapshots, isLoading, isError } = useSkillProfile(practitionerId);
   const { data: paths } = useLearningPaths(practitionerId);
   const { data: profilesList, isLoading: profilesLoading } = useProfiles(practitionerId);
+  const { data: certList } = useCertifications();
   const generatePath = useGenerateLearningPath(practitionerId);
+  const startMockExam = useStartMockExam(practitionerId);
+
+  // Compute mastery early (before early-returns) so we can gate the active-session
+  // query: only fire it when the CTA will actually appear (mastery ≥ 80 % and not readOnly).
+  // This prevents repeated 404 noise for practitioners who haven't reached that threshold.
+  const prelimCertMastery =
+    snapshots && snapshots.length > 0
+      ? snapshots.reduce((sum, s) => sum + s.mastery_score, 0) / snapshots.length
+      : null;
+
+  // 404 ⇒ no active session (returns null); only enabled at ≥ 80 % mastery
+  const { data: activeMockExam } = useActiveMockExam(
+    practitionerId,
+    !readOnly && prelimCertMastery !== null && prelimCertMastery >= 0.80,
+  );
   const { session } = useSession();
   const navigate = useNavigate();
 
@@ -224,15 +280,18 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
     );
   }
 
-  const labels = snapshots.map((s) => ({ name: s.skill_name, score: s.mastery_score }));
+  const labels = snapshots.map((s) => ({
+    name: s.skill_name,
+    score: s.mastery_score,
+    mastery_delta: s.mastery_delta,
+    trend: s.trend,
+  }));
   const masteryScores = snapshots.map((s) => s.mastery_score);
   const confidenceScores = snapshots.map((s) => s.confidence);
   const activePath = paths?.find((p) => p.status === "active");
 
-  const certMastery =
-    snapshots.length > 0
-      ? snapshots.reduce((sum, s) => sum + s.mastery_score, 0) / snapshots.length
-      : null;
+  // Re-use the value already computed above the early-returns
+  const certMastery = prelimCertMastery;
 
   const radarTitle = certCode ? `Skill radar — ${certCode}` : "Skill radar";
 
@@ -367,44 +426,151 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
             </div>
           )}
 
-          <h3 style={{ marginBottom: "0.125rem" }}>Top skill gaps</h3>
-          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
-            Your 5 weakest skills by mastery score.
-          </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
-            {[...snapshots]
-              .sort((a, b) => a.mastery_score - b.mastery_score)
-              .slice(0, 5)
-              .map((s) => {
-                const pct = s.mastery_score * 100;
-                const barColor =
-                  pct < 30 ? "#dc2626" : pct < 60 ? "#ea580c" : "#16a34a";
-                return (
-                  <div key={s.skill_id}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem", marginBottom: "0.25rem" }}>
-                      <span style={{ color: "var(--text)" }}>{s.skill_name}</span>
-                      <span style={{ color: barColor, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
-                        {pct.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div style={{ height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
-                      <div
-                        style={{
-                          height: "100%",
-                          width: `${pct}%`,
-                          background: `linear-gradient(90deg, ${barColor}, ${barColor}aa)`,
-                          borderRadius: 3,
-                          transition: "width 0.5s ease",
-                          boxShadow: `0 0 6px ${barColor}66`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
+          {/* Cert domain gap chart — shown when there's an active cert with a known ID */}
+          {activeProfile?.certification_id ? (
+            <CertDomainGapChart
+              practitionerId={practitionerId}
+              certificationId={activeProfile.certification_id}
+              certCode={certCode ?? activeProfile.certification_code ?? ""}
+            />
+          ) : (
+            <>
+              <h3 style={{ marginBottom: "0.125rem" }}>Top skill gaps</h3>
+              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
+                Your 5 weakest skills by mastery score.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.625rem" }}>
+                {[...snapshots]
+                  .sort((a, b) => a.mastery_score - b.mastery_score)
+                  .slice(0, 5)
+                  .map((s) => {
+                    const pct = s.mastery_score * 100;
+                    const barColor =
+                      pct < 30 ? "var(--danger)" : pct < 60 ? "var(--warning)" : "var(--success)";
+                    return (
+                      <div key={s.skill_id}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8125rem", marginBottom: "0.25rem" }}>
+                          <span style={{ color: "var(--text)" }}>{s.skill_name}</span>
+                          <span style={{ color: barColor, fontVariantNumeric: "tabular-nums", fontWeight: 600 }}>
+                            {pct.toFixed(0)}%
+                          </span>
+                        </div>
+                        <div style={{ height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden" }}>
+                          <div
+                            style={{
+                              height: "100%",
+                              width: `${pct}%`,
+                              background: barColor,
+                              borderRadius: 3,
+                              transition: "width 0.5s ease",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </>
+          )}
         </div>
       </div>
+
+      {/* ── Mock Exam CTA ─────────────────────────────────────────────── */}
+      {!readOnly && certMastery !== null && certMastery >= 0.80 && certCode && (() => {
+        const matchingCert = certList?.find((c) => c.code === certCode);
+        const hasActiveSession =
+          activeMockExam?.status === "in_progress" ||
+          activeMockExam?.status === "paused";
+
+        const openMockExam = (sessionId: string) => {
+          const base = import.meta.env.BASE_URL ?? "/";
+          const url = base.endsWith("/")
+            ? `${base}mock-exam/${sessionId}`
+            : `${base}/mock-exam/${sessionId}`;
+          window.open(url, "_blank");
+        };
+
+        const handleStart = async () => {
+          const newSession = await startMockExam.mutateAsync();
+          openMockExam(newSession.id);
+        };
+
+        return (
+          <div
+            style={{
+              marginTop: "2rem",
+              padding: "1.5rem",
+              background: "color-mix(in srgb, var(--primary) 6%, var(--surface))",
+              border: "2px solid var(--primary)",
+              borderRadius: "12px",
+              boxShadow: "0 0 24px rgba(77, 171, 247, 0.12)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <h3 style={{ margin: "0 0 0.375rem", color: "var(--primary)" }}>
+                  🎯 You're exam-ready! Time for a mock exam.
+                </h3>
+                <p style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  Your skill mastery is at{" "}
+                  <strong style={{ color: "var(--text)" }}>
+                    {(certMastery * 100).toFixed(0)}%
+                  </strong>{" "}
+                  — above the 80% readiness threshold.
+                </p>
+                {matchingCert &&
+                  (matchingCert.exam_question_count ||
+                    matchingCert.exam_duration_minutes ||
+                    matchingCert.exam_passing_score_pct) && (
+                    <p style={{ margin: "0 0 1rem", fontSize: "0.8125rem", color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>
+                      {matchingCert.exam_question_count != null && (
+                        <span>{matchingCert.exam_question_count} questions</span>
+                      )}
+                      {matchingCert.exam_duration_minutes != null && (
+                        <span> · {matchingCert.exam_duration_minutes} min</span>
+                      )}
+                      {matchingCert.exam_passing_score_pct != null && (
+                        <span> · Pass: {matchingCert.exam_passing_score_pct}%</span>
+                      )}
+                    </p>
+                  )}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
+                {hasActiveSession ? (
+                  <button
+                    className="btn btn-primary btn-3d"
+                    onClick={() => openMockExam(activeMockExam!.id)}
+                  >
+                    Resume Mock Exam →
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-primary btn-3d"
+                    disabled={startMockExam.isPending}
+                    onClick={handleStart}
+                  >
+                    {startMockExam.isPending ? (
+                      <>
+                        <span className="spinner" /> Generating exam…
+                      </>
+                    ) : (
+                      "Start Mock Exam"
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+            {startMockExam.isError && (
+              <p style={{ margin: "0.5rem 0 0", fontSize: "0.8125rem", color: "var(--danger)" }}>
+                {(startMockExam.error as Error).message.includes("409") ||
+                (startMockExam.error as Error).message.toLowerCase().includes("active")
+                  ? "You have an active exam in progress. Resume it first."
+                  : (startMockExam.error as Error).message}
+              </p>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Learning Journey — hidden in read-only (admin) view ──────── */}
       {!readOnly && (

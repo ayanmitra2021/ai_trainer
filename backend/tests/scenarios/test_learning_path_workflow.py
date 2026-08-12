@@ -1,6 +1,6 @@
-"""Step 2.8 — Learning-path orchestrator workflow scenarios.
+"""Phase 12.1 — Learning-path orchestrator workflow scenarios.
 
-Scenario: Requesting a path runs all three agents in order.
+Scenario: Requesting a path runs two agents (Profiler + Planner) — no Item-Writer.
 Scenario: A failure partway through is recorded, not swallowed.
 Scenario: Submitting an attempt end-to-end updates the snapshot on the next profiler run.
 """
@@ -76,7 +76,12 @@ async def workflow_event(
 
 
 def _make_stub_client_for_full_workflow(skill_id: str) -> StubClaudeClient:
-    """Stub that has side_effects covering all three agent calls in sequence."""
+    """Stub that has side_effects covering the two agent calls in sequence.
+
+    Phase 12.1: no Item-Writer step — only Profiler + Planner run during
+    path generation.  Quiz questions are generated separately when the Quiz
+    tab first opens (QuizBatchGeneratorAgent).
+    """
     profiler_response = {
         "skill_scores": [
             {
@@ -98,29 +103,16 @@ def _make_stub_client_for_full_workflow(skill_id: str) -> StubClaudeClient:
         ],
         "summary": "One skill to work on.",
     }
-    item_writer_response = {
-        "item_type": "mcq",
-        "prompt": "What is prompt engineering?",
-        "answer_key": {
-            "options": ["A", "B", "C", "D"],
-            "correct_index": 0,
-            "trap_index": 1,
-        },
-        "trap_explanation": "Option B exploits a common misconception.",
-        "difficulty": 0.4,
-        "rationale": "Starter difficulty.",
-    }
     return StubClaudeClient(
         side_effects=[
             profiler_response,
             planner_response,
-            item_writer_response,
         ]
     )
 
 
 class TestGenerateLearningPathWorkflow:
-    async def test_full_workflow_creates_workflow_run_and_three_agent_runs(
+    async def test_full_workflow_creates_workflow_run_and_two_agent_runs(
         self,
         db_session: AsyncSession,
         workflow_practitioner: Practitioner,
@@ -128,11 +120,12 @@ class TestGenerateLearningPathWorkflow:
         workflow_event: SkillProfileEvent,
     ):
         """
-        Scenario: Requesting a path runs all three agents in order.
+        Scenario: Requesting a path runs two agents (Profiler + Planner) — no Item-Writer.
           Given a practitioner with one skill event
           When the generate_learning_path workflow runs
           Then a workflow_runs row with status 'completed' exists
-          And three agent_runs rows are linked to it (profiler, planner, item_writer)
+          And exactly two agent_runs rows are linked to it (skill_profiler, curriculum_planner)
+          And no Item rows are written (quiz questions are generated separately)
         """
         # Given
         stub_client = _make_stub_client_for_full_workflow(workflow_skill.id)
@@ -152,7 +145,7 @@ class TestGenerateLearningPathWorkflow:
         assert workflow_run is not None
         assert workflow_run.status == "completed"
 
-        # And — three agent_runs linked to this workflow
+        # And — exactly two agent_runs linked to this workflow (no item_writer)
         ar_result = await db_session.execute(
             select(AgentRun).where(AgentRun.workflow_run_id == result.workflow_run_id)
         )
@@ -160,7 +153,14 @@ class TestGenerateLearningPathWorkflow:
         agent_names = {ar.agent_name for ar in agent_runs}
         assert "skill_profiler" in agent_names
         assert "curriculum_planner" in agent_names
-        assert "item_writer" in agent_names
+        assert "item_writer" not in agent_names
+        assert len(agent_runs) == 2
+
+        # And — no Item rows written during path generation
+        items_result = await db_session.execute(
+            select(Item).where(Item.skill_id == workflow_skill.id)
+        )
+        assert items_result.scalars().all() == []
 
     async def test_failure_partway_through_marks_workflow_failed(
         self,

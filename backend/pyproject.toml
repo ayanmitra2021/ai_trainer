@@ -59,6 +59,10 @@ where = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
+# Skip integration/live/mcp_roundtrip tests by default — they require external
+# services and the pg_engine fixture DROPS AND RECREATES tables.
+# To run integration tests explicitly: py -m pytest -m integration
+addopts = "-m 'not integration and not live and not mcp_roundtrip'"
 markers = [
     "integration: marks tests that require a running Postgres container (deselect with -m 'not integration')",
     "live: marks tests that call the real Anthropic API (never run on CI)",

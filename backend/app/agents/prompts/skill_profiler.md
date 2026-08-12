@@ -37,9 +37,21 @@ For each skill that has at least one quiz attempt event, produce a `skill_scores
 
 Also produce a `summary`: one short paragraph describing the practitioner's overall skill shape based on their quiz performance.
 
+## Round metrics override (Phase 10.3)
+
+If `quiz_round_metrics` are provided in the input, use `current_mastery_score` from each round-metrics entry as the **primary signal** for that skill, rather than computing from raw events. The round-metrics score already incorporates the recency-weighted ceiling formula (ceiling(N) = 1 - 0.5^N).
+
+When round metrics are available for a skill:
+- Use `current_mastery_score` as the `mastery_score` directly.
+- Infer confidence from `rounds_completed`: 1 round → 0.4, 2 rounds → 0.6, 3+ rounds → 0.8.
+- In `reasoning`, note "Based on N completed quiz rounds with mastery ceiling M".
+
+Skills in `events` but not in `quiz_round_metrics` should still be scored from events as normal.
+
 ## What not to do
 
 - Do not fabricate skill evidence. Only reason from the quiz attempt events you receive.
 - Do not produce skill scores for skills not represented in the events.
 - Do not set confidence above 0.6 when there are fewer than four attempts for a skill.
 - Do not collapse a skill to zero mastery on a single bad attempt if the practitioner has a strong history of correct answers on that skill.
+- Do not override a round-metrics score with a lower event-based score — the round-metrics formula is authoritative.

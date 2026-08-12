@@ -17,6 +17,11 @@ class ItemRead(BaseModel):
     difficulty: float
     calibration_stats: dict | None
     created_at: datetime
+    # Phase 10.3: domain alignment and generation tracking
+    certification_domain_id: str | None = None
+    is_cert_evaluated: bool = False
+    certification_domain_name: str | None = None
+    generation: int = 1
 
     model_config = {"from_attributes": True}
 
@@ -34,6 +39,11 @@ class ItemWriterInput(BaseModel):
     # Calibration hint: how many items already exist and their avg accuracy
     existing_items_count: int = 0
     low_accuracy_hint: bool = False  # True triggers difficulty recalibration prompt
+    # Phase 10.3: certification domain alignment
+    certification_id: str | None = None
+    certification_domains: list[dict] | None = None  # [{id, name, description, weight_pct}]
+    is_refresh_round: bool = False
+    prior_generation_count: int = 0
 
 
 class MCQAnswerKey(BaseModel):
@@ -63,6 +73,9 @@ class ItemWriterOutput(BaseModel):
     trap_explanation: str | None = None
     difficulty: float = Field(..., ge=0.0, le=1.0)
     rationale: str  # Why this difficulty / why this trap
+    # Phase 10.3: domain tagging — null when no cert context is provided
+    certification_domain_id: str | None = None
+    is_cert_evaluated: bool = False
 
 
 # ── Agent I/O: Grader ─────────────────────────────────────────────────────────

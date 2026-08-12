@@ -1,16 +1,19 @@
-"""generate_learning_path workflow — Step 2.8.
+"""generate_learning_path workflow — Phase 12.1.
 
-Orchestrates: Skill Profiler → Curriculum Planner → Item-Writer.
+Orchestrates: Skill Profiler → Domain Score computation → Curriculum Planner.
+
+Quiz questions are NOT generated here.  The Quiz tab triggers a single
+batch call (QuizBatchGeneratorAgent) the first time it is opened, so path
+generation completes in under 30 seconds.
 
 One workflow_runs row is written at the start; its status is updated to
-completed or failed at the end. Each agent writes its own agent_runs row.
+completed or failed at the end.  Each agent writes its own agent_runs row.
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,26 +21,30 @@ from sqlalchemy.orm import selectinload
 
 from app.agents.base import ModelClient
 from app.agents.curriculum_planner import CurriculumPlannerAgent
-from app.agents.item_writer import ItemWriterAgent
 from app.agents.model_client import create_model_client
 from app.agents.skill_profiler import SkillProfilerAgent
+from app.agents.round_metrics import compute_domain_scores, compute_round_metrics
 from app.db.models import (
     Certification,
+    CertificationDomain,
     LearningPath,
     LearningPathItem,
     MasteryHistory,
     Practitioner,
     PractitionerCertificationGoal,
+    PractitionerProfile,
+    ProfileSkillAssessment,
     Skill,
     SkillProfileEvent,
     SkillProfileSnapshot,
+    Item,
     WorkflowRun,
 )
-from app.schemas.items import ItemWriterInput
 from app.schemas.learning_paths import (
     CertGoalContext,
     CurriculumPlannerInput,
     GenerateLearningPathResponse,
+    RoundMetricsPerSkill,
     SkillProfilerInput,
     SkillScoreContext,
 )
@@ -48,17 +55,19 @@ async def run_generate_learning_path(
     db: AsyncSession,
     claude_client: ModelClient | None = None,
 ) -> GenerateLearningPathResponse:
-    """Run the full generate_learning_path workflow.
+    """Run the generate_learning_path workflow.
 
     Sequence:
       1. Write workflow_runs row (status=running)
       2. Skill Profiler — compute / refresh skill snapshots
       3. Curriculum Planner — order the learning path
-      4. Item-Writer — generate one starter item per path node
-      5. Persist learning_path + learning_path_items
+      4. Persist learning_path + learning_path_items
+      5. Compute certification domain scores from cert-evaluated quiz answers
       6. Mark workflow_runs completed (or failed on any exception)
+
+    Quiz questions are generated separately when the Quiz tab first opens
+    (QuizBatchGeneratorAgent, POST /learning-paths/{id}/quiz-batch).
     """
-    # Create model client if not provided (for backward compatibility in tests)
     if claude_client is None:
         claude_client = create_model_client()
     workflow_run_id = str(uuid.uuid4())
@@ -75,7 +84,6 @@ async def run_generate_learning_path(
     db.add(workflow_run)
     await db.commit()
 
-    # Validate practitioner exists before proceeding
     practitioner = await db.get(Practitioner, practitioner_id)
     if practitioner is None:
         workflow_run.status = "failed"
@@ -134,14 +142,70 @@ async def _run_steps(
         for e in events
     ]
 
+    # Phase 10.3: compute round metrics for all skills that have items
+    # These are passed to the Skill Profiler as primary mastery signals.
+    all_items_skills_result = await db.execute(
+        select(Item.skill_id).distinct()
+        .where(Item.skill_id != None)  # noqa: E711
+    )
+    skills_with_items = [row[0] for row in all_items_skills_result.all()]
+
+    quiz_round_metrics: list[RoundMetricsPerSkill] = []
+    for skill_id_with_items in skills_with_items:
+        round_m = await compute_round_metrics(
+            practitioner_id=practitioner_id,
+            skill_id=skill_id_with_items,
+            db=db,
+        )
+        if round_m.rounds_completed > 0:
+            quiz_round_metrics.append(
+                RoundMetricsPerSkill(
+                    skill_id=skill_id_with_items,
+                    rounds_completed=round_m.rounds_completed,
+                    mastery_ceiling=round_m.mastery_ceiling,
+                    weighted_accuracy=round_m.weighted_accuracy,
+                    current_mastery_score=round_m.current_mastery_score,
+                )
+            )
+
     profiler_input = SkillProfilerInput(
         practitioner_id=practitioner_id,
         events=events_data,
+        quiz_round_metrics=quiz_round_metrics,
     )
     profiler = SkillProfilerAgent(
         client=claude_client, db_session=db, workflow_run_id=workflow_run_id
     )
     profiler_output = await profiler.run(profiler_input)
+
+    # Override profiler scores with round-metrics scores where available
+    round_metrics_map = {rm.skill_id: rm for rm in quiz_round_metrics}
+    for scored in profiler_output.skill_scores:
+        if scored.skill_id in round_metrics_map:
+            rm = round_metrics_map[scored.skill_id]
+            scored.mastery_score = rm.current_mastery_score
+
+    # ── 2b. Self-assessment initial seed ─────────────────────────────────────
+    # For skills that have NO quiz rounds yet, seed mastery from the locked
+    # profile's self-assessment ratings so the Skill Radar is not all-zero on
+    # first load.  Scale factor 0.35 keeps initial estimates well below the
+    # 50 % first-quiz ceiling, leaving clear room for quiz performance to drive
+    # real change.  Skills that already have quiz data are never touched here.
+    _SELF_ASSESSMENT_INITIAL_SCALE = 0.35
+
+    # Load self-assessment ratings for the active profile (one DB round-trip).
+    _sa_result = await db.execute(
+        select(ProfileSkillAssessment)
+        .join(PractitionerProfile, ProfileSkillAssessment.profile_id == PractitionerProfile.id)
+        .where(
+            PractitionerProfile.practitioner_id == practitioner_id,
+            PractitionerProfile.is_active == True,  # noqa: E712
+        )
+    )
+    _assessment_map: dict[str, float] = {
+        row.skill_id: float(row.signal_strength)
+        for row in _sa_result.scalars().all()
+    }
 
     # ── 3. Curriculum Planner ──────────────────────────────────────────────
     # Build skill score context from ALL skills in the catalog.
@@ -176,6 +240,22 @@ async def _run_steps(
                     confidence=0.0,
                 )
             )
+
+    # Seed initial mastery from self-assessment for skills with no quiz data.
+    # A skill is "quiz-naive" when it has no entry in round_metrics_map, meaning
+    # the practitioner has never completed a full round of questions for it.
+    # We never overwrite a skill that already has quiz-derived mastery.
+    for skill_ctx in skill_scores_context:
+        if (
+            skill_ctx.skill_id not in round_metrics_map
+            and skill_ctx.skill_id in _assessment_map
+        ):
+            skill_ctx.mastery_score = round(
+                _assessment_map[skill_ctx.skill_id] * _SELF_ASSESSMENT_INITIAL_SCALE, 3
+            )
+            # Low confidence — self-reported, not yet quiz-verified
+            if skill_ctx.confidence == 0.0:
+                skill_ctx.confidence = 0.25
 
     # Upsert snapshots for ALL skills in the catalog (not just profiler-scored
     # ones). This ensures the Skill Radar always has data to display, even for
@@ -271,46 +351,7 @@ async def _run_steps(
         )
         planner_output.path_items = valid_path_items
 
-    # ── 4. Item-Writer (one starter item per path node) ───────────────────
-    item_writer = ItemWriterAgent(
-        client=claude_client, db_session=db, workflow_run_id=workflow_run_id
-    )
-    # We generate items in parallel-ish: run sequentially here for simplicity;
-    # Phase 3 refactor can use asyncio.gather if latency matters.
-    from app.db.models import Item as ItemModel
-
-    items_by_skill: dict[str, str] = {}  # skill_id → item_id
-    for path_item in planner_output.path_items:
-        skill = await db.get(Skill, path_item.skill_id)
-        if skill is None:
-            continue  # skip if skill not found (shouldn't happen in practice)
-        writer_input = ItemWriterInput(
-            skill_id=path_item.skill_id,
-            skill_name=skill.name,
-            skill_description=skill.description,
-            item_type="mcq",
-            target_difficulty=0.4,  # starter difficulty — practitioners are new to the path
-        )
-        writer_output = await item_writer.run(writer_input)
-
-        item_id = str(uuid.uuid4())
-        item = ItemModel(
-            id=item_id,
-            skill_id=path_item.skill_id,
-            item_type=writer_output.item_type,
-            prompt=writer_output.prompt,
-            # answer_key is now a typed Pydantic model; serialize to dict for JSONB storage.
-            answer_key=writer_output.answer_key.model_dump(),
-            trap_explanation=writer_output.trap_explanation,
-            difficulty=writer_output.difficulty,
-            calibration_stats={"attempt_count": 0, "total_score": 0.0, "trap_selection_count": 0},
-        )
-        db.add(item)
-        items_by_skill[path_item.skill_id] = item_id
-
-    await db.flush()
-
-    # ── 5. Persist learning path ───────────────────────────────────────────
+    # ── 4. Persist learning path ───────────────────────────────────────────
     # Mark any previously active paths as completed so there is exactly one
     # active path at a time.
     prev_paths_result = await db.execute(
@@ -346,6 +387,23 @@ async def _run_steps(
         db.add(lp_item)
 
     await db.flush()
+
+    # ── 5. Compute domain scores from cert-evaluated quiz answers ──────────
+    # Phase 10.3: after persisting the learning path, update domain scores
+    # from any cert-evaluated quiz answers the practitioner has submitted.
+    active_profile_result = await db.execute(
+        select(PractitionerProfile).where(
+            PractitionerProfile.practitioner_id == practitioner_id,
+            PractitionerProfile.is_active == True,  # noqa: E712
+        )
+    )
+    active_profile = active_profile_result.scalar_one_or_none()
+    if active_profile is not None and active_profile.certification_id is not None:
+        await compute_domain_scores(
+            practitioner_id=practitioner_id,
+            certification_id=active_profile.certification_id,
+            db=db,
+        )
 
     return GenerateLearningPathResponse(
         workflow_run_id=workflow_run_id,

@@ -28,6 +28,9 @@ from app.api.deps.session import (
 )
 from app.db.models import (
     Certification,
+    CertificationDomain,
+    CertificationDomainScore,
+    CertificationDomainVersion,
     CertificationSkill,
     PractitionerProfile,
     ProfileSkillAssessment,
@@ -380,6 +383,112 @@ async def upsert_skill_assessments(
         .where(PractitionerProfile.id == profile_id)
         .values(is_locked=True, updated_at=now)
     )
+    await db.flush()
+
+    # Phase 10.5: freeze the current domain version on the profile and run the
+    # Domain Scorer agent to create initial certification_domain_scores.
+    await db.refresh(profile)
+    if profile.certification_id is not None:
+        # Find the current domain version for this cert
+        version_result = await db.execute(
+            select(CertificationDomainVersion).where(
+                CertificationDomainVersion.certification_id == profile.certification_id,
+                CertificationDomainVersion.is_current == True,  # noqa: E712
+            )
+        )
+        current_version = version_result.scalar_one_or_none()
+
+        if current_version is not None:
+            # Freeze the domain version on the profile
+            await db.execute(
+                update(PractitionerProfile)
+                .where(PractitionerProfile.id == profile_id)
+                .values(domain_version_id=current_version.id)
+            )
+            await db.flush()
+
+            # Get certification domains for this version
+            domains_result = await db.execute(
+                select(CertificationDomain).where(
+                    CertificationDomain.certification_id == profile.certification_id,
+                    CertificationDomain.domain_version_id == current_version.id,
+                ).order_by(CertificationDomain.sequence_order)
+            )
+            cert_domains = domains_result.scalars().all()
+
+            if cert_domains:
+                # Build skill assessments list for the Domain Scorer
+                assessments_result = await db.execute(
+                    select(ProfileSkillAssessment).where(
+                        ProfileSkillAssessment.profile_id == profile_id
+                    )
+                )
+                assessments = assessments_result.scalars().all()
+
+                # Load skill names for each assessment
+                from app.db.models import Skill
+                skill_assessments_data: list[dict] = []
+                for sa_row in assessments:
+                    skill = await db.get(Skill, sa_row.skill_id)
+                    skill_assessments_data.append({
+                        "skill_name": skill.name if skill else sa_row.skill_id,
+                        "signal_strength": float(sa_row.signal_strength),
+                    })
+
+                # Run the Domain Scorer agent
+                from app.agents.domain_scorer import DomainScorerAgent, DomainScorerInput
+                from app.agents.model_client import create_model_client
+
+                model_client = create_model_client()
+                scorer = DomainScorerAgent(client=model_client, db_session=db)
+
+                scorer_input = DomainScorerInput(
+                    certification_id=profile.certification_id,
+                    certification_domains=[
+                        {
+                            "id": d.id,
+                            "name": d.domain_name,
+                            "description": d.domain_description,
+                            "weight_pct": float(d.weight_pct),
+                        }
+                        for d in cert_domains
+                    ],
+                    skill_assessments=skill_assessments_data,
+                )
+                scorer_output = await scorer.run(scorer_input)
+
+                # Persist domain scores — only for domains without quiz_derived scores
+                for domain_score in scorer_output.domain_scores:
+                    existing_result = await db.execute(
+                        select(CertificationDomainScore).where(
+                            CertificationDomainScore.practitioner_id == practitioner_id,
+                            CertificationDomainScore.certification_domain_id
+                            == domain_score.certification_domain_id,
+                        )
+                    )
+                    existing = existing_result.scalar_one_or_none()
+
+                    if existing is None:
+                        # No score yet — create self_assessment_estimate
+                        import uuid as _uuid
+                        db.add(CertificationDomainScore(
+                            id=str(_uuid.uuid4()),
+                            practitioner_id=practitioner_id,
+                            certification_domain_id=domain_score.certification_domain_id,
+                            mastery_score=domain_score.initial_score,
+                            confidence=domain_score.confidence,
+                            source="self_assessment_estimate",
+                            last_computed_at=now,
+                        ))
+                    elif existing.source != "quiz_derived":
+                        # Update existing self_assessment_estimate
+                        existing.mastery_score = domain_score.initial_score
+                        existing.confidence = domain_score.confidence
+                        existing.last_computed_at = now
+
+                    # quiz_derived rows are never overwritten by estimates
+
+                await db.flush()
 
     await db.commit()
     return SkillAssessmentUpsertResponse(rows_written=rows_written)

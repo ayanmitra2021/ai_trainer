@@ -128,19 +128,31 @@ async def _make_skill(db: AsyncSession, name: str = "Prompt Engineering") -> Ski
 
 # ── Scenario 1 ────────────────────────────────────────────────────────────────
 
+# Self-assessment scale factor — must match generate_learning_path.py
+_SELF_ASSESSMENT_INITIAL_SCALE = 0.35
 
-class TestSelfAssessmentDoesNotAffectRadar:
+
+class TestSelfAssessmentSeedsRadarInitially:
     """
-    Scenario: Self-assessment does NOT affect the radar.
+    Scenario: Self-assessment seeds the radar before any quiz rounds (Phase 10 refinement).
 
       Given a practitioner with a locked profile whose profile_skill_assessments
             show signal_strength=0.9 on skill X
-      And   zero quiz_attempt events for skill X
-      When  the generate_learning_path workflow runs (profiler gets no events)
-      Then  the snapshot for skill X has mastery_score == 0.0
+      And   zero quiz_attempt events (rounds_completed=0) for skill X
+      When  the generate_learning_path workflow runs
+      Then  the snapshot for skill X has mastery_score ≈ 0.9 × 0.35 = 0.315
+            (self-assessment seeded, capped well below the 50 % first-quiz ceiling)
+      And   mastery_score > 0 so the Skill Radar is not all-zero on first load.
+
+    Design note:
+      Phase 9.4 removed adoption-pulse / usage-signal events as a mastery source.
+      Profile skill assessments remain available as an *initial seed* only — once
+      the practitioner completes at least one quiz round for a skill, the
+      quiz-derived score from compute_round_metrics takes over permanently and the
+      self-assessment value is no longer used for that skill.
     """
 
-    async def test_profile_skill_assessments_not_used_for_radar(
+    async def test_self_assessment_seeds_radar_when_no_quiz_rounds(
         self,
         db_session: AsyncSession,
     ):
@@ -148,7 +160,6 @@ class TestSelfAssessmentDoesNotAffectRadar:
         practitioner = await _make_practitioner(db_session)
         skill_x = await _make_skill(db_session, "Skill X")
 
-        # Locked profile with a high profile skill assessment (0.9 signal)
         profile = PractitionerProfile(
             id=str(uuid.uuid4()),
             practitioner_id=practitioner.id,
@@ -162,6 +173,7 @@ class TestSelfAssessmentDoesNotAffectRadar:
         db_session.add(profile)
         await db_session.flush()
 
+        # Signal strength = 0.9 (near-expert self-rating on skill X)
         psa = ProfileSkillAssessment(
             id=str(uuid.uuid4()),
             profile_id=profile.id,
@@ -172,7 +184,8 @@ class TestSelfAssessmentDoesNotAffectRadar:
         db_session.add(psa)
         await db_session.flush()
 
-        # No quiz_attempt events for skill_x — only a self_assessment (which will be ignored)
+        # No quiz_attempt events — only the self_assessment SkillProfileEvent
+        # (which the workflow still filters out of the profiler's event list).
         self_assess_event = SkillProfileEvent(
             id=str(uuid.uuid4()),
             practitioner_id=practitioner.id,
@@ -184,7 +197,8 @@ class TestSelfAssessmentDoesNotAffectRadar:
         db_session.add(self_assess_event)
         await db_session.flush()
 
-        # Stub: profiler gets no events (self_assessment filtered out) → returns empty scores
+        # Profiler stub returns 0 mastery (no quiz events passed in) — the workflow
+        # will then seed from profile_skill_assessments after the profiler runs.
         stub = _make_stub_for_workflow(skill_x.id, mastery_score=0.0)
 
         # When
@@ -194,7 +208,7 @@ class TestSelfAssessmentDoesNotAffectRadar:
             claude_client=stub,
         )
 
-        # Then — snapshot for skill X must be 0.0 (no quiz evidence)
+        # Then — snapshot exists and has a self-assessment-seeded initial mastery
         snap_result = await db_session.execute(
             select(SkillProfileSnapshot).where(
                 SkillProfileSnapshot.practitioner_id == practitioner.id,
@@ -202,12 +216,19 @@ class TestSelfAssessmentDoesNotAffectRadar:
             )
         )
         snapshot = snap_result.scalar_one_or_none()
-        # The snapshot exists (zero-padded by the workflow for all catalog skills)
-        # but its mastery_score must be 0.0 — profile_skill_assessments are not used.
         assert snapshot is not None
-        assert snapshot.mastery_score == 0.0, (
-            f"Expected mastery_score=0.0 (no quiz evidence) but got {snapshot.mastery_score}. "
-            "profile_skill_assessments must NOT influence the radar in Phase 9.4."
+
+        expected = round(0.9 * _SELF_ASSESSMENT_INITIAL_SCALE, 3)  # 0.315
+        actual = float(snapshot.mastery_score)  # Decimal → float for approx comparison
+        assert actual == pytest.approx(expected, abs=0.005), (
+            f"Expected mastery_score ≈ {expected} (self-assessment seed: 0.9 × {_SELF_ASSESSMENT_INITIAL_SCALE}) "
+            f"but got {actual}. "
+            "profile_skill_assessments should seed the radar when no quiz rounds exist."
+        )
+        # Must be strictly below the 50 % first-quiz ceiling
+        assert actual < 0.5, (
+            "Self-assessment seed must stay below the 50 % first-quiz ceiling "
+            f"so quiz answers can meaningfully raise it. Got {actual}."
         )
 
 

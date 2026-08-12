@@ -26,6 +26,9 @@ export interface SkillSnapshot {
   mastery_score: number;
   confidence: number;
   last_computed_at: string;
+  previous_mastery_score?: number | null;
+  mastery_delta?: number | null;
+  trend?: "improving" | "declining" | "stable" | "new";
 }
 
 // ── Skills ────────────────────────────────────────────────────────────────────
@@ -70,6 +73,9 @@ export interface Certification {
   last_verified_at?: string;
   provider: CertificationProvider;
   certification_skills: CertificationSkillWeight[];
+  exam_question_count?: number | null;
+  exam_duration_minutes?: number | null;
+  exam_passing_score_pct?: number | null;
 }
 
 export type ProviderPreference = "anthropic" | "aws" | "google" | "microsoft";
@@ -475,6 +481,78 @@ export interface SentCampaignSummary {
   subject?: string;
 }
 
+// ── Certification Domain Scores ────────────────────────────────────────────────
+
+export interface CertificationDomainScore {
+  id: string;
+  certification_domain_id: string;
+  domain_name: string;
+  weight_pct: number;
+  sequence_order: number;
+  mastery_score: number;
+  confidence: number;
+  source: "self_assessment_estimate" | "quiz_derived";
+  last_computed_at: string;
+  previous_mastery_score?: number | null;
+  mastery_delta?: number | null;
+  trend: "improving" | "declining" | "stable" | "new";
+}
+
+// ── Domain Proposals ──────────────────────────────────────────────────────────
+
+export interface ProposedDomain {
+  sequence_order: number;
+  domain_name: string;
+  domain_description: string;
+  weight_pct: number;
+}
+
+export interface CertificationDomainVersion {
+  id: string;
+  certification_id: string;
+  certification_code?: string | null;
+  version_label: string;
+  is_current: boolean;
+  source_notes: string;
+  agent_run_id?: string | null;
+  created_by_admin_id?: string | null;
+  created_at: string;
+}
+
+export interface CertificationDomainProposal {
+  id: string;
+  certification_id?: string | null;
+  cert_code: string;
+  cert_name: string;
+  proposed_domains: ProposedDomain[];
+  source_notes: string;
+  agent_run_id: string;
+  status: "pending_review" | "approved" | "rejected";
+  reviewed_by_admin_id?: string | null;
+  reviewed_at?: string | null;
+  rejection_notes?: string | null;
+  created_at: string;
+}
+
+// ── Extended Item with domain awareness ───────────────────────────────────────
+
+export interface QuizItem extends Item {
+  certification_domain_id?: string | null;
+  is_cert_evaluated?: boolean;
+  certification_domain_name?: string | null;
+  generation?: number;
+  generation_refreshed?: boolean;
+  new_generation?: number | null;
+}
+
+// ── Extended SkillSnapshot with trend info ────────────────────────────────────
+
+export interface SkillSnapshotWithTrend extends SkillSnapshot {
+  previous_mastery_score?: number | null;
+  mastery_delta?: number | null;
+  trend?: "improving" | "declining" | "stable" | "new";
+}
+
 // ── Adoption Trends (Phase 7, revised) ───────────────────────────────────────
 
 export interface SkillQuizPeriod {
@@ -498,4 +576,41 @@ export interface AdoptionTrendsResponse {
   practitioner_id: string;
   skills: SkillAdoptionTrend[];
   computed_at: string;
+}
+
+// ── Mock Exam ─────────────────────────────────────────────────────────────────
+
+export interface MockExamQuestion {
+  id: string;
+  sequence_order: number;
+  certification_domain_name: string | null;
+  skill_name: string | null;
+  prompt: string;
+  options: string[];           // 4 options
+  trap_index: number | null;   // revealed after answering
+  trap_explanation: string | null; // revealed after answering
+  difficulty: number;
+  response: { selected_index: number } | null;
+  score: number | null;        // 1.0 or 0.0 or null
+  correct_index?: number;      // only present after answering (server reveals it)
+  is_trap_selected?: boolean | null; // server-computed after answering
+  answered_at: string | null;
+}
+
+export interface MockExamSession {
+  id: string;
+  certification_id: string;
+  certification_code: string;
+  certification_name: string;
+  exam_question_count: number;
+  exam_duration_minutes: number;
+  exam_passing_score_pct: number;
+  status: 'in_progress' | 'paused' | 'completed';
+  time_elapsed_seconds: number;
+  score: number | null;
+  correct_count: number | null;
+  total_count: number;
+  started_at: string;
+  completed_at: string | null;
+  questions: MockExamQuestion[];
 }

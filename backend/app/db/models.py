@@ -21,6 +21,14 @@ Phase 10.1 tables: certification_domains, certification_domain_scores.
 Phase 10.2 tables: certification_domain_versions, certification_domain_proposals.
                Altered: certification_domains (domain_version_id FK),
                         practitioner_profiles (domain_version_id FK).
+
+Phase 10.3: Altered: items (generation column),
+                     certification_domain_scores (previous_mastery_score column).
+
+Phase 11 tables: mock_exam_sessions, mock_exam_questions.
+             Altered: certifications (exam_question_count, exam_duration_minutes,
+                      exam_passing_score_pct).
+             Altered: skill_profile_events source constraint (added 'mock_exam').
 """
 
 import uuid
@@ -106,6 +114,9 @@ class Practitioner(Base):
         back_populates="practitioner", cascade="all, delete-orphan"
     )
     certification_domain_scores: Mapped[list["CertificationDomainScore"]] = relationship(
+        back_populates="practitioner", cascade="all, delete-orphan"
+    )
+    mock_exam_sessions: Mapped[list["MockExamSession"]] = relationship(
         back_populates="practitioner", cascade="all, delete-orphan"
     )
 
@@ -198,7 +209,7 @@ class SkillProfileEvent(Base):
 
     __table_args__ = (
         sa.CheckConstraint(
-            "source IN ('certification','self_assessment','quiz_attempt','project_history')",
+            "source IN ('certification','self_assessment','quiz_attempt','project_history','mock_exam')",
             name="ck_skill_profile_events_source",
         ),
         sa.CheckConstraint(
@@ -418,6 +429,14 @@ class Certification(Base):
     is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
     last_verified_at: Mapped[date | None] = mapped_column(sa.Date)
 
+    # Phase 11: exam configuration — nullable (not all certs have structured exams)
+    exam_question_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    exam_duration_minutes: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    # e.g. 70.00 for 70%
+    exam_passing_score_pct: Mapped[float | None] = mapped_column(
+        sa.Numeric(5, 2), nullable=True
+    )
+
     provider: Mapped["CertificationProvider"] = relationship(back_populates="certifications")
     certification_skills: Mapped[list["CertificationSkill"]] = relationship(
         back_populates="certification", cascade="all, delete-orphan"
@@ -436,6 +455,10 @@ class Certification(Base):
     )
     # Phase 10.2: domain refresh proposals produced by the Cert Domain Discovery Agent
     domain_proposals: Mapped[list["CertificationDomainProposal"]] = relationship(
+        back_populates="certification", cascade="all, delete-orphan"
+    )
+    # Phase 11: mock exam sessions for this certification
+    mock_exam_sessions: Mapped[list["MockExamSession"]] = relationship(
         back_populates="certification", cascade="all, delete-orphan"
     )
 
@@ -943,6 +966,11 @@ class Item(Base):
     is_cert_evaluated: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, default=False
     )
+    # Phase 10.3: which refresh round this item belongs to (1-indexed).
+    # Mastery ceiling formula: ceiling(N) = 1 - 0.5^N where N = rounds_completed.
+    generation: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=1
+    )
 
     skill: Mapped["Skill"] = relationship()
     attempts: Mapped[list["Attempt"]] = relationship(
@@ -1347,6 +1375,10 @@ class CertificationDomainScore(Base):
         default=_now_utc,
         nullable=False,
     )
+    # Phase 10.3: score from the previous compute cycle, for delta / trend display.
+    previous_mastery_score: Mapped[float | None] = mapped_column(
+        sa.Numeric(4, 3), nullable=True
+    )
 
     practitioner: Mapped["Practitioner"] = relationship(
         back_populates="certification_domain_scores"
@@ -1614,4 +1646,128 @@ class ProfileSkillAssessment(Base):
         return (
             f"<ProfileSkillAssessment profile={self.profile_id!r} "
             f"skill={self.skill_id!r} signal={self.signal_strength}>"
+        )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 11 — Mock Exam tables
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class MockExamSession(Base):
+    """One exam sitting per practitioner — supports pause/resume.
+
+    Status lifecycle: in_progress → paused → in_progress → completed.
+    ``time_elapsed_seconds`` accumulates wall-clock seconds each time the
+    session is paused.  ``last_resumed_at`` is set on every resume so the
+    client can compute live elapsed time without polling.
+    """
+
+    __tablename__ = "mock_exam_sessions"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    practitioner_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("practitioners.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    certification_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certifications.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # in_progress | paused | completed
+    status: Mapped[str] = mapped_column(
+        sa.String(20), nullable=False, default="in_progress",
+        server_default="in_progress",
+    )
+    # Cumulative elapsed seconds before the last pause
+    time_elapsed_seconds: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default=sa.text("0")
+    )
+    # Set on resume; cleared on pause
+    last_resumed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    # null until completed (0.000–1.000)
+    score: Mapped[float | None] = mapped_column(sa.Numeric(4, 3), nullable=True)
+    correct_count: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    total_count: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False,
+        server_default=sa.text("now()"), default=_now_utc,
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False,
+        server_default=sa.text("now()"), default=_now_utc,
+    )
+
+    practitioner: Mapped["Practitioner"] = relationship()
+    certification: Mapped["Certification"] = relationship(back_populates="mock_exam_sessions")
+    questions: Mapped[list["MockExamQuestion"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="MockExamQuestion.sequence_order",
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "status IN ('in_progress','paused','completed')",
+            name="ck_mock_exam_sessions_status",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<MockExamSession id={self.id!r} practitioner={self.practitioner_id!r} "
+            f"status={self.status!r}>"
+        )
+
+
+class MockExamQuestion(Base):
+    """One MCQ row for a mock exam session.
+
+    ``answer_key`` stores the full options + correct_index + trap_index so the
+    session is self-contained even if the generating agent is unavailable later.
+    ``response`` is null until the practitioner answers; ``score`` is 0 or 1.
+    """
+
+    __tablename__ = "mock_exam_questions"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    session_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("mock_exam_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    sequence_order: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    certification_domain_name: Mapped[str | None] = mapped_column(
+        sa.String(200), nullable=True
+    )
+    skill_name: Mapped[str | None] = mapped_column(sa.String(200), nullable=True)
+    prompt: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # {options: [...], correct_index: N, trap_index: N | null}
+    answer_key: Mapped[dict] = mapped_column(sa.JSON, nullable=False)
+    trap_explanation: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    difficulty: Mapped[float] = mapped_column(sa.Numeric(4, 3), nullable=False)
+    # null until answered — {selected_index: N}
+    response: Mapped[dict | None] = mapped_column(sa.JSON, nullable=True)
+    # null until answered — 0.0 or 1.0 for MCQ
+    score: Mapped[float | None] = mapped_column(sa.Numeric(4, 3), nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+
+    session: Mapped["MockExamSession"] = relationship(back_populates="questions")
+
+    def __repr__(self) -> str:
+        return (
+            f"<MockExamQuestion id={self.id!r} session={self.session_id!r} "
+            f"order={self.sequence_order} answered={self.answered_at is not None}>"
         )

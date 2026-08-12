@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import {
   attempts,
+  certDomains,
   certifications,
   items,
   learningPaths,
@@ -18,6 +19,8 @@ import {
 import type {
   Attempt,
   AttemptCreate,
+  MockExamQuestion,
+  MockExamSession,
   PractitionerCreate,
   ProfileCreate,
   ProfileSkillUpsert,
@@ -147,6 +150,19 @@ export const useGenerateLearningPath = (practitioner_id: string) => {
       qc.invalidateQueries({
         queryKey: ["practitioners", practitioner_id, "skill-profile"],
       });
+    },
+  });
+};
+
+/** Phase 12.2: fire a single batch LLM call to generate one MCQ per path skill. */
+export const useGenerateQuizBatch = (practitioner_id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (path_id: string) =>
+      learningPaths.generateQuizBatch(practitioner_id, path_id),
+    onSuccess: () => {
+      // Invalidate all items queries so every skill tab re-fetches its new question.
+      qc.invalidateQueries({ queryKey: ["items"] });
     },
   });
 };
@@ -367,3 +383,191 @@ export const useAdoptionTrends = (practitioner_id: string, days = 90) =>
     enabled: !!practitioner_id,
     staleTime: 30_000, // Re-fetch if data is older than 30 seconds
   });
+
+// ── Certification Domain Scores (Phase 10) ────────────────────────────────────
+
+export const useCertDomainScores = (
+  practitionerId: string,
+  certificationId: string | undefined,
+) =>
+  useQuery({
+    queryKey: ["cert-domain-scores", practitionerId, certificationId],
+    queryFn: () => practitioners.certDomainScores(practitionerId, certificationId!),
+    enabled: !!practitionerId && !!certificationId,
+  });
+
+// ── Cert Domain Admin Hooks (Phase 10) ───────────────────────────────────────
+
+export const useCertDomainVersions = () =>
+  useQuery({
+    queryKey: ["cert-domain-versions"],
+    queryFn: certDomains.listVersions,
+  });
+
+export const useCertDomainProposals = (status?: string) =>
+  useQuery({
+    queryKey: ["cert-domain-proposals", status],
+    queryFn: () => certDomains.listProposals(status),
+  });
+
+export const useTriggerCertDomainDiscover = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      certCode,
+      certName,
+      providerName,
+      knownSourceUrl,
+      refreshReason,
+    }: {
+      certCode: string;
+      certName: string;
+      providerName: string;
+      knownSourceUrl?: string;
+      refreshReason?: string;
+    }) => certDomains.discover(certCode, certName, providerName, knownSourceUrl, refreshReason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cert-domain-proposals"] });
+    },
+  });
+};
+
+export const useTriggerCertDomainDiscoverAll = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: certDomains.discoverAll,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cert-domain-proposals"] });
+    },
+  });
+};
+
+export const useApproveCertDomainProposal = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (proposalId: string) => certDomains.approveProposal(proposalId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cert-domain-proposals"] });
+      qc.invalidateQueries({ queryKey: ["cert-domain-versions"] });
+    },
+  });
+};
+
+export const useRejectCertDomainProposal = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ proposalId, rejectionNotes }: { proposalId: string; rejectionNotes: string }) =>
+      certDomains.rejectProposal(proposalId, rejectionNotes),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cert-domain-proposals"] });
+    },
+  });
+};
+
+// ── Mock Exam (Part B) ─────────────────────────────────────────────────────────
+
+export const useStartMockExam = (practitionerId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => practitioners.mockExams.start(practitionerId),
+    onSuccess: (data) => {
+      qc.setQueryData(["mock-exam-active", practitionerId], data);
+      qc.setQueryData(["mock-exam-session", data.id], data);
+    },
+  });
+};
+
+export const useActiveMockExam = (
+  practitionerId: string,
+  /** Pass false to skip the query entirely (e.g. when mastery < 80 %). */
+  queryEnabled: boolean = true,
+) =>
+  useQuery<MockExamSession | null>({
+    queryKey: ["mock-exam-active", practitionerId],
+    queryFn: async () => {
+      try {
+        return await practitioners.mockExams.getActive(practitionerId);
+      } catch (err: unknown) {
+        // 404 = no active session — return null so callers get data===null,
+        // not an error state.  All other errors propagate normally.
+        if (err && typeof err === "object" && (err as { status?: number }).status === 404) {
+          return null;
+        }
+        throw err;
+      }
+    },
+    enabled: !!practitionerId && queryEnabled,
+    // No retries on 404-turned-null; limit retries on genuine errors
+    retry: (failureCount, error) => {
+      if (error && typeof error === "object" && (error as { status?: number }).status === 404) return false;
+      return failureCount < 2;
+    },
+    // Keep data fresh for 30 s — avoids hammering the server on every focus event
+    staleTime: 30_000,
+    refetchInterval: (query) => {
+      const data = query.state.data as MockExamSession | null | undefined;
+      // Only poll while an exam is actively running (timer ticking)
+      return data?.status === "in_progress" ? 2000 : false;
+    },
+  });
+
+export const useMockExamSession = (practitionerId: string, sessionId: string) =>
+  useQuery({
+    queryKey: ["mock-exam-session", sessionId],
+    queryFn: () => practitioners.mockExams.getById(practitionerId, sessionId),
+    enabled: !!practitionerId && !!sessionId,
+  });
+
+export const usePauseMockExam = (practitionerId: string, sessionId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => practitioners.mockExams.pause(practitionerId, sessionId),
+    onSuccess: (data) => {
+      qc.setQueryData(["mock-exam-active", practitionerId], data);
+      qc.setQueryData(["mock-exam-session", sessionId], data);
+    },
+  });
+};
+
+export const useResumeMockExam = (practitionerId: string, sessionId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => practitioners.mockExams.resume(practitionerId, sessionId),
+    onSuccess: (data) => {
+      qc.setQueryData(["mock-exam-active", practitionerId], data);
+      qc.setQueryData(["mock-exam-session", sessionId], data);
+    },
+  });
+};
+
+export const useAnswerMockExamQuestion = (practitionerId: string, sessionId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ questionId, selectedIndex }: { questionId: string; selectedIndex: number }) =>
+      practitioners.mockExams.answer(practitionerId, sessionId, questionId, selectedIndex),
+    onSuccess: (updatedQuestion: MockExamQuestion) => {
+      const patchSession = (old: MockExamSession | undefined) => {
+        if (!old) return old;
+        return {
+          ...old,
+          questions: old.questions.map((q) =>
+            q.id === updatedQuestion.id ? updatedQuestion : q
+          ),
+        };
+      };
+      qc.setQueryData<MockExamSession>(["mock-exam-session", sessionId], patchSession);
+      qc.setQueryData<MockExamSession>(["mock-exam-active", practitionerId], patchSession);
+    },
+  });
+};
+
+export const useCompleteMockExam = (practitionerId: string, sessionId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => practitioners.mockExams.complete(practitionerId, sessionId),
+    onSuccess: (data) => {
+      qc.setQueryData(["mock-exam-session", sessionId], data);
+      qc.invalidateQueries({ queryKey: ["mock-exam-active", practitionerId] });
+    },
+  });
+};

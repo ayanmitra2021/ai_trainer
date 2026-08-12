@@ -60,6 +60,16 @@ class CertGoalContext(BaseModel):
     skill_weights: dict[str, float]  # skill_id → weight
 
 
+class RoundMetricsPerSkill(BaseModel):
+    """Round-based mastery metrics for one skill — passed to the Skill Profiler."""
+
+    skill_id: str
+    rounds_completed: int
+    mastery_ceiling: float
+    weighted_accuracy: float
+    current_mastery_score: float
+
+
 class SkillProfilerInput(BaseModel):
     """Input to the Skill Profiler agent.
 
@@ -67,11 +77,17 @@ class SkillProfilerInput(BaseModel):
     certification completions, and project-history signals are no longer
     included in the profiler input — the radar is driven exclusively by
     demonstrated quiz performance.
+
+    Phase 10.3: quiz_round_metrics are also passed when available.  The Skill
+    Profiler uses current_mastery_score from round metrics as the primary signal
+    rather than computing from raw events.
     """
 
     practitioner_id: str
     # Serialised quiz_attempt events from skill_profile_events (source='quiz_attempt' only)
     events: list[dict]
+    # Phase 10.3: pre-computed round metrics — when present, these take precedence
+    quiz_round_metrics: list[RoundMetricsPerSkill] = []
 
 
 class SkillScoreOutput(BaseModel):

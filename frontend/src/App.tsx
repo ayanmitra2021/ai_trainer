@@ -11,6 +11,8 @@ import ObservabilityPage from "./pages/ObservabilityPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
 import BuildProfilePage from "./pages/BuildProfilePage";
 import ProfileSkillAssessmentPage from "./pages/ProfileSkillAssessmentPage";
+import CertDomainManagementPage from "./pages/CertDomainManagementPage";
+import MockExamPage from "./pages/MockExamPage";
 import { auth } from "./api";
 import { PortalLayout } from "./components/PortalLayout";
 
@@ -75,6 +77,9 @@ function NavBar() {
               </NavLink>
               <NavLink to="/observability" style={navLinkStyle}>
                 Observability
+              </NavLink>
+              <NavLink to="/admin/cert-domains" style={navLinkStyle}>
+                Cert Domains
               </NavLink>
             </>
           )}
@@ -250,6 +255,21 @@ function AppRoutes() {
             </RequireAdmin>
           }
         />
+
+        {/* Phase 10 — Cert Domain Management */}
+        <Route
+          path="/admin/cert-domains"
+          element={
+            <RequireAdmin>
+              <PortalLayout>
+                <CertDomainManagementPage />
+              </PortalLayout>
+            </RequireAdmin>
+          }
+        />
+
+        {/* Mock Exam — opened in a new tab; no RequirePractitioner wrapper */}
+        <Route path="/mock-exam/:sessionId" element={<MockExamPage />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

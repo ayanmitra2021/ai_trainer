@@ -17,7 +17,8 @@ Each agent is a single-purpose, typed unit: one input contract, one output contr
 | 1 | Certification Advisor | Match a short questionnaire to a best-fit certification | `certifications`, `certification_providers`, `certification_skills` | `certification_advisor_responses`, `practitioner_certification_goals` (status `recommended`) |
 | 2 | Skill Profiler | Turn quiz-attempt signals into broad skill mastery estimates | `skill_profile_events` (source=`quiz_attempt` only, Phase 9.4) | `skill_profile_snapshots`, `mastery_history` |
 | 3 | Curriculum Planner | Pick what a practitioner should work on next | `skill_profile_snapshots`, `correlation_snapshots`, `practitioner_certification_goals`, `certification_domains` | `learning_paths`, `learning_path_items` |
-| 4 | Item-Writer | Generate/calibrate practice items, incl. trap-reveal; tags items with `certification_domain_id` and `is_cert_evaluated` | `items`, `attempts` (calibration stats), `certification_domains` | `items` |
+| 4 | Item-Writer | Generate/calibrate a single practice item for one skill; used by the auto-refresh path (Step 10.8) when a practitioner exhausts a skill's existing questions; tags items with `certification_domain_id` and `is_cert_evaluated` | `items`, `attempts` (calibration stats), `certification_domains` | `items` |
+| 4b | Quiz Batch Generator | Generate one starter question per skill for an entire learning path in a single LLM call; called once when the Quiz tab first opens; never called during path generation | `skill_profile_snapshots` (mastery per skill), `certification_domains` | `items` |
 | 5 | Grader | Score an attempt, incl. free-text, with rationale | `items`, submitted response | `attempts` |
 | 6 | Usage-Signal | Ingest real usage evidence, map it to skill nodes | MCP: `mcp-usage-signals` | `usage_events` |
 | 7 | Correlation | Compare "trained" vs. "adopting" per skill | `skill_profile_snapshots`, `usage_events` | `correlation_snapshots` |
@@ -30,7 +31,7 @@ Each agent is a single-purpose, typed unit: one input contract, one output contr
 
 Three active workflows compose them:
 - **`recommend_certification`**: Certification Advisor alone (Phase 2) — the actual front door for a new practitioner.
-- **`generate_learning_path`**: Skill Profiler → Domain Score computation → Curriculum Planner → Item-Writer (Phase 2, extended Phase 10) — reads the practitioner's active certification and its domains if set; computes both broad skill mastery and cert-domain readiness scores in the same run.
+- **`generate_learning_path`**: Skill Profiler → Domain Score computation → Curriculum Planner (Phase 12+: no Item-Writer step) — updates the Skill Radar and domain gap chart, then returns. Completes in < 30 seconds. Quiz questions are generated separately on first Quiz-tab open.
 - **`nudge_campaign`**: Nudge Category Generator → Nudge Composer (Phase 7) — admin-initiated; runs on demand, not on a schedule.
 
 The Cert Domain Discovery agent (Phase 10.3) is not part of a workflow — it is invoked directly by admin API endpoints (`POST /admin/cert-domains/discover` and `/discover-all`). Proposals are reviewed and approved/rejected via the Admin UI (Phase 10.4) before any domain data changes.
@@ -182,6 +183,54 @@ Each quiz item card displays a relevance badge:
 - **"💡 Good to know"** (grey) — `is_cert_evaluated = false`; answering this builds understanding but doesn't move domain readiness
 
 The skill selector tabs are ordered: cert-domain skills first (with a colored "Exam" pill), supplementary skills below a section divider. This lets practitioners choose whether to focus their session on exam-critical topics or broader understanding.
+
+---
+
+## Quiz Generation Strategy (Phase 12)
+
+### Why question generation is decoupled from path generation
+
+A certification path has at most ~16 skills (≤5 domains × 3-4 skills per domain). The quiz tab needs exactly **one starter question per skill** — that is the ceiling. Generating these inside the "Generate Learning Path" workflow (the original design) meant 16 sequential LLM calls, each taking 2-4 minutes, for a total wall time of 32-64 minutes. Practitioners sat waiting while questions were generated for skills they might never visit.
+
+The fix (Phase 12) decouples the two concerns:
+
+| User action | What the system does | Time |
+|---|---|---|
+| Click "Generate path" | Profiler + Planner only; updates radar + domain gap chart | **< 30 seconds** |
+| Click the "Quiz" tab (first visit) | Single batch LLM call generates 1 question per skill for all skills in the path | **~20-30 seconds** |
+| Click a skill sub-tab (after batch loaded) | Questions already in DB — renders immediately | **< 1 second** |
+| Answer all questions for a skill | Auto-refresh (Step 10.8): single Item-Writer call generates the next question | **~15-20 seconds** |
+
+### QuizBatchGeneratorAgent — one call for all questions
+
+Rather than calling Item-Writer once per skill sequentially, or generating more questions than needed, the Quiz Batch Generator takes **all skills in the path** as a single input and returns **one question per skill** in one LLM response.
+
+Input (to the agent):
+- List of `{skill_id, skill_name, description, current_mastery_score, cert_domain_name, is_cert_evaluated}` — one entry per skill
+- Certification name, code, and domain list with weights
+- `prior_generation_count` per skill (0 on first load; increments each round so the model avoids repeating concept areas)
+
+Output:
+- Array of `{skill_id, prompt, options[4], correct_index, trap_index, trap_explanation, difficulty, certification_domain_id, is_cert_evaluated}` — exactly one item per input skill
+
+Token budget: 16 skills × ~500 tokens output ≈ 8,000 output tokens — well within all supported models' limits. The single call returns all starter questions in a single round-trip.
+
+### Difficulty calibration across skills
+
+The agent calibrates question difficulty per skill using the practitioner's current `mastery_score`:
+
+| Mastery | Target difficulty | Intent |
+|---|---|---|
+| 0–25% | 0.30–0.45 | Foundation check — build confidence, confirm basics |
+| 25–55% | 0.45–0.65 | Solidifying — apply concepts, spot common mistakes |
+| 55–80% | 0.65–0.80 | Challenge — nuanced scenarios, edge cases |
+| 80%+ | 0.80–0.95 | Exam-hard — same difficulty as mock exam questions |
+
+### Loading UX
+
+When the Quiz tab is opened with no items in DB, the entire quiz panel shows a friendly loading screen ("Generating your quiz — one moment ☕") while the single batch call runs. On success, all skill tabs populate simultaneously. On failure, an inline error with a Retry button appears — no partial state, no empty tabs.
+
+The Item-Writer auto-refresh path (when questions are exhausted per skill) shows a per-skill loading skeleton on that specific tab, leaving all other skill tabs responsive.
 
 ---
 

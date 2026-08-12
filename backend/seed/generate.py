@@ -23,15 +23,17 @@ from datetime import date, datetime, timedelta, timezone
 
 from faker import Faker
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from app.config import settings
 from app.db.models import (
     AdminUser,
     Certification,
+    CertificationDomainVersion,
     CertificationProvider,
     CertificationSkill,
     Practitioner,
+    PractitionerProfile,
     Skill,
     SkillProfileEvent,
 )
@@ -144,6 +146,9 @@ CERTIFICATIONS_SEED = [
         "exam_format": "Multiple-choice and short-response; no coding required.",
         "eligibility_notes": "Requires Anthropic Partner Network org email.",
         "external_url": None,
+        "exam_question_count": 60,
+        "exam_duration_minutes": 120,
+        "exam_passing_score_pct": 70.00,
         "skill_weights": {
             "Prompt Engineering": 0.9,
             "AI Ethics & Safety": 0.8,
@@ -161,6 +166,9 @@ CERTIFICATIONS_SEED = [
         "exam_format": "Multiple-choice and coding exercises.",
         "eligibility_notes": "Requires Anthropic Partner Network org email.",
         "external_url": None,
+        "exam_question_count": 60,
+        "exam_duration_minutes": 120,
+        "exam_passing_score_pct": 70.00,
         "skill_weights": {
             "Structured Outputs": 0.9,
             "Tool Use & Function Calling": 0.8,
@@ -184,6 +192,9 @@ CERTIFICATIONS_SEED = [
             "Technical background recommended. Requires Anthropic Partner Network org email."
         ),
         "external_url": None,
+        "exam_question_count": 60,
+        "exam_duration_minutes": 120,
+        "exam_passing_score_pct": 70.00,
         "skill_weights": {
             "MCP Servers": 0.9,
             "Orchestration Patterns": 0.9,
@@ -211,6 +222,9 @@ CERTIFICATIONS_SEED = [
             "CCAF recommended as prerequisite. Requires Anthropic Partner Network org email."
         ),
         "external_url": None,
+        "exam_question_count": 70,
+        "exam_duration_minutes": 150,
+        "exam_passing_score_pct": 75.00,
         "skill_weights": {
             "Orchestration Patterns": 1.0,
             "Agent Observability": 0.9,
@@ -234,6 +248,9 @@ CERTIFICATIONS_SEED = [
         "exam_format": "65 questions; 90 minutes; Pearson VUE or testing centre.",
         "eligibility_notes": None,
         "external_url": "https://aws.amazon.com/certification/certified-ai-practitioner/",
+        "exam_question_count": 65,
+        "exam_duration_minutes": 90,
+        "exam_passing_score_pct": 70.00,
         "skill_weights": {
             "Prompt Engineering": 0.7,
             "AI Ethics & Safety": 0.7,
@@ -251,6 +268,9 @@ CERTIFICATIONS_SEED = [
         "exam_format": "65 questions; 130 minutes; Pearson VUE or testing centre.",
         "eligibility_notes": "Recommended: 1+ year hands-on ML on AWS.",
         "external_url": "https://aws.amazon.com/certification/certified-machine-learning-engineer-associate/",
+        "exam_question_count": 65,
+        "exam_duration_minutes": 130,
+        "exam_passing_score_pct": 72.00,
         "skill_weights": {
             "Model Deployment": 0.9,
             "Monitoring & Drift Detection": 0.8,
@@ -272,6 +292,9 @@ CERTIFICATIONS_SEED = [
         "exam_format": "Multiple-choice; no coding.",
         "eligibility_notes": None,
         "external_url": "https://cloud.google.com/certification/generative-ai-leader",
+        "exam_question_count": 50,
+        "exam_duration_minutes": 120,
+        "exam_passing_score_pct": 70.00,
         "skill_weights": {
             "Prompt Engineering": 0.7,
             "AI Ethics & Safety": 0.7,
@@ -288,6 +311,9 @@ CERTIFICATIONS_SEED = [
         "exam_format": "60 questions; 120 minutes; Pearson VUE or testing centre.",
         "eligibility_notes": "Recommended: 3+ years industry experience, 1+ year on GCP.",
         "external_url": "https://cloud.google.com/certification/machine-learning-engineer",
+        "exam_question_count": 60,
+        "exam_duration_minutes": 120,
+        "exam_passing_score_pct": 70.00,
         "skill_weights": {
             "Model Deployment": 0.9,
             "Monitoring & Drift Detection": 0.9,
@@ -308,6 +334,9 @@ CERTIFICATIONS_SEED = [
         "exam_format": "40–60 questions; 45 minutes; Pearson VUE.",
         "eligibility_notes": None,
         "external_url": "https://learn.microsoft.com/en-us/certifications/azure-ai-fundamentals/",
+        "exam_question_count": 45,
+        "exam_duration_minutes": 45,
+        "exam_passing_score_pct": 70.00,
         "skill_weights": {
             "Prompt Engineering": 0.7,
             "AI Ethics & Safety": 0.6,
@@ -324,6 +353,9 @@ CERTIFICATIONS_SEED = [
         "exam_format": "40–60 questions; 120 minutes; Pearson VUE.",
         "eligibility_notes": "Recommended: AI-900 or equivalent experience.",
         "external_url": "https://learn.microsoft.com/en-us/certifications/azure-ai-engineer/",
+        "exam_question_count": 60,
+        "exam_duration_minutes": 120,
+        "exam_passing_score_pct": 70.00,
         "skill_weights": {
             "Tool Use & Function Calling": 0.7,
             "Prompt Engineering": 0.7,
@@ -378,6 +410,22 @@ async def seed(session: AsyncSession) -> None:
                     CertificationSkill.certification_id.in_(cert_ids)
                 )
             )
+            # Null out domain_version_id in any profiles that reference domain versions
+            # belonging to these certs.  The certification_domain_versions.ondelete is
+            # RESTRICT (profiles freeze against a version), so we must release the FK
+            # before the cascade can remove the version rows.
+            dv_ids_result = await session.execute(
+                select(CertificationDomainVersion.id).where(
+                    CertificationDomainVersion.certification_id.in_(cert_ids)
+                )
+            )
+            dv_ids = [r[0] for r in dv_ids_result]
+            if dv_ids:
+                await session.execute(
+                    update(PractitionerProfile)
+                    .where(PractitionerProfile.domain_version_id.in_(dv_ids))
+                    .values(domain_version_id=None)
+                )
         await session.execute(
             delete(Certification).where(Certification.provider_id.in_(provider_ids))
         )
@@ -536,6 +584,10 @@ async def seed(session: AsyncSession) -> None:
             external_url=cspec.get("external_url"),
             is_active=True,
             last_verified_at=verified_date,
+            # Phase 11: exam configuration
+            exam_question_count=cspec.get("exam_question_count"),
+            exam_duration_minutes=cspec.get("exam_duration_minutes"),
+            exam_passing_score_pct=cspec.get("exam_passing_score_pct"),
         )
         session.add(cert)
         await session.flush()

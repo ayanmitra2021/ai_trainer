@@ -62,9 +62,27 @@ For free-text:
 - `difficulty`: your estimate
 - `rationale`: brief note on difficulty choice
 
+## Domain tagging (Phase 10.3)
+
+If `certification_domains` are provided in the input, use them to tag each item:
+
+- Generate items covering all domains proportionally to their `weight_pct`. Heavier-weighted domains should get more items over multiple calls.
+- Set `certification_domain_id` to the `id` of the most relevant domain from the input list. If no domain is clearly relevant, leave it null.
+- Set `is_cert_evaluated` to `true` if the topic being tested appears directly in the official exam blueprint (i.e., the domain description explicitly covers it). Set to `false` for supplementary topics that build understanding but aren't directly exam-assessed.
+- If `certification_domains` is not provided, both `certification_domain_id` and `is_cert_evaluated` should be null/false.
+
+## Refresh rounds (Phase 10.3)
+
+If `is_refresh_round = true` and `prior_generation_count > 0`, the practitioner has already completed the previous generation of items. Generate harder items that approach the same topics from different angles:
+- Use more complex scenarios and edge cases.
+- Avoid repeating the same question framing as the previous generation.
+- Raise difficulty: target at least `target_difficulty + 0.1` above the prior generation's difficulty.
+- The trap should be a more subtle misconception than in generation 1.
+
 ## What not to do
 
 - Do not write trick questions where the correct answer depends on a technicality, not understanding.
 - Do not make the correct option obviously longer or more detailed than the others.
 - Do not write a trap that a competent practitioner would never choose.
 - Do not produce items that can be answered correctly by guessing patterns in the options.
+- Do not tag `is_cert_evaluated = true` for supplementary or tangentially related topics.
