@@ -19,6 +19,7 @@ import {
   useStartMockExam,
 } from "../../hooks";
 import { useSession } from "../../context/SessionContext";
+import type { SkillSnapshot } from "../../api/types";
 import LearningPathRoad from "./LearningPathRoad";
 import CertDomainGapChart from "../CertDomainGapChart";
 
@@ -185,6 +186,101 @@ function AxisLabels({
   );
 }
 
+// ── Phase 13.4: Domain coloring helpers ────────────────────────────────────────
+
+interface DomainEntry {
+  id: string;
+  name: string;
+  weight_pct: number;
+  color: string;
+}
+
+function getDomainColor(rankIndex: number, _totalDomains: number): string {
+  // Interpolate from dark blue (#1a56db) to light blue (#93c5fd) based on rank
+  // rankIndex 0 = highest weight → darkest color
+  const colors = ["#1a56db", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd"];
+  const idx = Math.min(rankIndex, colors.length - 1);
+  return colors[idx];
+}
+
+const SUPP_COLOR = "#9ca3af"; // neutral grey for supplementary skills
+
+function computeDomainColors(snapshots: SkillSnapshot[]): Map<string, string> {
+  // Collect distinct domains sorted by weight desc
+  const domainMap = new Map<string, number>(); // domain_id → weight_pct
+  for (const s of snapshots) {
+    if (s.certification_domain_id && s.domain_weight_pct != null) {
+      if (!domainMap.has(s.certification_domain_id)) {
+        domainMap.set(s.certification_domain_id, s.domain_weight_pct);
+      }
+    }
+  }
+  // Sort by weight descending
+  const sorted = [...domainMap.entries()].sort((a, b) => b[1] - a[1]);
+  const colorMap = new Map<string, string>();
+  sorted.forEach(([domainId], idx) => {
+    colorMap.set(domainId, getDomainColor(idx, sorted.length));
+  });
+  return colorMap;
+}
+
+function DomainLegend({ entries }: { entries: DomainEntry[] }) {
+  if (entries.length === 0) return null;
+  return (
+    <div style={{ marginTop: "0.75rem", display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+      <div style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "0.1rem" }}>
+        Exam domains
+      </div>
+      {entries.map((e) => (
+        <div key={e.id} style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8125rem" }}>
+          <div style={{ width: 10, height: 10, borderRadius: 2, background: e.color, flexShrink: 0 }} />
+          <span style={{ color: "var(--text)" }}>{e.name}</span>
+          <span style={{ color: "var(--text-muted)", marginLeft: "auto", fontVariantNumeric: "tabular-nums" }}>
+            {e.weight_pct.toFixed(0)}%
+          </span>
+        </div>
+      ))}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8125rem" }}>
+        <div style={{ width: 10, height: 10, borderRadius: 2, background: SUPP_COLOR, flexShrink: 0 }} />
+        <span style={{ color: "var(--text-muted)" }}>Supplementary</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Phase 14.5: Scoring status badge ──────────────────────────────────────────
+
+function ScoringStatusBadge({ status }: { status: string | undefined }) {
+  if (!status || status === "lm_scored") return null;
+  if (status === "degraded") {
+    return (
+      <div
+        role="status"
+        style={{
+          color: "#b45309",
+          fontSize: "0.8rem",
+          marginTop: "0.5rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.25rem",
+        }}
+      >
+        <span>⚠️</span>
+        <span>Scores estimated from self-assessment — take quizzes to refine</span>
+      </div>
+    );
+  }
+  // 'pending' (rare after Phase 14.3)
+  return (
+    <div
+      role="status"
+      style={{ color: "#6b7280", fontSize: "0.8rem", marginTop: "0.5rem" }}
+    >
+      ⏳ Scoring in progress…
+    </div>
+  );
+}
+
 // ── Guidance copy ──────────────────────────────────────────────────────────────
 
 function guidanceMessage(pct: number): string {
@@ -290,6 +386,28 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
   const confidenceScores = snapshots.map((s) => s.confidence);
   const activePath = paths?.find((p) => p.status === "active");
 
+  // Phase 13.4: domain coloring
+  const domainColorMap = computeDomainColors(snapshots);
+  const hasDomainData = snapshots.some(s => s.certification_domain_id != null);
+
+  // Build domain legend entries
+  const domainEntries: DomainEntry[] = (() => {
+    const seen = new Map<string, DomainEntry>();
+    for (const s of snapshots) {
+      if (s.certification_domain_id && s.certification_domain_name && s.domain_weight_pct != null) {
+        if (!seen.has(s.certification_domain_id)) {
+          seen.set(s.certification_domain_id, {
+            id: s.certification_domain_id,
+            name: s.certification_domain_name,
+            weight_pct: s.domain_weight_pct,
+            color: domainColorMap.get(s.certification_domain_id) ?? SUPP_COLOR,
+          });
+        }
+      }
+    }
+    return [...seen.values()].sort((a, b) => b.weight_pct - a.weight_pct);
+  })();
+
   // Re-use the value already computed above the early-returns
   const certMastery = prelimCertMastery;
 
@@ -374,6 +492,20 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
 
             <AxisLabels labels={labels} />
 
+            {/* Phase 13.4: domain-colored vertex dots */}
+            {hasDomainData && snapshots.map((s, i) => {
+              const angle = (2 * Math.PI * i) / snapshots.length;
+              const p = polar(angle, 1);
+              const dotColor = s.certification_domain_id
+                ? (domainColorMap.get(s.certification_domain_id) ?? SUPP_COLOR)
+                : SUPP_COLOR;
+              return (
+                <circle key={`domain-dot-${i}`} cx={p.x} cy={p.y} r={5} fill={dotColor} fillOpacity={0.9}>
+                  <title>{s.skill_name} — {s.certification_domain_name ?? "Supplementary"}{s.domain_weight_pct != null ? ` (${s.domain_weight_pct.toFixed(0)}%)` : ""}</title>
+                </circle>
+              );
+            })}
+
             {/* Center dot */}
             <circle cx={CENTER} cy={CENTER} r={4} fill="#4dabf7" fillOpacity={0.6} />
           </svg>
@@ -393,6 +525,12 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
               Confidence
             </span>
           </div>
+
+          {/* Phase 13.4: domain legend */}
+          {hasDomainData && <DomainLegend entries={domainEntries} />}
+
+          {/* Phase 14.5: scoring quality badge */}
+          <ScoringStatusBadge status={activeProfile?.domain_scoring_status} />
         </div>
 
         {/* Side panel */}
@@ -428,11 +566,15 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
 
           {/* Cert domain gap chart — shown when there's an active cert with a known ID */}
           {activeProfile?.certification_id ? (
-            <CertDomainGapChart
-              practitionerId={practitionerId}
-              certificationId={activeProfile.certification_id}
-              certCode={certCode ?? activeProfile.certification_code ?? ""}
-            />
+            <>
+              <CertDomainGapChart
+                practitionerId={practitionerId}
+                certificationId={activeProfile.certification_id}
+                certCode={certCode ?? activeProfile.certification_code ?? ""}
+              />
+              {/* Phase 14.5: scoring quality badge below the gap chart */}
+              <ScoringStatusBadge status={activeProfile?.domain_scoring_status} />
+            </>
           ) : (
             <>
               <h3 style={{ marginBottom: "0.125rem" }}>Top skill gaps</h3>

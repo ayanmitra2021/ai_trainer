@@ -17,7 +17,7 @@ import ProfileWizard from "../components/ProfileBuilder/ProfileWizard";
 import type { PractitionerProfile } from "../api/types";
 
 export default function BuildProfilePage() {
-  const { session } = useSession();
+  const { session, refresh: refreshSession } = useSession();
   const practitionerId = session?.practitioner_id ?? "";
   const { data: profileList, isLoading } = useProfiles(practitionerId);
   const activateProfile = useActivateProfile(practitionerId);
@@ -61,8 +61,12 @@ export default function BuildProfilePage() {
   };
 
   const handleDeleteConfirm = async (profileId: string) => {
+    const wasActive = profileList?.find((p) => p.id === profileId)?.is_active ?? false;
     await deleteProfile.mutateAsync(profileId);
     setDeleteConfirmId(null);
+    // If the active profile was deleted the session's active_profile_id is now stale.
+    // Refresh /auth/me so the header and other consumers pick up the new active profile.
+    if (wasActive) await refreshSession();
   };
 
   if (showWizard) {
@@ -183,15 +187,28 @@ export default function BuildProfilePage() {
               className="card"
               style={{
                 position: "relative",
-                border: profile.is_active ? "2px solid var(--primary)" : undefined,
+                border: profile.is_active
+                  ? "2px solid #16a34a"
+                  : "2px solid var(--border)",
+                background: profile.is_active
+                  ? "color-mix(in srgb, #16a34a 8%, var(--surface))"
+                  : "color-mix(in srgb, var(--text-muted) 5%, var(--surface))",
+                opacity: profile.is_active ? 1 : 0.82,
               }}
             >
               {profile.is_active && (
                 <span
-                  className="badge badge-blue"
-                  style={{ position: "absolute", top: "0.75rem", right: "0.75rem" }}
+                  className="badge"
+                  style={{
+                    position: "absolute",
+                    top: "0.75rem",
+                    right: "0.75rem",
+                    background: "#16a34a",
+                    color: "#fff",
+                    fontSize: "0.75rem",
+                  }}
                 >
-                  Active
+                  ✓ Active
                 </span>
               )}
               <h3 style={{ margin: "0 0 0.375rem", paddingRight: "4rem" }}>{profile.name}</h3>
@@ -280,8 +297,11 @@ export default function BuildProfilePage() {
                   <button
                     className="btn btn-outline"
                     style={{ fontSize: "0.8125rem", color: "var(--danger)", borderColor: "var(--danger)" }}
-                    disabled={profile.is_active && profileList.length === 1}
-                    title={profile.is_active ? "Activate another profile first" : "Delete this profile"}
+                    title={
+                      profile.is_active && profileList.length > 1
+                        ? "Delete active profile — the next most recent profile will become active"
+                        : "Delete this profile"
+                    }
                     onClick={() => setDeleteConfirmId(profile.id)}
                   >
                     Delete

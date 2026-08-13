@@ -29,6 +29,11 @@ Phase 11 tables: mock_exam_sessions, mock_exam_questions.
              Altered: certifications (exam_question_count, exam_duration_minutes,
                       exam_passing_score_pct).
              Altered: skill_profile_events source constraint (added 'mock_exam').
+
+Phase 13.1: Altered: certification_skills (certification_domain_id, source).
+
+Phase 14.4: Altered: practitioner_profiles (domain_scoring_status).
+            Altered: certification_domain_scores source constraint (added 'degraded_estimate').
 """
 
 import uuid
@@ -493,8 +498,24 @@ class CertificationSkill(Base):
     # 0–1 float: how central this skill is to the certification's exam
     weight: Mapped[float] = mapped_column(sa.Numeric(4, 3), nullable=False, default=1.0)
 
+    # Phase 13.1: exam domain this skill primarily belongs to in the cert.
+    # Null for seed rows written before Phase 13; always set for agent_discovered rows.
+    certification_domain_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("certification_domains.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Phase 13.1: provenance — 'seed' for bootstrap data; 'agent_discovered' for mapper rows.
+    source: Mapped[str] = mapped_column(
+        sa.String(50), nullable=False, server_default="seed", default="seed"
+    )
+
     certification: Mapped["Certification"] = relationship(back_populates="certification_skills")
     skill: Mapped["Skill"] = relationship()
+    certification_domain: Mapped["CertificationDomain | None"] = relationship(
+        foreign_keys=[certification_domain_id],
+    )
 
     __table_args__ = (
         sa.CheckConstraint(
@@ -1333,12 +1354,15 @@ class MasteryHistory(Base):
 class CertificationDomainScore(Base):
     """Per-practitioner, per-domain mastery score — Phase 10.1.
 
-    Two lifecycle stages:
+    Three source values:
     - ``self_assessment_estimate`` — written by the Domain Scorer Agent at
       profile-lock time (Step 10.2).  Max confidence capped at 0.5.
     - ``quiz_derived`` — written when the practitioner submits cert-evaluated
       quiz answers for this domain (Step 10.4).  Takes precedence and is never
       overwritten by a ``self_assessment_estimate``.
+    - ``degraded_estimate`` (Phase 14.3) — mechanical fallback when both LLM
+      providers are unavailable at lock time.  Average of skill-assessment
+      signal strengths, capped at 0.5, confidence = 0.3.
 
     Unique constraint on (practitioner_id, certification_domain_id) so there
     is at most one score row per practitioner × domain — the agent upserts.
@@ -1397,7 +1421,7 @@ class CertificationDomainScore(Base):
             name="ck_cert_domain_scores_confidence",
         ),
         sa.CheckConstraint(
-            "source IN ('self_assessment_estimate','quiz_derived')",
+            "source IN ('self_assessment_estimate','quiz_derived','degraded_estimate')",
             name="ck_cert_domain_scores_source",
         ),
         sa.UniqueConstraint(
@@ -1558,6 +1582,17 @@ class PractitionerProfile(Base):
         sa.String(36),
         sa.ForeignKey("certifications.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    # Phase 14.4: tracks the quality of domain scoring at profile-lock time.
+    # 'pending'   — Domain Scorer has not run yet (default for new profiles).
+    # 'lm_scored' — Domain Scorer ran successfully via primary or fallback LLM.
+    # 'degraded'  — Both providers failed; scores computed mechanically from
+    #               self-assessment signal strengths (confidence cap 0.3).
+    domain_scoring_status: Mapped[str] = mapped_column(
+        sa.String(50),
+        nullable=False,
+        server_default="pending",
+        default="pending",
     )
     # Phase 10.2: frozen at profile-lock time (Step 10.5) to the then-current
     # domain version for the chosen certification.  All domain scoring for this

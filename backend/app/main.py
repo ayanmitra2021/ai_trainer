@@ -75,6 +75,29 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    # Phase 15: catch AllProvidersUnavailableError before the generic 500 handler.
+    # Must be checked here because FastAPI resolves the most-specific handler —
+    # registering a separate handler for AllProvidersUnavailableError (a RuntimeError
+    # subclass) after the Exception handler may not fire correctly on all FastAPI
+    # versions, so we handle it inside the catch-all.
+    from app.agents.model_client import AllProvidersUnavailableError
+    if isinstance(exc, AllProvidersUnavailableError):
+        _log.warning(
+            "All LLM providers unavailable on %s %s: %s",
+            request.method, request.url.path, exc,
+        )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": "all_providers_unavailable",
+                "message": (
+                    "All LLM providers are temporarily unavailable. "
+                    "Please try again in a few minutes."
+                ),
+                "retry_after_seconds": 120,
+            },
+            headers={"Retry-After": "120"},
+        )
     _log.exception("Unhandled exception on %s %s: %s", request.method, request.url.path, exc)
     return JSONResponse(
         status_code=500,
@@ -126,3 +149,8 @@ app.include_router(cert_domain_versions.router, prefix="/api/v1")
 from app.api.routes import mock_exams
 
 app.include_router(mock_exams.router, prefix="/api/v1")
+
+# ── Phase 13 routes ────────────────────────────────────────────────────────────
+from app.api.routes import cert_discovery
+
+app.include_router(cert_discovery.router, prefix="/api/v1")

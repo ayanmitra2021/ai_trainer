@@ -97,7 +97,32 @@ class Agent(ABC, Generic[TInput, TOutput]):
 
     @property
     def effective_model(self) -> str:
-        """Return the model to use for this agent call."""
+        """Return the model name logged to agent_runs.model_used.
+
+        Priority order:
+        1. FallbackModelClient: return _last_model_used (the tier that actually
+           responded).  Before a call fires this is None — fall back to the
+           primary's model_id as a best guess.
+        2. NVIDIA / Anthropic client: return _model_id (always truthful; agents'
+           own model strings are intentionally ignored by both clients).
+        3. Plain ModelClient without _model_id: use _model_override or self.model.
+        """
+        # Phase 14.2: FallbackModelClient — report the tier that actually responded.
+        # It does NOT have _model_id itself; detect it via _last_model_used attr.
+        if hasattr(self._client, "_last_model_used"):
+            last = self._client._last_model_used  # type: ignore[union-attr]
+            if last is not None:
+                return last
+            # Before the first call: return primary's model_id as best guess.
+            primary = getattr(self._client, "_primary", None)
+            if primary is not None and hasattr(primary, "_model_id"):
+                return primary._model_id  # type: ignore[union-attr]
+
+        # NVIDIA / Anthropic: _model_id is the authoritative model string.
+        if hasattr(self._client, "_model_id"):
+            return self._client._model_id  # type: ignore[union-attr]
+
+        # Fallback for plain stubs / legacy clients
         return self._model_override or self.model
 
     # ── Public API ────────────────────────────────────────────────────────

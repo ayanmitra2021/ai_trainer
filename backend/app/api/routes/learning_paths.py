@@ -181,19 +181,31 @@ async def generate_quiz_batch(
     cert_code = "UNKNOWN"
     cert_name = "Unknown Certification"
     certification_domains_for_batch: list[dict] | None = None
+    # Set of skill IDs that belong to the practitioner's target certification.
+    # Any quiz item for these skills is exam-evaluated (counts toward domain scores).
+    cert_skill_ids: set[str] = set()
 
     if active_profile and active_profile.certification_id:
+        from app.db.models import CertificationSkill
         cert = await db.get(Certification, active_profile.certification_id)
         if cert:
             cert_code = cert.code
             cert_name = cert.name
+
+        # Load which skills belong to this cert (for is_cert_evaluated tagging)
+        cert_skills_result = await db.execute(
+            select(CertificationSkill).where(
+                CertificationSkill.certification_id == active_profile.certification_id
+            )
+        )
+        cert_skill_ids = {cs.skill_id for cs in cert_skills_result.scalars().all()}
+
         domains_result = await db.execute(
             select(CertificationDomain).where(
                 CertificationDomain.certification_id == active_profile.certification_id
             ).order_by(CertificationDomain.sequence_order)
         )
         cert_domains = domains_result.scalars().all()
-        cert_domains_map = {d.id: d for d in cert_domains}
         if cert_domains:
             certification_domains_for_batch = [
                 {
@@ -214,7 +226,7 @@ async def generate_quiz_batch(
     )
     prior_counts: dict[str, int] = {row[0]: row[1] for row in prior_counts_result.all()}
 
-    # Build SkillQuizSpec list
+    # Build SkillQuizSpec list — mark cert skills as exam-evaluated
     from app.agents.quiz_batch_generator import QuizBatchGeneratorAgent, QuizBatchGeneratorInput, SkillQuizSpec
 
     skill_specs: list[SkillQuizSpec] = []
@@ -223,9 +235,7 @@ async def generate_quiz_batch(
         if skill is None:
             continue
 
-        # Determine cert domain for this skill (best-effort match by category / name)
-        # For now: no FK from skills → cert_domains; leave domain as None.
-        # The agent receives full domain context via certification_domains.
+        is_cert_eval = skill_id in cert_skill_ids
         skill_specs.append(SkillQuizSpec(
             skill_id=skill_id,
             skill_name=skill.name,
@@ -233,7 +243,7 @@ async def generate_quiz_batch(
             mastery_score=mastery_by_skill.get(skill_id, 0.0),
             certification_domain_id=None,
             certification_domain_name=None,
-            is_cert_evaluated=False,
+            is_cert_evaluated=is_cert_eval,
             prior_generation_count=prior_counts.get(skill_id, 0),
         ))
 
@@ -250,6 +260,23 @@ async def generate_quiz_batch(
     model_client = create_model_client()
     agent = QuizBatchGeneratorAgent(client=model_client, db_session=db)
     batch_output = await agent.run(batch_input)
+
+    # Phase 13.5: compute cert/supp ratio and warn if below 80% target.
+    import logging as _log
+    _batch_log = _log.getLogger(__name__)
+    _cert_count = sum(1 for qi in batch_output.items if qi.is_cert_evaluated)
+    _total = len(batch_output.items)
+    _cert_pct = round(_cert_count / _total * 100, 1) if _total else 0.0
+    _supp_pct = round(100.0 - _cert_pct, 1)
+    batch_output.cert_question_pct = _cert_pct
+    batch_output.supp_question_pct = _supp_pct
+
+    if _cert_pct < 80.0:
+        _batch_log.warning(
+            "Quiz batch path=%s cert_pct=%.1f%% (< 80%% target). "
+            "cert=%d supp=%d total=%d. Check curriculum planner supp_max.",
+            path_id, _cert_pct, _cert_count, _total - _cert_count, _total,
+        )
 
     # Persist generated items
     item_ids: list[str] = []
@@ -272,7 +299,11 @@ async def generate_quiz_batch(
         item_ids.append(item_id)
 
     await db.commit()
-    return {"item_ids": item_ids}
+    return {
+        "item_ids": item_ids,
+        "cert_question_pct": batch_output.cert_question_pct,
+        "supp_question_pct": batch_output.supp_question_pct,
+    }
 
 
 # ── Items ─────────────────────────────────────────────────────────────────────

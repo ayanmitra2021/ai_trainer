@@ -29,6 +29,10 @@ export interface SkillSnapshot {
   previous_mastery_score?: number | null;
   mastery_delta?: number | null;
   trend?: "improving" | "declining" | "stable" | "new";
+  // Phase 13.4: domain info for domain-weighted radar coloring
+  certification_domain_id?: string | null;
+  certification_domain_name?: string | null;
+  domain_weight_pct?: number | null;
 }
 
 // ── Skills ────────────────────────────────────────────────────────────────────
@@ -371,6 +375,14 @@ export interface PractitionerProfile {
   mastery_pct?: number;
   /** Phase 9.3: true once the practitioner saves skill ratings for this profile. */
   is_locked: boolean;
+  /**
+   * Phase 14.4: quality of domain scoring at profile-lock time.
+   * 'pending'   — Domain Scorer has not yet run (default for new profiles).
+   * 'lm_scored' — Domain Scorer ran successfully via primary or fallback LLM.
+   * 'degraded'  — Both providers failed; scores are mechanical estimates from
+   *               self-assessment signal strengths (confidence ≤ 0.5).
+   */
+  domain_scoring_status?: "pending" | "lm_scored" | "degraded";
 }
 
 export interface ProfileDetail extends PractitionerProfile {

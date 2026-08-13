@@ -32,7 +32,9 @@ One row per credential, regardless of provider.
 
 ### `certification_skills`
 What a given certification actually covers, in terms of the skill graph above. This is what lets the Curriculum Planner weight a learning path toward a chosen certification instead of treating every skill as equally relevant.
-- `certification_id` (FK), `skill_id` (FK), `weight` (numeric — how central this skill is to that exam)
+- `certification_id` (FK), `skill_id` (FK), `weight` (numeric — how central this skill is to that exam), `certification_domain_id` (nullable FK → `certification_domains` — the exam domain this skill primarily belongs to; null for seed rows written before Phase 13; always populated for agent-discovered rows), `source` (text, NOT NULL, default `'seed'` — provenance: `'seed'` for bootstrap migration data; `'agent_discovered'` for rows written by CertSkillMapperAgent)
+
+**Phase 13 notes:** from Phase 13.2 onward, the canonical skill set for a cert is determined by the CertSkillMapperAgent, which web-searches the official exam guide and returns 10–12 skills per cert with domain linkage. These are stored with `source = 'agent_discovered'` and replace each other on refresh (old `agent_discovered` rows deleted, new ones inserted). Seed rows (`source = 'seed'`) are never deleted — they serve as fallback when the mapper has not yet run for a cert. All runtime queries prefer `agent_discovered` over `seed` when both exist. See `docs/architecture.md` for the trigger points and fallback behavior.
 
 ### `certification_domains`
 The official exam domains / modules for each certification — the concrete topics the exam actually tests, in the order and weighting the exam guide specifies. From Phase 10.2 onward these are versioned: each domain row belongs to a specific `certification_domain_version`, and a practitioner's profile is pinned to the version that was current at lock time.
@@ -75,6 +77,25 @@ A practitioner's history with a certification — recommended, chosen, in progre
 The raw answers to the targeted questionnaire (Step 2.3), kept rather than discarded after the recommendation is made — useful both for re-running the advisor later as the catalog grows, and for reviewing whether the questions themselves are working.
 - `id`, `practitioner_id` (FK), `responses` (jsonb), `created_at`
 
+### `practitioner_profiles`
+A profile is the practitioner's chosen certification context — the anchor for skill assessments, domain scores, and the learning path. A profile **cannot exist without a certification associated** (`certification_id` is NOT NULL from Phase 10.1 onward).
+
+- `id`, `practitioner_id` (FK → practitioners), `certification_id` (FK → certifications — NOT NULL; set at profile creation), `domain_version_id` (nullable FK → certification_domain_versions — pinned at lock time in Phase 10.5 to freeze which exam domain definitions this profile scores against), `domain_scoring_status` (text NOT NULL, default `'pending'` — tracks whether domain scores have been computed by an LLM or fell back to mechanical estimation; see values below), `locked_at` (nullable timestamp — set when the practitioner submits their self-assessment), `created_at`
+
+**`domain_scoring_status` values (Phase 14.4):**
+
+| Value | Meaning |
+|---|---|
+| `pending` | Domain Scorer has not yet run (default for newly created profiles; transient state before lock) |
+| `lm_scored` | Domain Scorer ran successfully — scores derived from LLM reasoning over self-assessment |
+| `degraded` | Both providers (NVIDIA and Anthropic Haiku) were unavailable; scores computed mechanically from self-assessment signal strengths (capped at 0.5 confidence) |
+
+The frontend reads `domain_scoring_status` and renders an amber badge on the radar and domain gap chart when the value is `'degraded'`. A grey "in progress" badge appears for `'pending'`. No badge is shown for `'lm_scored'` (the normal case). Quiz answers immediately begin writing `quiz_derived` scores regardless of which status the profile holds — degraded estimates are superseded domain-by-domain as the practitioner takes quizzes.
+
+### `profile_skill_assessments`
+Per-profile self-assessment ratings collected at profile creation time. One row per skill the practitioner rated. These ratings are the input to both the Domain Scorer Agent (which uses them to estimate initial domain readiness) and the mechanical degraded-scoring path (Phase 14.3). They are preserved but not used for the broad Skill Radar from Phase 9.4 onward (the radar is driven by quiz signals only).
+- `id`, `practitioner_id` (FK), `profile_id` (FK → practitioner_profiles), `skill_id` (FK → skills), `signal_strength` (float 0–1 — the practitioner's self-reported proficiency for this skill), `created_at`
+
 ### `skill_profile_events` (append-only)
 Raw evidence of what a practitioner knows, from any source.
 - `id`, `practitioner_id` (FK), `skill_id` (FK), `source` (`certification` | `self_assessment` | `quiz_attempt` | `project_history`), `signal_strength` (0–1), `occurred_at`, `metadata` (jsonb — e.g. which cert, which attempt id)
@@ -88,7 +109,9 @@ Per-practitioner, per-domain mastery scores. Computed exclusively from quiz atte
 
 - `id`, `practitioner_id` (FK), `certification_domain_id` (FK → certification_domains), `mastery_score` (float 0–1), `confidence` (float 0–1), `source` (`self_assessment_estimate` | `quiz_derived`), `last_computed_at` — Unique constraint on (`practitioner_id`, `certification_domain_id`).
 
-**Source semantics:** When a profile is first locked, the Domain Scorer Agent writes `self_assessment_estimate` rows as a starting baseline (derived from the self-assessment ratings via LLM reasoning — max confidence 0.5). Once a practitioner submits cert-evaluated quiz answers for a domain, those rows are updated with `source = 'quiz_derived'` and take precedence. A `quiz_derived` row is never overwritten by a `self_assessment_estimate`.
+**Source semantics:** When a profile is first locked, the Domain Scorer Agent writes `self_assessment_estimate` rows as a starting baseline (derived from the self-assessment ratings via LLM reasoning — max confidence 0.5). If both LLM providers are unavailable (Phase 14), scores are written with `source = 'degraded_estimate'` (mechanical average of self-assessment signal strengths, max confidence 0.3) — this is a last-resort fallback that keeps the profile lock non-blocking. Once a practitioner submits cert-evaluated quiz answers for a domain, those rows are updated with `source = 'quiz_derived'` and take precedence. A `quiz_derived` row is never overwritten by a `self_assessment_estimate` or `degraded_estimate`.
+
+**`source` valid values:** `'self_assessment_estimate'` (LLM-derived at lock time) | `'quiz_derived'` (updated from cert-evaluated quiz answers) | `'degraded_estimate'` (Phase 14: mechanical fallback when LLM unavailable)
 
 ### `mastery_history` (append-only, time-series)
 A historical record appended by the Skill Profiler every time it upserts `skill_profile_snapshots`. Used to drive the Progress Trend Chart on the practitioner's Adoption Trends tab.
@@ -150,13 +173,15 @@ Every agent invocation, full stop.
 
 ```
 certification_providers ─< certifications ─< certification_skills >─ skills
+                                          │    └─ certification_domain_id → certification_domains (nullable, Phase 13)
                                           └─< certification_domain_versions ─< certification_domains
                                           └─< certification_domain_proposals (pending admin review)
 
 practitioners ─┬─< certification_advisor_responses
                ├─< practitioner_certification_goals >─ certifications
                ├─< practitioner_profiles ─┬─ certification_id → certifications (NOT NULL, Phase 10.1)
-               │                          └─ domain_version_id → certification_domain_versions (set at lock time, Phase 10.5)
+               │                          ├─ domain_version_id → certification_domain_versions (set at lock time, Phase 10.5)
+               │                          └─ domain_scoring_status: 'pending'|'lm_scored'|'degraded' (Phase 14.4)
                ├─< profile_skill_assessments >─ skills (per-profile ratings, preserved but not used for radar)
                ├─< skill_profile_events >─ skills
                ├─< skill_profile_snapshots >─ skills     (broad radar — all quiz signals)
@@ -191,6 +216,8 @@ rollups            (aggregated — no direct practitioner FK by design; removed 
 | Self-assessment ratings (profile lock) | — not used (Phase 9.4) | Initial estimate only (`self_assessment_estimate`, max confidence 0.5; `quiz_derived` takes precedence) |
 
 The radar shows the broad learning picture across ~10–15 overarching skills. The domain gap chart shows exam-specific readiness that matters for passing the actual certification.
+
+**Phase 13 addition — domain-weighted radar:** from Phase 13.4 onward, the skill profile snapshot response includes `certification_domain_id`, `certification_domain_name`, and `domain_weight_pct` for each skill (joined from `certification_skills` → `certification_domains`). The frontend uses these to color radar nodes by domain weight: highest-weight domain → most intense color, supplementary skills → neutral grey. The scoring model is unchanged; only the visual encoding is added.
 
 ## Seed catalog (Step 2.2)
 

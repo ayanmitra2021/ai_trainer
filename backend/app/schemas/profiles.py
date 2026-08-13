@@ -66,6 +66,8 @@ class ProfileRead(BaseModel):
     mastery_pct: float | None = None  # mean mastery of cert's skills; None if no cert
     # Step 9.2 forward-compat: always False until Step 9.3 adds the DB column.
     is_locked: bool = False
+    # Phase 14.4: 'pending' | 'lm_scored' | 'degraded'
+    domain_scoring_status: str = "pending"
 
     model_config = {"from_attributes": True}
 
@@ -82,3 +84,5 @@ class SkillAssessmentUpsertRequest(BaseModel):
 
 class SkillAssessmentUpsertResponse(BaseModel):
     rows_written: int
+    # Phase 14.3: reflects whether the Domain Scorer ran via LLM or was degraded.
+    domain_scoring_status: str = "pending"

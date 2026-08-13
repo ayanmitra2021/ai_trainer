@@ -31,25 +31,61 @@ class TestModelClientFactory:
     """Test the create_model_client factory function."""
 
     def test_factory_returns_anthropic_client_when_configured(self, monkeypatch):
-        """Given APP_BRAIN_MODEL=ANTHROPIC, factory returns AnthropicModelClient."""
+        """Phase 15: APP_BRAIN_MODEL=ANTHROPIC → MultiTierModelClient; Haiku is Tier-1."""
+        import app.agents.model_client as mc_module
+        from app.agents.model_client import MultiTierModelClient
+
         monkeypatch.setenv("APP_BRAIN_MODEL", "ANTHROPIC")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-        
-        # Need to reload settings to pick up the env var
+        monkeypatch.setenv("NVIDIA_API_KEY", "")  # no NVIDIA → single-tier Haiku
+
         get_settings.cache_clear()
-        
+        mc_module._nvidia_circuit_breaker = None
+
         client = create_model_client()
-        assert isinstance(client, AnthropicModelClient)
+        # Phase 15: always returns MultiTierModelClient; Haiku is the first (and only) tier here
+        assert isinstance(client, MultiTierModelClient)
+        assert client._tiers[0][0]._model_id == "claude-haiku-4-5-20251001"
+        assert client._circuit_breaker is None  # no circuit breaker in ANTHROPIC mode
 
     def test_factory_returns_nvidia_client_when_configured(self, monkeypatch):
-        """Given APP_BRAIN_MODEL=NVIDIA with valid API key, factory returns NVIDIAModelClient."""
+        """Phase 15: APP_BRAIN_MODEL=NVIDIA without ANTHROPIC key → 2-tier MultiTierModelClient.
+
+        Phase 15 always returns MultiTierModelClient (replaces bare NVIDIAModelClient).
+        Without ANTHROPIC_API_KEY, the chain is Ultra → Lightning (no Haiku fallback).
+        """
+        import app.agents.model_client as mc_module
+        from app.agents.model_client import MultiTierModelClient, NvidiaCircuitBreaker
+
         monkeypatch.setenv("APP_BRAIN_MODEL", "NVIDIA")
-        monkeypatch.setenv("NVIDIA_API_KEY", "test-nvidia-key")
-        
+        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test-key-000000000000000000000000000")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "")  # no Anthropic key → no Haiku tier
+
         get_settings.cache_clear()
-        
+        mc_module._nvidia_circuit_breaker = None
+
         client = create_model_client()
-        assert isinstance(client, NVIDIAModelClient)
+        assert isinstance(client, MultiTierModelClient)
+        assert len(client._tiers) == 2
+        assert isinstance(client._circuit_breaker, NvidiaCircuitBreaker)
+
+    def test_factory_returns_fallback_client_when_both_keys_configured(self, monkeypatch):
+        """Phase 15: NVIDIA + ANTHROPIC keys both set → 3-tier MultiTierModelClient."""
+        import app.agents.model_client as mc_module
+        from app.agents.model_client import MultiTierModelClient, NvidiaCircuitBreaker
+
+        monkeypatch.setenv("APP_BRAIN_MODEL", "NVIDIA")
+        monkeypatch.setenv("NVIDIA_API_KEY", "nvapi-test-key-000000000000000000000000000")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+
+        get_settings.cache_clear()
+        mc_module._nvidia_circuit_breaker = None
+
+        client = create_model_client()
+        # Phase 15: 3 tiers — Ultra → Lightning → Haiku; circuit breaker active
+        assert isinstance(client, MultiTierModelClient)
+        assert len(client._tiers) == 3
+        assert isinstance(client._circuit_breaker, NvidiaCircuitBreaker)
 
     def test_factory_raises_error_for_invalid_provider(self, monkeypatch):
         """Given invalid APP_BRAIN_MODEL, factory raises clear error."""
@@ -160,39 +196,22 @@ class TestNVIDIAModelClientWithStub:
 
     @pytest.mark.asyncio
     async def test_transient_error_triggers_retry(self):
-        """Transient errors (rate limit, timeout) trigger retry with exponential backoff."""
+        """Phase 14.2: NVIDIAModelClient has empty _transient_errors — FallbackModelClient handles routing.
+
+        After Phase 14.2, NVIDIAModelClient._transient_errors is intentionally empty so
+        that a single failure immediately falls through to the Haiku fallback tier inside
+        FallbackModelClient, rather than retrying the slow NVIDIA endpoint multiple times.
+
+        This test documents the new behaviour: the empty tuple means no in-client retries.
+        """
         from app.agents.model_client import openai
-        
-        call_count = 0
-        
-        class _RetryableStub:
-            def __init__(self):
-                self.messages = self
-                
-            async def parse(self, **kwargs):
-                nonlocal call_count
-                call_count += 1
-                if call_count == 1:
-                    raise openai.RateLimitError("rate limited")
-                # Second call succeeds
-                return type('Response', (), {
-                    'choices': [type('Choice', (), {
-                        'message': type('Message', (), {
-                            'parsed': _TestOutput(greeting="Retry worked", score=0.8)
-                        })()
-                    })()],
-                    'usage': type('Usage', (), {'input_tokens': 100, 'output_tokens': 50})()
-                })()
-        
-        client = NVIDIAModelClient(api_key="test")
-        client.messages = _RetryableStub()
-        client.max_retries = 3
-        client.retry_base_delay_s = 0.0  # no delay in tests
-        
-        # Note: This tests the NVIDIAModelClient's retry logic directly
-        # The actual retry is handled by the Agent base class, but we verify
-        # the client's _transient_errors includes openai.RateLimitError
-        assert openai.RateLimitError in client._transient_errors
+
+        client = NVIDIAModelClient(api_key="nvapi-test")
+
+        # Phase 14.2 behaviour: _transient_errors is EMPTY — no automatic retries at
+        # the client level.  FallbackModelClient handles the "try again" routing.
+        assert client._transient_errors == ()
+        assert openai.RateLimitError not in client._transient_errors
 
     @pytest.mark.asyncio
     async def test_non_transient_error_fails_immediately(self):

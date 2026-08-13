@@ -61,6 +61,10 @@ class QuizBatchGeneratorOutput(BaseModel):
     """Structured output — exactly one item per input skill, in order."""
 
     items: list[BatchQuizItem]
+    # Phase 13.5: cert/supp ratio audit — computed post-generation, not by LLM.
+    # Default 0.0; the quiz-batch endpoint overrides these after calling the agent.
+    cert_question_pct: float = 0.0
+    supp_question_pct: float = 0.0
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────

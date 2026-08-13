@@ -18,6 +18,8 @@ export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    /** Machine-readable error code from the response body (e.g. "all_providers_unavailable"). */
+    public code?: string,
   ) {
     super(message);
     this.name = "ApiError";
@@ -35,11 +37,13 @@ async function request<T>(
   });
   if (!res.ok) {
     let detail = res.statusText;
+    let code: string | undefined;
     try {
       const body = await res.json();
-      detail = body.detail ?? detail;
+      detail = body.detail ?? body.message ?? detail;
+      code = body.error;  // Phase 15: machine-readable error code from 503 body
     } catch { /* ignore parse failure */ }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, code);
   }
   // 204 No Content
   if (res.status === 204) return undefined as unknown as T;

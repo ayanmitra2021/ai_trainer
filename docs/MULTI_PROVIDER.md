@@ -1,36 +1,158 @@
 # Multi-Provider Migration Guide
 
-This guide explains how to switch between Anthropic Claude and NVIDIA Nemotron 3 Ultra as the LLM provider for Mastery Pulse.
+This guide explains the LLM provider strategy for Mastery Pulse: a three-tier fallback chain across two NVIDIA Nemotron models and Anthropic Haiku, with an in-memory circuit breaker that eliminates repeated timeout costs during sustained NVIDIA outages.
+
+> **Anthropic model constraint (this deployment):** all Anthropic calls — regardless of context — use `claude-haiku-4-5-20251001` only.  No Sonnet, Opus, or Fable.  The `APP_ANTHROPIC_MODEL_ID` env var enforces this; `AnthropicModelClient` ignores whatever model string individual agents carry and always calls its configured `_model_id`.
 
 ## Quick Start
 
-### Switching to NVIDIA Nemotron
+### Production (NVIDIA primary + Haiku fallback — recommended)
 
 ```bash
 # In your .env file:
 APP_BRAIN_MODEL=NVIDIA
 NVIDIA_API_KEY=nvapi-your-key-here
-# NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1  # optional, defaults to this
-# NVIDIA_MODEL_ID=nvidia/llama-3.1-nemotron-ultra-253b-v1  # optional, defaults to this
+NVIDIA_MODEL_ID_PRIMARY=nvidia/nemotron-3-ultra-550b-a55b
+NVIDIA_MODEL_ID_SECONDARY=nvidia/nemotron-3.5-lightning-30b-a3b
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+
+# Anthropic Haiku — last-resort fallback (billed; Haiku only)
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+APP_ANTHROPIC_MODEL_ID=claude-haiku-4-5-20251001
+
+# Optional — tune timeouts and circuit breaker
+NVIDIA_TIER1_TIMEOUT_SECS=10
+NVIDIA_TIER2_TIMEOUT_SECS=20
+ANTHROPIC_TIER_TIMEOUT_SECS=20
+NVIDIA_CIRCUIT_BREAKER_THRESHOLD=5
+NVIDIA_CIRCUIT_BREAKER_COOLDOWN_SECS=120
 ```
 
-### Switching to Anthropic (default)
+### Local dev (Anthropic Haiku primary + NVIDIA fallback)
 
 ```bash
 # In your .env file:
 APP_BRAIN_MODEL=ANTHROPIC
 ANTHROPIC_API_KEY=sk-ant-your-key-here
+APP_ANTHROPIC_MODEL_ID=claude-haiku-4-5-20251001
+
+# Optional — NVIDIA models as fallback when Haiku fails
+NVIDIA_API_KEY=nvapi-your-key-here
+NVIDIA_MODEL_ID_PRIMARY=nvidia/nemotron-3-ultra-550b-a55b
+NVIDIA_MODEL_ID_SECONDARY=nvidia/nemotron-3.5-lightning-30b-a3b
 ```
+
+## Three-Tier Call Chain (Phase 15)
+
+Every agent call flows through `MultiTierModelClient`, which tries each tier in sequence and only moves to the next on failure (timeout or any exception).
+
+### NVIDIA-primary mode (`APP_BRAIN_MODEL=NVIDIA`)
+
+```
+Tier 1 — NVIDIAModelClient(Ultra)       10 s timeout, 1 attempt
+  │  success → return; model_used = nvidia/nemotron-3-ultra-550b-a55b
+  ↓  any failure — WARNING logged
+Tier 2 — NVIDIAModelClient(Lightning)   20 s timeout, 1 attempt
+  │  success → return; model_used = nvidia/nemotron-3.5-lightning-30b-a3b
+  ↓  any failure — WARNING logged
+Tier 3 — AnthropicModelClient(Haiku)    20 s timeout, 1 attempt
+  │  success → return; model_used = claude-haiku-4-5-20251001
+  ↓  any failure — WARNING logged
+AllProvidersUnavailableError raised
+  → domain scorer endpoint: mechanical degraded scores (HTTP 200)
+  → all other endpoints: HTTP 503 with retry hint
+```
+
+**Max wall time (all fail):** 10 + 20 + 20 = **50 seconds.**
+
+### ANTHROPIC-primary mode (`APP_BRAIN_MODEL=ANTHROPIC`)
+
+The tier order is reversed.  Haiku is tried first; the NVIDIA models are the fallback.  Ultra is tried before Lightning because it produces higher-quality output; Lightning is the last resort within the NVIDIA estate.
+
+```
+Tier 1 — AnthropicModelClient(Haiku)    10 s timeout, 1 attempt
+  ↓  any failure
+Tier 2 — NVIDIAModelClient(Ultra)       20 s timeout, 1 attempt
+  ↓  any failure
+Tier 3 — NVIDIAModelClient(Lightning)   20 s timeout, 1 attempt
+  ↓  any failure
+AllProvidersUnavailableError raised
+```
+
+The circuit breaker (below) does **not** activate in ANTHROPIC mode — NVIDIA is already the fallback, and skipping it entirely would remove a useful safety net.
+
+## Circuit Breaker (Phase 15)
+
+When NVIDIA is experiencing a sustained outage, paying the 10 s + 20 s timeout cost on *every* call is wasteful and makes the app feel slow.  The circuit breaker eliminates this cost during confirmed outages.
+
+### State machine
+
+```
+CLOSED (normal)
+  │  both NVIDIA tiers fail on the same call → consecutive_failures += 1
+  │  consecutive_failures reaches threshold (default 5)
+  ↓
+OPEN (cooldown)  ←  open_until = now + cooldown_seconds (default 120)
+  │  all calls skip NVIDIA tiers; Haiku is used directly
+  │  open_until reached
+  ↓
+CLOSED (reset)   ←  consecutive_failures = 0; resume full chain
+```
+
+### What counts as a failure
+
+- Both Tier 1 (Ultra) **and** Tier 2 (Lightning) fail on the same call.
+- A call where Tier 1 fails but Tier 2 succeeds does **not** increment the counter — the NVIDIA estate is partially healthy.
+
+### Logs
+
+| Event | Level | Message |
+|---|---|---|
+| Tier N fails | WARNING | `Primary provider failed (model-id) — trying next tier. Error: …` |
+| Breaker trips | WARNING | `NVIDIA circuit breaker tripped after 5 consecutive failures — 2-min cooldown until HH:MM:SS` |
+| Breaker active | INFO | `NVIDIA circuit breaker open — routing directly to Haiku (resets at HH:MM:SS)` |
+| Breaker resets | INFO | `NVIDIA circuit breaker reset — resuming normal tier chain` |
+
+### Persistence
+
+The breaker lives in process memory only.  A server restart resets it — intentional, because restarts are deliberate interventions that usually coincide with the outage clearing.
 
 ## Configuration Reference
 
 | Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `APP_BRAIN_MODEL` | Yes | `ANTHROPIC` | Provider selection: `ANTHROPIC` or `NVIDIA` |
-| `ANTHROPIC_API_KEY` | When ANTHROPIC | - | Anthropic API key from console.anthropic.com |
-| `NVIDIA_API_KEY` | When NVIDIA | - | NVIDIA API key from integrate.api.nvidia.com |
-| `NVIDIA_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | NVIDIA API endpoint (OpenAI-compatible) |
-| `NVIDIA_MODEL_ID` | No | `nvidia/llama-3.1-nemotron-ultra-253b-v1` | Model identifier |
+|---|---|---|---|
+| `APP_BRAIN_MODEL` | Yes | `ANTHROPIC` | Primary tier: `ANTHROPIC` or `NVIDIA` |
+| `ANTHROPIC_API_KEY` | When Anthropic primary or Haiku fallback needed | — | Anthropic API key |
+| `APP_ANTHROPIC_MODEL_ID` | No | `claude-haiku-4-5-20251001` | **Haiku only** — do not change |
+| `NVIDIA_API_KEY` | When either NVIDIA model is in use | — | NVIDIA NIM API key |
+| `NVIDIA_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | NVIDIA endpoint (OpenAI-compatible) |
+| `NVIDIA_MODEL_ID_PRIMARY` | No | `nvidia/nemotron-3-ultra-550b-a55b` | Ultra — Tier 1 in NVIDIA mode, Tier 3 in ANTHROPIC mode |
+| `NVIDIA_MODEL_ID_SECONDARY` | No | `nvidia/nemotron-3.5-lightning-30b-a3b` | Lightning — Tier 2 in both modes |
+| `NVIDIA_TIER1_TIMEOUT_SECS` | No | `10` | Timeout for first tier (Ultra or Haiku) |
+| `NVIDIA_TIER2_TIMEOUT_SECS` | No | `20` | Timeout for second tier (Lightning) |
+| `ANTHROPIC_TIER_TIMEOUT_SECS` | No | `20` | Timeout for Haiku (any position in chain) |
+| `NVIDIA_CIRCUIT_BREAKER_THRESHOLD` | No | `5` | Consecutive NVIDIA-only failures before cooldown |
+| `NVIDIA_CIRCUIT_BREAKER_COOLDOWN_SECS` | No | `120` | Cooldown duration in seconds |
+
+> **Deprecated (Phase 14 → 15):** `NVIDIA_MODEL_ID` (singular) is replaced by `NVIDIA_MODEL_ID_PRIMARY` and `NVIDIA_MODEL_ID_SECONDARY`.  Remove it from `.env` when upgrading.
+
+## Render Production Env-Var Checklist
+
+Set these in the Render dashboard (Environment → Environment Variables) before the first deploy:
+
+| Variable | Example value | Notes |
+|---|---|---|
+| `APP_BRAIN_MODEL` | `NVIDIA` | Primary provider |
+| `NVIDIA_API_KEY` | `nvapi-...` | From NVIDIA NIM dashboard |
+| `NVIDIA_MODEL_ID_PRIMARY` | `nvidia/nemotron-3-ultra-550b-a55b` | Verify against current NIM catalog |
+| `NVIDIA_MODEL_ID_SECONDARY` | `nvidia/nemotron-3.5-lightning-30b-a3b` | Lightning fallback within NVIDIA |
+| `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` | Only override if NVIDIA changes endpoint |
+| `ANTHROPIC_API_KEY` | `sk-ant-...` | **Required for Haiku tier** — without this, all-providers-unavailable degrades to mechanical scores only |
+| `APP_ANTHROPIC_MODEL_ID` | `claude-haiku-4-5-20251001` | Haiku only — do not change |
+| `NVIDIA_CIRCUIT_BREAKER_THRESHOLD` | `5` | Tune down to 3 if you prefer faster failover |
+| `NVIDIA_CIRCUIT_BREAKER_COOLDOWN_SECS` | `120` | 2-minute cooldown |
+| `DATABASE_URL` | (Supabase connection string) | From Supabase project settings |
+| `SECRET_KEY` | (random 32-byte hex) | Generate with `openssl rand -hex 32` |
 
 ## Known Limitations (v1)
 
@@ -53,18 +175,26 @@ The `nightly_pulse` workflow uses the Anthropic Message Batches API for 50% cost
 
 ## Agent Model Mappings
 
-| Agent | Anthropic Default | NVIDIA Default |
-|-------|-------------------|----------------|
-| Certification Advisor | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
-| Skill Profiler | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
-| Curriculum Planner | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
-| Item-Writer | `claude-sonnet-5` (Opus 5 for hard items) | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
-| Grader | `claude-opus-5` / `claude-haiku-4.5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
-| Usage-Signal | `claude-haiku-4.5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
-| Correlation | `claude-opus-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
-| Nudge Composer | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
-| Rollup Reporter | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
-| Nudge Category Generator | `claude-sonnet-5` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+> `AnthropicModelClient` always calls `APP_ANTHROPIC_MODEL_ID` (Haiku), ignoring the agent's `model` class attribute.  `NVIDIAModelClient` always calls its configured `_model_id` (Ultra or Lightning), also ignoring the agent's string.  Agents carry Claude model strings only as documentation reminders; they are not operative at runtime.
+
+Each call resolves through `MultiTierModelClient` — the table below shows which model actually handles the call assuming no tier failure.  If a tier fails, the next tier in the chain is used automatically.
+
+| Agent | NVIDIA mode (Tier 1) | NVIDIA mode (Tier 2) | NVIDIA mode (Tier 3) |
+|-------|---|---|---|
+| Certification Advisor | Ultra | Lightning | Haiku |
+| Skill Profiler | Ultra | Lightning | Haiku |
+| Curriculum Planner | Ultra | Lightning | Haiku |
+| Item-Writer | Ultra | Lightning | Haiku |
+| Quiz Batch Generator | Ultra | Lightning | Haiku |
+| Grader | Ultra | Lightning | Haiku |
+| Domain Scorer | Ultra | Lightning | Haiku → mechanical fallback if all fail |
+| Cert Skill Mapper | Ultra | Lightning | Haiku |
+| Usage-Signal | Ultra | Lightning | Haiku |
+| Correlation | Ultra | Lightning | Haiku |
+| Nudge Composer | Ultra | Lightning | Haiku |
+| Nudge Category Generator | Ultra | Lightning | Haiku |
+
+In `APP_BRAIN_MODEL=ANTHROPIC` mode the order is: Haiku (Tier 1) → Ultra (Tier 2) → Lightning (Tier 3).
 
 ## Prompt Tuning for Nemotron
 
@@ -161,15 +291,22 @@ When adding new agents or modifying existing ones:
 
 ## Verification Checklist
 
-After switching providers, verify:
+After switching providers or deploying to Render, verify:
 
 - [ ] All scenario tests pass (`py -m pytest tests/scenarios/`)
+- [ ] `agent_runs.model_used` shows `claude-haiku-4-5-20251001` for Anthropic calls (never `claude-sonnet-5` or `claude-opus-5`)
+- [ ] `agent_runs.model_used` shows Ultra model ID for healthy NVIDIA-primary calls
+- [ ] When Ultra fails and Lightning succeeds, `agent_runs.model_used` shows the Lightning model ID
+- [ ] When both NVIDIA tiers fail and Haiku answers, `agent_runs.model_used` shows Haiku
+- [ ] Server logs show `WARNING: Primary provider failed` lines before any Haiku fallback entry
+- [ ] After 5 consecutive NVIDIA-both-fail calls, logs show circuit-breaker WARNING and subsequent calls skip to Haiku immediately (no 10s + 20s wait)
+- [ ] Circuit breaker resets after 2 minutes — logs show reset INFO and Ultra is tried again
+- [ ] Profile lock completes in ≤ 50 s in the worst case (all three tiers fail sequentially)
+- [ ] Profiles with degraded scoring show amber badge on radar and domain chart
+- [ ] All-providers-unavailable from grader/quiz-batch → HTTP 503 with `retry_after_seconds` in body
 - [ ] Skill Profiler runs without MCP data (check logs for warning)
 - [ ] Usage-Signal runs with empty signals (check logs for warning)
-- [ ] Nightly Pulse completes (synchronously with NVIDIA)
-- [ ] Agent runs record correct `model_used` in `agent_runs` table
-- [ ] Token counts and latency are tracked for both providers
-- [ ] Observability dashboard shows correct model names
+- [ ] Token counts and latency are tracked correctly for whichever tier responded
 
 ## Rolling Back
 

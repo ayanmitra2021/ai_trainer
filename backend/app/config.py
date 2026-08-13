@@ -38,6 +38,17 @@ class Settings(BaseSettings):
 
     # ── Anthropic ─────────────────────────────────────────────────────────
     anthropic_api_key: str = Field(default="", description="Anthropic API key.")
+    # Phase 14.1: Haiku is the only model used for all Anthropic calls in this
+    # deployment.  Override via APP_ANTHROPIC_MODEL_ID in .env if needed, but
+    # do not change to Sonnet/Opus without explicit cost-control approval.
+    app_anthropic_model_id: str = Field(
+        default="claude-haiku-4-5-20251001",
+        description=(
+            "Anthropic model ID enforced for all calls.  "
+            "Default: claude-haiku-4-5-20251001.  "
+            "Do not change to Sonnet/Opus without explicit approval."
+        ),
+    )
 
     # ── NVIDIA Nemotron ───────────────────────────────────────────────────
     nvidia_api_key: str = Field(default="", description="NVIDIA API key (required when APP_BRAIN_MODEL=NVIDIA).")
@@ -45,13 +56,44 @@ class Settings(BaseSettings):
         default="https://integrate.api.nvidia.com/v1",
         description="NVIDIA API base URL (OpenAI-compatible).",
     )
-    nvidia_model_id: str = Field(
+    # Phase 15: two-model NVIDIA estate (Ultra = Tier 1, Lightning = Tier 2).
+    # NVIDIA_MODEL_ID (singular) is deprecated — use the PRIMARY/SECONDARY vars.
+    nvidia_model_id_primary: str = Field(
         default="nvidia/nemotron-3-ultra-550b-a55b",
-        description=(
-            "NVIDIA NIM model ID. Defaults to Nemotron 3 Ultra 550B — the original project-plan model. "
-            "Override via NVIDIA_MODEL_ID in .env. "
-            "Run tools/check_nvidia.py to discover which models your API key can reach."
-        ),
+        description="NVIDIA Tier-1 model (Ultra). Used as primary in NVIDIA mode, last fallback in ANTHROPIC mode.",
+    )
+    nvidia_model_id_secondary: str = Field(
+        default="nvidia/nemotron-3.5-lightning-30b-a3b",
+        description="NVIDIA Tier-2 model (Lightning). Fallback within the NVIDIA estate.",
+    )
+    # Deprecated (Phase 14 → 15): kept so old .env files don't crash.
+    nvidia_model_id: str = Field(
+        default="",
+        description="Deprecated — use NVIDIA_MODEL_ID_PRIMARY instead.",
+    )
+
+    # ── Phase 15 timeouts ─────────────────────────────────────────────────
+    nvidia_tier1_timeout_secs: int = Field(
+        default=10,
+        description="asyncio.wait_for timeout for Tier-1 (Ultra in NVIDIA mode, Haiku in ANTHROPIC mode).",
+    )
+    nvidia_tier2_timeout_secs: int = Field(
+        default=20,
+        description="asyncio.wait_for timeout for Tier-2 (Lightning in both modes).",
+    )
+    anthropic_tier_timeout_secs: int = Field(
+        default=20,
+        description="asyncio.wait_for timeout for the Anthropic/Haiku tier (any position in chain).",
+    )
+
+    # ── Phase 15 circuit breaker ──────────────────────────────────────────
+    nvidia_circuit_breaker_threshold: int = Field(
+        default=5,
+        description="Consecutive NVIDIA-both-fail calls before the circuit breaker opens.",
+    )
+    nvidia_circuit_breaker_cooldown_secs: int = Field(
+        default=120,
+        description="Cooldown duration in seconds when the circuit breaker is open.",
     )
 
     # ── App ───────────────────────────────────────────────────────────────

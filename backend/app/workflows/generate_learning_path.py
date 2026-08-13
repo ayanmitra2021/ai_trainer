@@ -27,6 +27,7 @@ from app.agents.round_metrics import compute_domain_scores, compute_round_metric
 from app.db.models import (
     Certification,
     CertificationDomain,
+    CertificationSkill,
     LearningPath,
     LearningPathItem,
     MasteryHistory,
@@ -293,35 +294,88 @@ async def _run_steps(
             ))
     await db.flush()
 
-    # Check for active certification goal
+    # Fetch active profile once here — used for cert context and domain scoring below.
+    active_profile_result = await db.execute(
+        select(PractitionerProfile).where(
+            PractitionerProfile.practitioner_id == practitioner_id,
+            PractitionerProfile.is_active == True,  # noqa: E712
+        )
+    )
+    active_profile = active_profile_result.scalar_one_or_none()
+
+    # Resolve certification context — two sources in priority order:
+    #
+    # 1. Active profile's certification_id (locked at profile creation time).
+    #    This is the authoritative source — it's the exam the practitioner has
+    #    committed to and is always set for any locked profile.
+    # 2. PractitionerCertificationGoal (any status) — fallback for practitioners
+    #    who have a goal but no locked profile yet.
+    #
+    # The old filter `status == "selected"` was too strict: the Certification
+    # Advisor sets status = "recommended", never "selected", so the cert context
+    # was always None and the planner picked skills based on gap alone rather
+    # than exam relevance.
     cert_goal_context: CertGoalContext | None = None
-    goal_result = await db.execute(
-        select(PractitionerCertificationGoal)
-        .options(
-            selectinload(PractitionerCertificationGoal.certification).selectinload(
-                Certification.certification_skills
+
+    # Source 1: active profile cert (preferred)
+    cert_from_profile: Certification | None = None
+    if active_profile is not None and active_profile.certification_id is not None:
+        cert_from_profile = await db.get(
+            Certification,
+            active_profile.certification_id,
+            options=[selectinload(Certification.certification_skills)],
+        )
+
+    if cert_from_profile is not None:
+        # Phase 13.3: prefer agent_discovered skills; fall back to seed if none.
+        _discovered_result = await db.execute(
+            select(CertificationSkill).where(
+                CertificationSkill.certification_id == cert_from_profile.id,
+                CertificationSkill.source == "agent_discovered",
             )
         )
-        .where(
-            PractitionerCertificationGoal.practitioner_id == practitioner_id,
-            PractitionerCertificationGoal.status == "selected",
-        )
-        .order_by(PractitionerCertificationGoal.selected_at.desc())
-        .limit(1)
-    )
-    active_goal = goal_result.scalar_one_or_none()
-    if active_goal is not None:
-        cert = active_goal.certification
+        _discovered = _discovered_result.scalars().all()
+        _cert_skills_to_use = _discovered if _discovered else cert_from_profile.certification_skills
+
         skill_weights = {
             cs.skill_id: float(cs.weight)
-            for cs in cert.certification_skills
+            for cs in _cert_skills_to_use
         }
         cert_goal_context = CertGoalContext(
-            certification_code=cert.code,
-            certification_name=cert.name,
-            status=active_goal.status,
+            certification_code=cert_from_profile.code,
+            certification_name=cert_from_profile.name,
+            status="selected",
             skill_weights=skill_weights,
         )
+    else:
+        # Source 2: any goal row (fallback)
+        goal_result = await db.execute(
+            select(PractitionerCertificationGoal)
+            .options(
+                selectinload(PractitionerCertificationGoal.certification).selectinload(
+                    Certification.certification_skills
+                )
+            )
+            .where(
+                PractitionerCertificationGoal.practitioner_id == practitioner_id,
+                PractitionerCertificationGoal.status.in_(["selected", "recommended"]),
+            )
+            .order_by(PractitionerCertificationGoal.selected_at.desc())
+            .limit(1)
+        )
+        active_goal = goal_result.scalar_one_or_none()
+        if active_goal is not None:
+            cert = active_goal.certification
+            skill_weights = {
+                cs.skill_id: float(cs.weight)
+                for cs in cert.certification_skills
+            }
+            cert_goal_context = CertGoalContext(
+                certification_code=cert.code,
+                certification_name=cert.name,
+                status=active_goal.status,
+                skill_weights=skill_weights,
+            )
 
     planner_input = CurriculumPlannerInput(
         practitioner_id=practitioner_id,
@@ -391,13 +445,7 @@ async def _run_steps(
     # ── 5. Compute domain scores from cert-evaluated quiz answers ──────────
     # Phase 10.3: after persisting the learning path, update domain scores
     # from any cert-evaluated quiz answers the practitioner has submitted.
-    active_profile_result = await db.execute(
-        select(PractitionerProfile).where(
-            PractitionerProfile.practitioner_id == practitioner_id,
-            PractitionerProfile.is_active == True,  # noqa: E712
-        )
-    )
-    active_profile = active_profile_result.scalar_one_or_none()
+    # active_profile was already fetched above (before cert context resolution).
     if active_profile is not None and active_profile.certification_id is not None:
         await compute_domain_scores(
             practitioner_id=practitioner_id,

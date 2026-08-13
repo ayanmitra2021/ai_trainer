@@ -114,6 +114,494 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 12.2 QuizBatchGeneratorAgent — one LLM call generates 1 starter question per skill for the whole path
 - [x] 12.3 Quiz tab loading UX — "Generating quiz…" screen on first open; all tabs populate at once when batch completes
 
+**Phase 13 — Dynamic Cert Skill Discovery & Domain-Weighted Radar**
+- [x] 13.1 DB schema — extend `certification_skills` with domain linkage and source provenance
+- [x] 13.2 CertSkillMapperAgent — web-research cert blueprint → 10–12 skills aligned to exam domains 👤
+- [x] 13.3 Profile creation hook — trigger skill mapping at profile lock; admin refresh endpoint
+- [x] 13.4 Domain-weighted Skill Radar — radar nodes colored by domain weight
+- [x] 13.5 80/20 enforcement — quiz batch ratio audit in QuizBatchGeneratorAgent
+
+**Phase 14 — Provider Resilience: Haiku Fallback & Graceful Degradation**
+- [x] 14.1 Haiku-pinned Anthropic client — force `claude-haiku-4-5-20251001` for all Anthropic calls
+- [x] 14.2 `FallbackModelClient` — NVIDIA (45 s) → Haiku (30 s) two-tier call chain
+- [x] 14.3 Graceful degraded domain scoring + `domain_scoring_status` column
+- [x] 14.4 DB migration + ORM model for `domain_scoring_status`
+- [x] 14.5 Frontend `domain_scoring_status` awareness (radar + domain gap badge)
+- [x] 14.6 Render env-var checklist & documentation freeze
+
+**Phase 15 — Three-Tier Provider Chain with Circuit Breaker**
+- [x] 15.1 Three-tier `MultiTierModelClient` — Ultra (10 s) → Lightning (20 s) → Haiku (20 s) → degraded
+- [x] 15.2 In-memory circuit breaker — skip NVIDIA after 5 consecutive failures; 2-minute cooldown
+- [x] 15.3 Reversed chain for `APP_BRAIN_MODEL=ANTHROPIC` — Haiku (10 s) → Ultra (20 s) → Lightning (20 s)
+- [x] 15.4 `.env` + config update — `NVIDIA_MODEL_ID_PRIMARY`, `NVIDIA_MODEL_ID_SECONDARY`, per-tier timeouts
+- [x] 15.5 Graceful degraded response — informative 503 when all three tiers fail
+- [x] 15.6 Documentation freeze — update `docs/MULTI_PROVIDER.md` and `docs/architecture.md`
+
+---
+
+# Phase 14 — Provider Resilience: Haiku Fallback & Graceful Degradation
+
+**Why this phase exists.**  NVIDIA's Nemotron Ultra endpoint has two documented failure modes: (1) slow-but-degraded calls that can hang for 20+ minutes before returning a garbage structured-output response, and (2) hard 400 "DEGRADED function cannot be invoked" errors.  Both leave practitioners staring at a frozen "Saving…" spinner.  The fix is a two-tier fallback chain — NVIDIA primary → Anthropic Haiku secondary — and a mechanical fallback when both providers fail, so the profile lock always completes in under 2 minutes regardless of API health.
+
+**Anthropic model constraint (this deployment).**  All Anthropic calls — whether as primary provider or as fallback — use `claude-haiku-4-5-20251001` exclusively.  No Sonnet, Opus, or Fable calls.  This is non-negotiable for cost control; the owner has a paid Anthropic key and does not want surprise charges.  See `docs/MULTI_PROVIDER.md` for the full model override strategy.
+
+**Preconditions:** Phase 13 Definition of Done is met.
+
+---
+
+### Step 14.1 — Haiku-pinned Anthropic client
+
+**Goal:** all Anthropic API calls — regardless of what model string individual agents carry — are routed to `claude-haiku-4-5-20251001`.  Today agents hardcode `model = "claude-sonnet-5"` as a class attribute; the NVIDIA client already ignores that string and uses its own `_model_id`.  Anthropic must do the same.
+
+**Context to load:** `docs/MULTI_PROVIDER.md`, `backend/app/agents/model_client.py`, `backend/app/agents/base.py`.
+
+**Build:**
+
+1. **`AnthropicModelClient` — add `model_id` parameter** (default `"claude-haiku-4-5-20251001"`):
+   ```python
+   class AnthropicModelClient(BaseModelClient, ModelClient):
+       def __init__(self, api_key: str, model_id: str = "claude-haiku-4-5-20251001") -> None:
+           ...
+           self._model_id = model_id
+   ```
+   `AnthropicMessagesClient.parse()` uses `self._model_id` instead of the `model` arg passed by the agent (identical pattern to `NVIDIAMessagesClient`).
+
+2. **`create_model_client()` factory** — when `APP_BRAIN_MODEL=ANTHROPIC`, instantiate `AnthropicModelClient(api_key=..., model_id="claude-haiku-4-5-20251001")`.  The `model_id` is read from a new `APP_ANTHROPIC_MODEL_ID` setting (default `"claude-haiku-4-5-20251001"`) so it can be overridden in `.env` without a code change.
+
+3. **`effective_model` in `base.py`** — already detects `_model_id` on the client and returns it.  No change needed; `agent_runs.model_used` will automatically show `claude-haiku-4-5-20251001` instead of `claude-sonnet-5`.
+
+4. **Update `docs/MULTI_PROVIDER.md`** — add `APP_ANTHROPIC_MODEL_ID` to the configuration reference; note Haiku constraint.
+
+**Scenario tests:**
+- *Anthropic client uses Haiku model* — Given `APP_BRAIN_MODEL=ANTHROPIC`, when any agent runs with a stub Anthropic client, then `agent_runs.model_used` equals `"claude-haiku-4-5-20251001"`, never `"claude-sonnet-5"`.
+- *`effective_model` reflects actual model* — Given an `AnthropicModelClient` with `model_id="claude-haiku-4-5-20251001"`, when `agent.effective_model` is read, then it returns `"claude-haiku-4-5-20251001"`.
+
+**Definition of done:** all existing scenario tests pass unchanged.  `agent_runs.model_used` shows `claude-haiku-4-5-20251001` for any agent run against an Anthropic client.
+
+---
+
+### Step 14.2 — `FallbackModelClient` — NVIDIA (45 s) → Haiku (30 s) two-tier call chain
+
+**Goal:** when `APP_BRAIN_MODEL=NVIDIA` and `ANTHROPIC_API_KEY` is present, every agent call flows through a two-tier chain: NVIDIA first (45 s hard timeout, 1 attempt), Anthropic Haiku second (30 s hard timeout, 1 attempt), then raises `ProviderUnavailableError` if both fail.  The chain is transparent to agents — they receive a `ModelClient` and call `.parse()` as normal.
+
+**Context to load:** `docs/architecture.md` §Provider Resilience, `backend/app/agents/model_client.py`.
+
+**Build:**
+
+1. **`ProviderUnavailableError`** — new exception in `model_client.py`:
+   ```python
+   class ProviderUnavailableError(RuntimeError):
+       """Raised when every tier of the fallback chain has been exhausted."""
+       def __init__(self, primary_error: BaseException, fallback_error: BaseException | None = None):
+           self.primary_error = primary_error
+           self.fallback_error = fallback_error
+           super().__init__(
+               f"All providers unavailable. Primary: {primary_error}. "
+               f"Fallback: {fallback_error}"
+           )
+   ```
+
+2. **`FallbackModelClient`** — wraps a primary and an optional fallback client:
+   ```python
+   class FallbackModelClient(ModelClient):
+       """Tries primary; on failure tries fallback; raises ProviderUnavailableError if both fail."""
+       def __init__(self, primary: ModelClient, fallback: ModelClient | None = None) -> None:
+           ...
+       async def parse(self, *, model, system, messages, max_tokens, output_format, **kwargs):
+           try:
+               result = await asyncio.wait_for(
+                   self._primary.parse(...), timeout=45.0
+               )
+               self._last_model_used = getattr(self._primary, "_model_id", model)
+               return result
+           except Exception as primary_exc:
+               # log WARNING with primary error
+               if self._fallback is None:
+                   raise ProviderUnavailableError(primary_exc)
+               try:
+                   result = await asyncio.wait_for(
+                       self._fallback.parse(...), timeout=30.0
+                   )
+                   self._last_model_used = getattr(self._fallback, "_model_id", "haiku-fallback")
+                   return result
+               except Exception as fallback_exc:
+                   raise ProviderUnavailableError(primary_exc, fallback_exc)
+   ```
+
+3. **`effective_model` in `base.py`** — detect `FallbackModelClient` and return `_last_model_used` (the tier that actually responded).  Unset before a call = report the primary model ID.
+
+4. **`create_model_client()` factory** — when `APP_BRAIN_MODEL=NVIDIA`:
+   - If `ANTHROPIC_API_KEY` is set → return `FallbackModelClient(primary=NVIDIAModelClient(...), fallback=AnthropicModelClient(api_key=..., model_id="claude-haiku-4-5-20251001"))`
+   - If `ANTHROPIC_API_KEY` not set → return `NVIDIAModelClient(...)` as before (no fallback; degraded path kicks in at the endpoint level in Step 14.3)
+
+5. **Per-tier timeouts on the underlying clients** — `NVIDIAModelClient` keeps `timeout=45.0` on the `AsyncOpenAI` client (set in Phase 13 bug fix).  `AnthropicModelClient` gets `timeout=30.0` on the `AsyncAnthropic` client.  The `wait_for` in `FallbackModelClient` is a belt-and-suspenders guard on top.
+
+6. **Remove exponential-backoff retries on the primary** — set `NVIDIAModelClient._transient_errors = ()` (empty tuple).  With the fallback chain, retrying a slow NVIDIA call wastes time the Haiku fallback could already be using.  One attempt per tier; if it fails, move on.
+
+**Scenario tests (stub clients):**
+- *Primary succeeds* — Given a `FallbackModelClient` where primary returns a valid response, when `.parse()` is called, then result equals primary's response and `_last_model_used` equals primary model ID.
+- *Primary fails → fallback succeeds* — Given primary raises `openai.APITimeoutError` and fallback returns a valid response, when `.parse()` is called, then result equals fallback's response, `_last_model_used` equals `"claude-haiku-4-5-20251001"`, and a WARNING is logged naming the primary failure.
+- *Both fail → ProviderUnavailableError* — Given both primary and fallback raise exceptions, when `.parse()` is called, then `ProviderUnavailableError` is raised containing both errors.
+
+**Definition of done:** all three scenario tests green.  `agent_runs.model_used` shows correct tier.  No existing scenario tests broken.
+
+---
+
+### Step 14.3 — Graceful degraded domain scoring
+
+**Goal:** when both providers fail during profile lock (i.e., `ProviderUnavailableError` is raised by the Domain Scorer call), the profile still locks cleanly.  Domain scores are estimated mechanically from self-assessment signal strengths (no LLM), and the profile is flagged so the frontend can show a "Scores estimated" badge.  The practitioner is never left with a spinner.
+
+**Context to load:** `backend/app/api/routes/profiles.py` (the `upsert_skill_assessments` endpoint), `docs/data-model.md` §`certification_domain_scores`.
+
+**Mechanical scoring formula (no LLM):**
+
+For each certification domain in the profile's locked version:
+1. Collect all `profile_skill_assessments` for this profile (skill_name → signal_strength 0–1).
+2. If `agent_discovered` certification_skills rows exist for the cert with a `certification_domain_id` matching this domain → average their signal strengths.  Otherwise → average all assessments (domain-agnostic fallback).
+3. Cap the result at 0.5 (same confidence cap as the LLM-derived `self_assessment_estimate`).
+4. Write to `certification_domain_scores` with `source = 'degraded_estimate'` and `confidence = 0.3`.
+5. Set `practitioner_profiles.domain_scoring_status = 'degraded'`.
+
+**Build:**
+
+1. **Wrap the Domain Scorer call** in `upsert_skill_assessments`:
+   ```python
+   try:
+       scorer_output = await scorer.run(scorer_input)
+       # ... persist LLM scores as today ...
+       profile.domain_scoring_status = "lm_scored"
+   except ProviderUnavailableError:
+       _compute_degraded_domain_scores(profile, cert_domains, skill_assessments, db)
+       profile.domain_scoring_status = "degraded"
+       logger.warning("Domain Scorer unavailable — using mechanical estimate for profile %s", profile.id)
+   ```
+
+2. **`_compute_degraded_domain_scores()`** — pure-Python helper in `profiles.py`; no DB writes other than via the passed `db` session.
+
+3. **`certification_domain_scores.source`** gains a new valid value: `'degraded_estimate'`.  Add to the check constraint in the next migration (Step 14.4).
+
+4. **CertSkillMapper hook (Phase 13.3)** — already has a try/except + `asyncio.wait_for(timeout=60)`.  No change needed; it silently skips if both providers fail, using seed skills.  The 60 s timeout stays.
+
+**Scenario tests:**
+- *Domain Scorer succeeds* — Given both providers healthy, when `upsert_skill_assessments` runs, then `profile.domain_scoring_status = 'lm_scored'` and all `certification_domain_scores` have `source = 'self_assessment_estimate'` or `'quiz_derived'`.
+- *Both providers fail* — Given Domain Scorer raises `ProviderUnavailableError`, when `upsert_skill_assessments` runs, then profile is still locked (`is_locked = True`), `domain_scoring_status = 'degraded'`, `certification_domain_scores` rows exist with `source = 'degraded_estimate'` and `mastery_score ≤ 0.5`, and no exception propagates to the HTTP layer (returns 200).
+
+**Definition of done:** both scenario tests green.  Manual test: comment out `ANTHROPIC_API_KEY` and set a dummy `NVIDIA_API_KEY`, hit the skill-assessments endpoint, confirm the profile locks and the response is 200 with degraded status.
+
+---
+
+### Step 14.4 — DB migration + ORM model for `domain_scoring_status`
+
+**Goal:** add the `domain_scoring_status` column to `practitioner_profiles` in the database, update the ORM model, and tighten the `certification_domain_scores.source` check constraint to include `'degraded_estimate'`.
+
+**Context to load:** `backend/alembic/versions/` (latest is `017`), `backend/app/db/models.py`.
+
+**Build:**
+
+1. **Migration `018_domain_scoring_status.py`**:
+   - `ALTER TABLE practitioner_profiles ADD COLUMN domain_scoring_status TEXT NOT NULL DEFAULT 'pending'`
+   - `ADD CONSTRAINT ck_domain_scoring_status CHECK (domain_scoring_status IN ('pending', 'lm_scored', 'degraded'))`
+   - Drop and re-add the `ck_certification_domain_scores_source` constraint (if it exists) to add `'degraded_estimate'` as a valid value.
+   - Run `alembic upgrade head` immediately.
+
+2. **`PractitionerProfile` ORM model** — add:
+   ```python
+   domain_scoring_status: Mapped[str] = mapped_column(
+       sa.String(50), nullable=False, server_default="pending", default="pending"
+   )
+   ```
+
+3. **Expose in profile API response** — add `domain_scoring_status: str` to the profile schema returned by `GET /practitioners/{id}/profiles` and the `upsert_skill_assessments` response.
+
+**Scenario tests:**
+- *Migration is idempotent* — Given `alembic upgrade head` runs twice, the second run makes no changes.
+- *Default is `pending`* — Given a profile created before Step 14.3 logic runs (i.e., before the Domain Scorer fires), `domain_scoring_status` defaults to `'pending'`.
+
+**Definition of done:** migration applied locally; both scenario tests green; profile API response includes `domain_scoring_status`.
+
+---
+
+### Step 14.5 — Frontend `domain_scoring_status` awareness
+
+**Goal:** the radar and domain gap chart communicate scoring quality to the practitioner.  Three states need distinct UI treatment:
+
+| Status | Radar / Gap chart display |
+|---|---|
+| `lm_scored` | Normal — no badge |
+| `degraded` | Amber badge: "⚠️ Scores estimated — take quizzes to refine" below the radar |
+| `pending` | Grey badge: "Scoring in progress…" (should be very rare after Step 14.3) |
+
+**Context to load:** `frontend/src/components/SkillRadar/SkillRadar.tsx`, `frontend/src/api/types.ts`.
+
+**Build:**
+
+1. **Update TypeScript profile type** — add `domain_scoring_status: 'pending' | 'lm_scored' | 'degraded'` to the `PractitionerProfile` interface in `frontend/src/api/types.ts`.
+
+2. **`ScoringStatusBadge` component** — small inline component (can live at the bottom of `SkillRadar.tsx`):
+   ```tsx
+   function ScoringStatusBadge({ status }: { status: string }) {
+     if (status === 'lm_scored') return null;
+     if (status === 'degraded') return (
+       <div style={{ color: '#b45309', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+         ⚠️ Scores estimated from self-assessment — take quizzes to refine
+       </div>
+     );
+     return (
+       <div style={{ color: '#6b7280', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+         ⏳ Scoring in progress…
+       </div>
+     );
+   }
+   ```
+
+3. **Wire into `SkillRadar`** — pass `domain_scoring_status` from the profile data down to the radar and render `<ScoringStatusBadge />` below the `<DomainLegend />`.
+
+4. **Domain gap chart** — same badge, placed below the chart if `domain_scoring_status !== 'lm_scored'`.
+
+**Scenario tests:** none (frontend component — covered by visual inspection in the Definition of Done).
+
+**Definition of done:** run the app locally with a degraded profile (created in Step 14.3's manual test), confirm the amber badge appears on both radar and domain gap chart.  `lm_scored` profiles show neither badge.
+
+---
+
+### Step 14.6 — Render env-var checklist & documentation freeze
+
+**Goal:** every environment variable the production deployment needs is documented in one place, and the three affected docs are updated to reflect the Phase 14 architecture.
+
+**Context to load:** `docs/MULTI_PROVIDER.md`, `docs/architecture.md`.
+
+**Build (documentation only — no code):**
+
+1. **`docs/MULTI_PROVIDER.md`** — add:
+   - Fallback chain section explaining NVIDIA → Haiku → degraded.
+   - `APP_ANTHROPIC_MODEL_ID` to the configuration reference table (default `claude-haiku-4-5-20251001`).
+   - **Render production env-var checklist** — the specific variables that must be set in the Render dashboard before the first deploy:
+
+   | Variable | Value | Notes |
+   |---|---|---|
+   | `APP_BRAIN_MODEL` | `NVIDIA` | Primary provider |
+   | `NVIDIA_API_KEY` | `nvapi-...` | From NVIDIA NIM dashboard |
+   | `NVIDIA_MODEL_ID` | `nvidia/nemotron-3-ultra-550b-a55b` | Or latest Nemotron Ultra |
+   | `NVIDIA_BASE_URL` | `https://integrate.api.nvidia.com/v1` | Default; only override if endpoint changes |
+   | `ANTHROPIC_API_KEY` | `sk-ant-...` | **Required for Haiku fallback** — without this, provider failure degrades directly to mechanical scores |
+   | `APP_ANTHROPIC_MODEL_ID` | `claude-haiku-4-5-20251001` | Haiku only — do not change to Sonnet/Opus |
+   | `DATABASE_URL` | (Supabase connection string) | |
+   | `SECRET_KEY` | (random 32-byte hex) | |
+
+2. **`docs/architecture.md`** — add §Provider Resilience section (see design in this doc).
+
+3. **`docs/data-model.md`** — add `domain_scoring_status` to the `practitioner_profiles` table description.
+
+4. **`docs/MULTI_PROVIDER.md`** — update verification checklist to include fallback scenarios.
+
+**Definition of done:** all four docs updated.  No code changes.  Running `/doctor` (if available) or a manual review confirms no doc is out of sync with the implementation.
+
+---
+
+# Phase 15 — Three-Tier Provider Chain with Circuit Breaker
+
+**Why this phase exists.**  Phase 14's two-tier chain (NVIDIA Ultra → Haiku) solved the "stuck spinner" problem but left two gaps.  First, a 45-second NVIDIA timeout makes interactive quiz answers painfully slow when Ultra is degraded.  Second, the chain has no memory — it pays the full timeout cost on *every* request even when NVIDIA has been continuously failing for minutes.  Phase 15 replaces the two-tier `FallbackModelClient` with a three-tier `MultiTierModelClient` and adds an in-memory circuit breaker that eliminates the repeated timeout cost during sustained outages.
+
+**Model assignments:**
+
+| Tier | Model | Purpose |
+|---|---|---|
+| Ultra | `nvidia/nemotron-3-ultra-550b-a55b` | Highest quality; tried first in NVIDIA-primary mode |
+| Lightning | `nvidia/nemotron-3.5-lightning-30b-a3b` | Faster, lighter; fallback within NVIDIA estate |
+| Haiku | `claude-haiku-4-5-20251001` | Cost-controlled Anthropic fallback; always Haiku, never Sonnet/Opus |
+
+**Both NVIDIA models are free-tier endpoints** (no per-token cost) — using both is additive value, not additive cost.  Anthropic Haiku is billed; it is always the last resort.
+
+**Preconditions:** Phase 14 Definition of Done is met.
+
+---
+
+### Step 15.1 — Three-tier `MultiTierModelClient`
+
+**Goal:** replace `FallbackModelClient` (2 tiers) with `MultiTierModelClient` (3 tiers).  Each tier has its own timeout.  A tier's failure (timeout *or* any exception) immediately hands off to the next tier — no retry within a tier.
+
+**Context to load:** `backend/app/agents/model_client.py`, `docs/MULTI_PROVIDER.md`.
+
+**Call chain when `APP_BRAIN_MODEL=NVIDIA`:**
+
+```
+Tier 1 — NVIDIAModelClient(Ultra)       10 s timeout, 1 attempt
+  ↓ any failure
+Tier 2 — NVIDIAModelClient(Lightning)   20 s timeout, 1 attempt
+  ↓ any failure
+Tier 3 — AnthropicModelClient(Haiku)    20 s timeout, 1 attempt
+  ↓ any failure
+AllProvidersUnavailableError raised
+```
+
+**Max wall time (all fail):** 10 + 20 + 20 = 50 s.
+
+**Build:**
+
+1. **`MultiTierModelClient`** — new class in `model_client.py`; replaces `FallbackModelClient` entirely.  Accepts a `tiers: list[tuple[ModelClient, float]]` — each element is `(client, timeout_seconds)`.  `parse()` iterates the list: on success, sets `_last_model_used` and returns; on failure, logs a WARNING with the tier's model ID and the error, then tries the next tier; if all tiers exhaust, raises `AllProvidersUnavailableError(errors: list[Exception])`.
+
+2. **`AllProvidersUnavailableError(RuntimeError)`** — replaces `ProviderUnavailableError`.  Carries `errors: list[Exception]` (one per tier that failed).  `ProviderUnavailableError` is kept as an alias for one release cycle to avoid breaking any catch sites.
+
+3. **`Agent.effective_model`** — update to detect `MultiTierModelClient` the same way it currently detects `FallbackModelClient` (via `_last_model_used`).
+
+4. **`create_model_client()` factory** — updated in Step 15.4.
+
+**Scenario tests:**
+- *Tier 1 succeeds* — `_last_model_used` = Ultra model ID; Tier 2 and 3 never called.
+- *Tier 1 times out, Tier 2 succeeds* — Ultra WARNING logged; `_last_model_used` = Lightning ID.
+- *Tier 1 and 2 fail, Tier 3 succeeds* — two WARNINGs logged; `_last_model_used` = Haiku ID.
+- *All three fail* — `AllProvidersUnavailableError` raised with 3 errors.
+- *Timeout is respected* — asyncio mock confirms each tier's `wait_for` uses the correct timeout.
+
+**Definition of done:** 5 scenario tests green; `FallbackModelClient` is superseded (kept as stub for backward compat with existing tests until 15.4 cleans up).
+
+---
+
+### Step 15.2 — In-memory circuit breaker
+
+**Goal:** after 5 consecutive failures on *both* NVIDIA tiers together, skip NVIDIA for a 2-minute cooldown window.  All calls in that window go straight to Haiku.  After the window expires the chain resets and tries Ultra first again.
+
+**Context to load:** `backend/app/agents/model_client.py`.
+
+**Design:**
+
+```
+NvidiaCircuitBreaker (module-level singleton in model_client.py)
+├── consecutive_failures: int    — increments on each call where BOTH NVIDIA tiers fail
+├── open_until: float | None     — time.monotonic() deadline; None = breaker closed
+├── threshold: int               — default 5 (env: NVIDIA_CIRCUIT_BREAKER_THRESHOLD)
+└── cooldown_seconds: float      — default 120 (env: NVIDIA_CIRCUIT_BREAKER_COOLDOWN_SECS)
+```
+
+**Integration with `MultiTierModelClient`:**
+
+- On each `parse()` call, before iterating tiers, check if the circuit breaker is open (`open_until` is set and `time.monotonic() < open_until`).
+- If open → skip NVIDIA tiers entirely; start at Haiku.  Log INFO: "NVIDIA circuit breaker open — routing directly to Haiku (resets at HH:MM:SS)."
+- If closed → run the full chain as normal.
+- After a call where tiers 1 *and* 2 both failed: `consecutive_failures += 1`.  If it reaches `threshold`, set `open_until = now + cooldown_seconds` and log WARNING: "NVIDIA circuit breaker tripped after N consecutive failures — entering 2-min cooldown."
+- After a call where at least one NVIDIA tier succeeds: `consecutive_failures = 0`.
+- When `open_until` is set and `time.monotonic() >= open_until`: reset `open_until = None`, `consecutive_failures = 0`, log INFO: "NVIDIA circuit breaker reset — resuming normal tier chain."
+
+**Module-level singleton (not DB, not Redis):** the breaker lives in process memory.  It resets on server restart, which is acceptable — a restart is a deliberate intervention and usually resolves transient outages.  With `--reload` (dev), each file-change restart also resets it, which is correct.
+
+**Scenario tests:**
+- *4 consecutive NVIDIA failures → breaker stays closed.*
+- *5th failure → breaker opens; next call skips to Haiku.*
+- *NVIDIA succeeds on a call → counter resets to 0.*
+- *After cooldown expires → next call retries Ultra first.*
+- *Breaker open + Haiku succeeds → `_last_model_used` = Haiku; call logged normally.*
+
+**Definition of done:** 5 scenario tests green; breaker state visible in INFO logs.
+
+---
+
+### Step 15.3 — Reversed chain for `APP_BRAIN_MODEL=ANTHROPIC`
+
+**Goal:** when the operator sets `APP_BRAIN_MODEL=ANTHROPIC`, the chain is the mirror image — Haiku first, then NVIDIA Ultra, then NVIDIA Lightning.  Ultra is preferred over Lightning as the first NVIDIA fallback because it produces higher-quality output; Lightning is the last resort within the NVIDIA estate.  The same `MultiTierModelClient` is used; only the tier order passed by the factory changes.
+
+**Call chain when `APP_BRAIN_MODEL=ANTHROPIC`:**
+
+```
+Tier 1 — AnthropicModelClient(Haiku)    10 s timeout, 1 attempt
+  ↓ any failure
+Tier 2 — NVIDIAModelClient(Ultra)       20 s timeout, 1 attempt
+  ↓ any failure
+Tier 3 — NVIDIAModelClient(Lightning)   20 s timeout, 1 attempt
+  ↓ any failure
+AllProvidersUnavailableError raised
+```
+
+**Circuit breaker in ANTHROPIC mode:** the same `NvidiaCircuitBreaker` is *not* active when `APP_BRAIN_MODEL=ANTHROPIC` — NVIDIA is already the fallback, not the primary, and its failures don't justify skipping it (only its success is a bonus).  The circuit breaker only protects the NVIDIA-primary path.
+
+**Scenario tests:**
+- *ANTHROPIC mode, Haiku succeeds* — Tier 2 and 3 never called; `_last_model_used` = Haiku.
+- *ANTHROPIC mode, Haiku fails, Ultra succeeds* — Haiku WARNING; `_last_model_used` = Ultra.
+- *ANTHROPIC mode, all fail* — `AllProvidersUnavailableError`.
+
+**Definition of done:** 3 scenario tests green; factory produces correct tier order.
+
+---
+
+### Step 15.4 — `.env` + config update
+
+**Goal:** replace the single `NVIDIA_MODEL_ID` env var with `NVIDIA_MODEL_ID_PRIMARY` and `NVIDIA_MODEL_ID_SECONDARY`.  Add per-tier timeout vars and circuit-breaker threshold/cooldown vars.  Update `config.py`, `create_model_client()`, `.env`, and Render checklist.
+
+**Context to load:** `backend/app/config.py`, `backend/app/agents/model_client.py`, `docs/MULTI_PROVIDER.md`.
+
+**New env vars:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `NVIDIA_MODEL_ID_PRIMARY` | `nvidia/nemotron-3-ultra-550b-a55b` | Tier 1 NVIDIA model (Ultra) |
+| `NVIDIA_MODEL_ID_SECONDARY` | `nvidia/nemotron-3.5-lightning-30b-a3b` | Tier 2 NVIDIA model (Lightning) |
+| `NVIDIA_TIER1_TIMEOUT_SECS` | `10` | Hard timeout for Ultra (or Haiku in ANTHROPIC mode) |
+| `NVIDIA_TIER2_TIMEOUT_SECS` | `20` | Hard timeout for Lightning |
+| `ANTHROPIC_TIER_TIMEOUT_SECS` | `20` | Hard timeout for Haiku (any position in chain) |
+| `NVIDIA_CIRCUIT_BREAKER_THRESHOLD` | `5` | Consecutive NVIDIA-only failures before cooldown |
+| `NVIDIA_CIRCUIT_BREAKER_COOLDOWN_SECS` | `120` | Cooldown duration in seconds |
+
+**Deprecate:** `NVIDIA_MODEL_ID` is removed.  Any `.env` that still has it should migrate to `NVIDIA_MODEL_ID_PRIMARY`.
+
+**Build:**
+1. Add fields to `Settings` in `config.py`.
+2. Update `create_model_client()` to build `MultiTierModelClient` with the correct tier list and timeouts for both `NVIDIA` and `ANTHROPIC` modes.
+3. Update `.env` (project root) with the new variable names.
+4. Update `docs/MULTI_PROVIDER.md` Render checklist (Step 15.6).
+
+**Scenario tests:**
+- *Settings load all new vars with defaults.* — validates `Settings()` with no env overrides.
+- *Factory produces 3-tier NVIDIA chain.* — tier order and timeouts match config.
+- *Factory produces 3-tier ANTHROPIC chain.* — Haiku first, then Ultra, then Lightning.
+
+**Definition of done:** 3 scenario tests green; `.env` updated; no references to `NVIDIA_MODEL_ID` (singular) remain in code or config.
+
+---
+
+### Step 15.5 — Graceful degraded response when all tiers fail
+
+**Goal:** when `AllProvidersUnavailableError` reaches an endpoint, return HTTP 503 with a structured, human-readable error body rather than a 500.  The body tells the practitioner what happened and what to do.
+
+**Context to load:** `backend/app/api/routes/profiles.py`, `backend/app/main.py`.
+
+**Build:**
+
+1. **Global exception handler** in `main.py` — catch `AllProvidersUnavailableError` (alongside the existing `RequestValidationError` handler); return:
+   ```json
+   {
+     "error": "all_providers_unavailable",
+     "message": "Our AI services are temporarily unavailable. Your progress is saved — please try again in a few minutes.",
+     "retry_after_seconds": 120
+   }
+   ```
+   HTTP 503 with `Retry-After: 120` header.
+
+2. **Profile lock endpoint** — already catches `ProviderUnavailableError` (now `AllProvidersUnavailableError`) for domain scoring.  Keep the mechanical degraded-scoring fallback for that specific call; the 503 handler is for all *other* endpoints where there is no mechanical fallback (grader, quiz batch generator, etc.).
+
+3. **Frontend** — add a global API error handler that detects `error: "all_providers_unavailable"` from any API call and shows a toast/banner: "⏳ AI services are temporarily busy — please retry in a moment." with a Retry button.
+
+**Scenario tests:**
+- *`AllProvidersUnavailableError` from grader → 503 with correct body.*
+- *`AllProvidersUnavailableError` from quiz batch → 503.*
+- *`AllProvidersUnavailableError` from domain scorer → 200 with degraded scores (mechanical fallback still wins for this specific path).*
+
+**Definition of done:** 3 scenario tests green; manual test confirms the toast appears in the frontend when all providers are stubbed to fail.
+
+---
+
+### Step 15.6 — Documentation freeze
+
+**Goal:** update `docs/MULTI_PROVIDER.md` and `docs/architecture.md` to reflect the Phase 15 architecture.  No code changes.
+
+**Context to load:** `docs/MULTI_PROVIDER.md`, `docs/architecture.md`.
+
+**Build (documentation only):**
+
+1. **`docs/MULTI_PROVIDER.md`** — replace the Phase 14 "Fallback Chain" section with the Phase 15 three-tier chain diagram; update the config reference table with all new env vars; update the Render checklist; add Circuit Breaker behaviour section.
+
+2. **`docs/architecture.md`** — update §Provider Resilience to describe `MultiTierModelClient`, the three-tier chain, and the circuit breaker.
+
+**Definition of done:** both docs match the implementation.  Running the scenario tests from Steps 15.1–15.5 confirms no doc is out of sync.
+
 ---
 
 # Phase 0 — Foundations
@@ -2312,3 +2800,378 @@ per-skill loading skeleton when a new single question is being generated.
 triggers exactly one batch call; all skill tabs are populated when it returns; a Retry
 button appears on network failure; revisiting the tab (items already in DB) renders
 immediately with no loading screen.
+
+---
+
+
+# Phase 13 — Dynamic Cert Skill Discovery & Domain-Weighted Radar
+
+## Design rationale
+
+### Why cert skills cannot be seeded
+
+The five skills currently seeded for CCAR-P (`Orchestration Patterns`, `Agent Observability`,
+`MCP Servers`, `Model Deployment`, `Monitoring & Drift Detection`) reflect a point-in-time
+interpretation of the exam blueprint, not the authoritative blueprint text.  Three structural
+problems make this approach unsustainable:
+
+1. **Staleness.** Anthropic, AWS, and other providers revise exam content quarterly to yearly.
+   Skill weights and knowledge areas shift between versions; a seed file can only capture a
+   snapshot.  There is no practical way to keep it fresh without agent-driven discovery.
+2. **Sparseness.** Five skills for five domains is a 1:1 mapping.  An official exam blueprint
+   describes each domain through three to five distinct knowledge areas.  Ten to twelve skills
+   covering all domains gives the Curriculum Planner enough signal to build a differentiated,
+   exam-representative learning path and gives practitioners meaningful skill-level visibility
+   into each domain — not just domain-level aggregates.
+3. **Catalog pollution.** The Curriculum Planner draws from the full `skills` catalog, which
+   contains generic foundational skills shared across all certs (Prompt Engineering, AI
+   Foundations, etc.).  Without a clear cert-specific skill set, the planner pads paths with
+   generic skills that don't move exam-domain readiness scores — producing the "all SUPP" tabs
+   observed before Phase 12.3.
+
+### The fix: research at cert selection time
+
+A **CertSkillMapperAgent** runs web search against the certification's current exam guide and
+returns 10–12 overarching skills that collectively cover all exam domains.  Each skill is linked
+to the domain it primarily belongs to, inheriting that domain's weight.  Skills are cached per
+certification × domain-version in `certification_skills` — one agent call serves every practitioner
+targeting that cert under that domain version.
+
+The result replaces the sparse, seed-only skill set with a current, comprehensive, domain-aligned
+one without requiring a code change or redeploy when a cert provider revises their blueprint.
+
+### Why domain-colored radar nodes
+
+Currently radar nodes are monochrome — a practitioner cannot tell at a glance which skills are
+exam-critical vs. supplementary, or which domains carry the most weight.  Coloring nodes by domain
+weight communicates priority visually: a skill belonging to the 25% domain gets a more intense
+color than one in the 15% domain.  A tooltip surfaces the domain name and weight on hover.
+Supplementary (non-cert) skills remain neutral grey — clearly secondary without being hidden.
+
+### 80/20 quiz split
+
+The curriculum planner's `supp_max` formula (`max(1, round(len(cert_skills) × 0.2))`) already
+enforces the structural constraint.  With 10–12 cert skills, `supp_max` yields 2 supplementary
+slots — 10/(10+2) = 83%, 12/(12+2) = 86% — both above the 80% floor.  Phase 13 makes the floor
+explicit and auditable: the QuizBatchGeneratorAgent logs the cert/supp ratio on every call and
+warns (without blocking) if it falls below 80%, so any regression in path composition is visible
+in the observability dashboard.
+
+---
+
+### Step 13.1 — DB schema: extend `certification_skills` with domain linkage and source provenance
+
+**Goal:** every `certification_skills` row knows which exam domain the skill primarily belongs to
+and whether it was seeded manually or discovered by the agent.
+
+**Preconditions:** 12.3.
+**Context to load:** `docs/data-model.md`, `backend/app/db/models.py`, latest Alembic migration.
+
+**Build:**
+
+*New Alembic migration:*
+- `certification_skills.certification_domain_id` (FK → `certification_domains`, nullable ON DELETE
+  SET NULL) — the exam domain this skill primarily maps to within the cert.  Null for seed rows
+  that predate Phase 13; always populated for agent-discovered rows.
+- `certification_skills.source` (text, NOT NULL, `server_default='seed'`) — provenance:
+  `'seed'` for bootstrap data written in migrations/seed files; `'agent_discovered'` for rows
+  written by CertSkillMapperAgent.
+
+*SQLAlchemy model (`CertificationSkill`):*
+- Add `certification_domain_id: Mapped[str | None]` with FK to `certification_domains`.
+- Add `source: Mapped[str]` with `server_default="seed"`.
+
+Run `alembic upgrade head` immediately after writing the migration.
+
+**Definition of done:** `py -m pytest` green; migration applies cleanly; `CertificationSkill`
+model has both new fields; existing seed rows have `source = 'seed'` and
+`certification_domain_id = NULL`.
+
+---
+
+### Step 13.2 — CertSkillMapperAgent 👤
+
+**Goal:** an agent that web-searches the certification's current exam guide and returns 10–12
+overarching skills aligned to the cert's official exam domains.  Skills are upserted into
+`certification_skills` (and `skills` if new) with domain linkage and `source='agent_discovered'`.
+
+**Preconditions:** 13.1.
+**Context to load:** `backend/app/agents/base.py`,
+`backend/app/agents/cert_domain_discovery.py` (web-search pattern),
+`backend/app/db/models.py`, `docs/architecture.md`.
+
+**Build:**
+
+*Agent (`backend/app/agents/cert_skill_mapper.py`):*
+
+Input:
+```python
+class CertSkillMapperInput(BaseModel):
+    cert_code: str                       # e.g. "CCAR-P"
+    cert_name: str                       # e.g. "Claude Certified Architect – Professional"
+    cert_external_url: str | None        # official exam guide URL if known
+    domains: list[CertSkillMapperDomain]
+
+class CertSkillMapperDomain(BaseModel):
+    domain_id: str
+    domain_name: str
+    domain_description: str
+    weight_pct: float                    # e.g. 25.0 for the 25% domain
+```
+
+Output:
+```python
+class CertSkillMapperOutput(BaseModel):
+    cert_code: str
+    skills: list[DiscoveredCertSkill]    # 10–12 items
+    source_notes: str                    # URLs consulted, confidence notes, date verified
+    confidence: str                      # "high" | "medium" | "low"
+
+class DiscoveredCertSkill(BaseModel):
+    skill_name: str
+    skill_description: str               # 1-2 sentences; what a practitioner must know/do
+    primary_domain_id: str               # must match one of the input domain_ids
+    weight: float                        # 0.0–1.0; prominence within that domain
+    rationale: str                       # one sentence: why this skill for this cert/domain
+```
+
+Prompt file: `backend/app/agents/prompts/cert_skill_mapper.md`
+
+Prompt contract (exact wording is the 👤 task — see `docs/human-in-the-loop.md`):
+- Search for "[cert_name] exam guide", "[cert_code] exam blueprint", "[cert_name] official
+  certification topics".  Prefer the cert provider's official page over third-party study sites.
+- Return exactly 10–12 skills; fewer only when evidence is genuinely insufficient
+  (set `confidence = "low"` and explain).  Never invent skills not supported by evidence.
+- Map each skill to exactly one of the provided domain IDs (primary domain).
+- Weight each skill 0.3–1.0 based on its prominence in the exam guide.
+- Name skills at the right granularity: not too broad ("AI Systems"), not too narrow
+  ("Implementing a timeout on tool call retries").  Aim for knowledge areas a practitioner
+  can train on and a quiz can test.
+- If the exam guide cannot be found, set `confidence = "low"`, name what was found and what
+  was not, and still provide the best-effort skill list from the domain descriptions provided.
+
+*Skill upsert service (`backend/app/services/cert_skill_mapper_service.py`):*
+```python
+async def persist_cert_skill_mapping(
+    cert_id: str,
+    agent_run_id: str,
+    output: CertSkillMapperOutput,
+    db: AsyncSession,
+) -> dict:
+    # 1. Resolve or create each skill in `skills` table (match by name, case-insensitive).
+    # 2. Delete existing agent_discovered rows for this cert (keeps seed rows intact).
+    # 3. Insert new CertificationSkill rows:
+    #    source='agent_discovered', certification_domain_id set, weight from output.
+    # 4. Return {skills_created, skills_matched, confidence}.
+```
+
+*Admin endpoint:*
+`POST /admin/certs/{cert_id}/discover-skills`
+- Fetches current domain version for the cert; builds `CertSkillMapperInput`.
+- Calls CertSkillMapperAgent.
+- Persists results via `persist_cert_skill_mapping`.
+- Returns `{skills_created, skills_matched, source_notes, confidence}`.
+
+*Scenario tests:*
+```
+Scenario: Agent maps 10 discovered skills to cert domains
+  Given a cert with 5 domains and a stub CertSkillMapper response of 10 skills
+  When POST /admin/certs/{cert_id}/discover-skills is called
+  Then 10 certification_skills rows exist with source='agent_discovered'
+    and each row has a non-null certification_domain_id matching one of the cert's domains
+    and the skills table has rows for each discovered skill name
+
+Scenario: Re-running discovery replaces previous agent_discovered skills
+  Given 10 existing agent_discovered skills for a cert
+  When POST /admin/certs/{cert_id}/discover-skills is called again with a 12-skill response
+  Then exactly 12 agent_discovered rows exist (old 10 replaced)
+    and seed rows (source='seed') are untouched
+```
+
+**Definition of done:** 👤 `agents/prompts/cert_skill_mapper.md` written (prompt, confidence
+vocabulary, failure-mode instructions); scenario tests green; admin endpoint returns correct
+skill count and source notes; CCAR-P discovery returns 10–12 meaningful skills in a live test.
+
+---
+
+### Step 13.3 — Profile creation hook: trigger skill mapping at profile lock time
+
+**Goal:** when a practitioner locks their profile, the system ensures CertSkillMapperAgent has
+run for that cert.  If not, it runs (with a 60 s timeout) before returning — so the first
+`generate_learning_path` call always operates on the full 10–12-skill set.
+
+**Preconditions:** 13.2.
+**Context to load:** `backend/app/api/routes/profiles.py`,
+`backend/app/workflows/generate_learning_path.py`, `backend/app/db/models.py`.
+
+**Build:**
+
+*Profile lock endpoint:*
+
+After the existing Domain Scorer Agent call, add:
+```python
+# Phase 13.3: ensure cert has agent-discovered skills before path generation.
+from sqlalchemy import func as sql_func
+skill_count_result = await db.execute(
+    select(sql_func.count()).select_from(CertificationSkill).where(
+        CertificationSkill.certification_id == profile.certification_id,
+        CertificationSkill.source == "agent_discovered",
+    )
+)
+if skill_count_result.scalar() == 0:
+    try:
+        await asyncio.wait_for(
+            run_cert_skill_mapping(profile.certification_id, db, claude_client),
+            timeout=60.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "CertSkillMapper timed out for cert %s — using seed skills for first path",
+            profile.certification_id,
+        )
+```
+
+*`generate_learning_path.py`:*
+
+When resolving `cert_goal_context`, prefer `agent_discovered` certification_skills rows; fall
+back to `seed` rows if none exist.  Add a `selectinload` filter or a second query:
+```python
+# Prefer agent_discovered skills; fall back to seed if none.
+cert_skills_query = select(CertificationSkill).where(
+    CertificationSkill.certification_id == cert.id,
+    CertificationSkill.source == "agent_discovered",
+)
+discovered = (await db.execute(cert_skills_query)).scalars().all()
+cert_skills_to_use = discovered if discovered else cert.certification_skills
+```
+
+**Scenario test:**
+```
+Scenario: Profile lock triggers skill mapping when no agent-discovered skills exist
+  Given a practitioner with a profile targeting CCAR-P
+    and 0 agent_discovered certification_skills for CCAR-P
+    and a stub CertSkillMapper response of 10 skills
+  When POST /profiles/{id}/lock is called
+  Then 10 certification_skills rows exist with source='agent_discovered'
+    and the lock response returns HTTP 200
+
+Scenario: Profile lock skips skill mapping when agent_discovered skills already exist
+  Given 10 existing agent_discovered skills for CCAR-P
+  When POST /profiles/{id}/lock is called
+  Then no additional CertSkillMapper agent_runs row is created
+```
+
+**Definition of done:** `py -m pytest` green; profile lock calls the mapper when needed; a
+60 s timeout does not fail the lock; `generate_learning_path` prefers agent-discovered skills.
+
+---
+
+### Step 13.4 — Domain-weighted Skill Radar
+
+**Goal:** radar nodes are colored by the weight of the exam domain they primarily belong to.
+High-weight domains show intense, saturated color; lower-weight domains show lighter variants.
+Supplementary skills (no domain) use neutral grey.  A domain legend appears below the radar.
+
+**Preconditions:** 13.3.
+**Context to load:** `backend/app/api/routes/skill_radar.py` (or whichever route serves
+skill-profile snapshots), `frontend/src/components/SkillRadar/SkillRadar.tsx`.
+
+**Build:**
+
+*Backend — enrich snapshot response:*
+
+Add per-skill domain fields to the snapshot list response:
+```json
+{
+  "skills": [
+    {
+      "skill_id": "...",
+      "skill_name": "...",
+      "mastery_score": 0.62,
+      "certification_domain_id": "...",
+      "certification_domain_name": "Advanced Agentic Systems at Scale",
+      "domain_weight_pct": 25.0
+    }
+  ]
+}
+```
+
+Implementation: join `CertificationSkill` (source='agent_discovered' preferred, then 'seed')
+→ `CertificationDomain` when the active profile has a `certification_id`.  Null domain fields
+for supplementary skills.
+
+*Frontend — domain-weight color scale:*
+
+- Collect distinct domains with their `domain_weight_pct`, sort descending by weight.
+- Assign each domain a sequential blue hue scaled by weight rank (highest weight → darkest
+  blue `#1a56db`, lowest → muted `#93c5fd`).
+- Supplementary skills (null domain) → neutral grey `#9ca3af`.
+- Apply the color to the radar polygon vertex fill and the tab pill in the Quiz Runner.
+- Domain legend below the radar: one row per domain — color swatch, domain name, weight %.
+- Tooltip on node hover: `"<skill_name> — <domain_name> (<weight>%)"`.
+
+When no agent-discovered skills exist for the cert (pre-13.2 or mapper hasn't run yet):
+radar remains monochrome — no broken UI.
+
+**Definition of done:** `npx tsc --noEmit` clean; CCAR-P radar shows 5 distinct domain colors
+(proportional intensity); supplementary skills grey; domain legend visible; tooltip correct;
+radar is monochrome when no domain data is available.
+
+---
+
+### Step 13.5 — 80/20 enforcement audit in QuizBatchGeneratorAgent
+
+**Goal:** make the 80/20 cert/supp quiz ratio explicit, logged, and visible in the API response.
+The quiz batch endpoint warns (without blocking) when cert-evaluated items fall below 80%.
+
+**Preconditions:** 13.4.
+**Context to load:** `backend/app/agents/quiz_batch_generator.py`,
+`backend/app/api/routes/learning_paths.py`.
+
+**Build:**
+
+*`quiz_batch_generator.py` — extended output:*
+```python
+class QuizBatchGeneratorOutput(BaseModel):
+    items: list[BatchQuizItem]
+    cert_question_pct: float     # e.g. 83.3 for 10 cert / 12 total
+    supp_question_pct: float     # e.g. 16.7
+```
+
+Compute after generating `items`:
+```python
+cert_count = sum(1 for i in items if i.is_cert_evaluated)
+total = len(items)
+cert_pct = round(cert_count / total * 100, 1) if total else 0.0
+```
+
+*`learning_paths.py` quiz-batch endpoint:*
+
+After calling the agent:
+```python
+if output.cert_question_pct < 80.0:
+    logger.warning(
+        "Quiz batch path=%s cert_pct=%.1f%% (< 80%% target). "
+        "cert=%d supp=%d total=%d. Check curriculum planner supp_max.",
+        path_id, output.cert_question_pct, cert_count,
+        total - cert_count, total,
+    )
+```
+
+Include `cert_question_pct` and `supp_question_pct` in the JSON response body so the
+observability dashboard can surface ratio anomalies without log diving.
+
+*Scenario test:*
+```
+Scenario: Batch endpoint logs warning when cert ratio falls below 80%
+  Given a learning path with 5 cert skills and 5 supp skills
+    and a stub QuizBatchGenerator response with 50% cert items
+  When POST /learning-paths/{id}/quiz-batch is called
+  Then a WARNING log entry is emitted containing "< 80% target"
+    and the response returns HTTP 200 with all 10 items
+    and cert_question_pct equals 50.0 in the response body
+```
+
+**Definition of done:** `py -m pytest` green; `cert_question_pct` and `supp_question_pct`
+present in quiz-batch response; warning logged (not raised) when ratio < 80%; CCAR-P path
+with 10 agent-discovered skills yields cert_pct ≥ 80% in a live smoke test.

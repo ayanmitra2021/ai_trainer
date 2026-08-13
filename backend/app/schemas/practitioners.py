@@ -55,9 +55,14 @@ class SkillSnapshotRead(BaseModel):
     mastery_score: float
     confidence: float
     last_computed_at: datetime
-    # Phase 10.3: trend info — derived from mastery_history comparison
+    # Phase 10.3: trend info
     previous_mastery_score: float | None = None
     mastery_delta: float | None = None
-    trend: str = "new"  # improving | declining | stable | new
+    trend: str = "new"
+    # Phase 13.4: domain linkage — populated when the practitioner's active cert
+    # has agent-discovered skills with domain references.
+    certification_domain_id: str | None = None
+    certification_domain_name: str | None = None
+    domain_weight_pct: float | None = None
 
     model_config = {"from_attributes": True}

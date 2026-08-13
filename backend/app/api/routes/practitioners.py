@@ -25,7 +25,7 @@ from app.api.deps.session import (
     require_admin,
     require_any_authenticated,
 )
-from app.db.models import Practitioner, Skill, SkillProfileEvent, SkillProfileSnapshot
+from app.db.models import Practitioner, Skill, SkillProfileEvent, SkillProfileSnapshot, PractitionerProfile, CertificationSkill, CertificationDomain
 from app.db.session import get_db
 from app.schemas.practitioners import (
     PractitionerCreate,
@@ -159,12 +159,18 @@ async def get_skill_profile(
     db: AsyncSession = Depends(get_db),
     session: SessionInfo = Depends(require_any_authenticated),
 ) -> list[SkillSnapshotRead]:
-    """Return a practitioner's current skill profile. Practitioner sees own; admin sees all."""
+    """Return a practitioner's current skill profile with optional domain enrichment.
+
+    Phase 13.4: when the practitioner's active profile has a certification with
+    agent-discovered skills, each snapshot is enriched with its domain name and
+    weight for color-coded radar display.
+    """
     enforce_self_or_admin(session, practitioner_id)
     practitioner = await db.get(Practitioner, practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
 
+    # Fetch snapshots + skill names
     result = await db.execute(
         select(SkillProfileSnapshot, Skill)
         .join(Skill, Skill.id == SkillProfileSnapshot.skill_id)
@@ -172,13 +178,63 @@ async def get_skill_profile(
         .order_by(SkillProfileSnapshot.mastery_score.desc())
     )
     rows = result.all()
-    return [
-        SkillSnapshotRead(
+
+    # Phase 13.4: build domain lookup from agent_discovered cert skills.
+    # skill_id → (domain_id, domain_name, domain_weight_pct)
+    domain_by_skill: dict[str, tuple[str, str, float]] = {}
+
+    active_profile_result = await db.execute(
+        select(PractitionerProfile).where(
+            PractitionerProfile.practitioner_id == practitioner_id,
+            PractitionerProfile.is_active == True,  # noqa: E712
+        )
+    )
+    active_profile = active_profile_result.scalar_one_or_none()
+
+    if active_profile is not None and active_profile.certification_id is not None:
+        # Prefer agent_discovered; fall back to seed if none
+        ad_result = await db.execute(
+            select(CertificationSkill).where(
+                CertificationSkill.certification_id == active_profile.certification_id,
+                CertificationSkill.source == "agent_discovered",
+                CertificationSkill.certification_domain_id != None,  # noqa: E711
+            )
+        )
+        cert_skills = ad_result.scalars().all()
+
+        if not cert_skills:
+            # Fallback to seed rows that have a domain link
+            seed_result = await db.execute(
+                select(CertificationSkill).where(
+                    CertificationSkill.certification_id == active_profile.certification_id,
+                    CertificationSkill.certification_domain_id != None,  # noqa: E711
+                )
+            )
+            cert_skills = seed_result.scalars().all()
+
+        for cs in cert_skills:
+            if cs.certification_domain_id:
+                domain = await db.get(CertificationDomain, cs.certification_domain_id)
+                if domain:
+                    domain_by_skill[cs.skill_id] = (
+                        domain.id,
+                        domain.domain_name,
+                        float(domain.weight_pct),
+                    )
+
+    # Build response
+    out: list[SkillSnapshotRead] = []
+    for snap, skill in rows:
+        domain_info = domain_by_skill.get(snap.skill_id)
+        out.append(SkillSnapshotRead(
             skill_id=snap.skill_id,
             skill_name=skill.name,
             mastery_score=float(snap.mastery_score),
             confidence=float(snap.confidence),
             last_computed_at=snap.last_computed_at,
-        )
-        for snap, skill in rows
-    ]
+            certification_domain_id=domain_info[0] if domain_info else None,
+            certification_domain_name=domain_info[1] if domain_info else None,
+            domain_weight_pct=domain_info[2] if domain_info else None,
+        ))
+
+    return out

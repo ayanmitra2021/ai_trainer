@@ -19,6 +19,7 @@ Each agent is a single-purpose, typed unit: one input contract, one output contr
 | 3 | Curriculum Planner | Pick what a practitioner should work on next | `skill_profile_snapshots`, `correlation_snapshots`, `practitioner_certification_goals`, `certification_domains` | `learning_paths`, `learning_path_items` |
 | 4 | Item-Writer | Generate/calibrate a single practice item for one skill; used by the auto-refresh path (Step 10.8) when a practitioner exhausts a skill's existing questions; tags items with `certification_domain_id` and `is_cert_evaluated` | `items`, `attempts` (calibration stats), `certification_domains` | `items` |
 | 4b | Quiz Batch Generator | Generate one starter question per skill for an entire learning path in a single LLM call; called once when the Quiz tab first opens; never called during path generation | `skill_profile_snapshots` (mastery per skill), `certification_domains` | `items` |
+| 4c | Cert Skill Mapper | Web-research a certification's current exam guide and return 10–12 overarching skills aligned to its official exam domains; persists skills to `certification_skills` with domain linkage; called at profile lock time (if not yet run for this cert) and on demand by admin | `certifications`, `certification_domains` (current version) | `skills` (upsert), `certification_skills` (source=`agent_discovered`) |
 | 5 | Grader | Score an attempt, incl. free-text, with rationale | `items`, submitted response | `attempts` |
 | 6 | Usage-Signal | Ingest real usage evidence, map it to skill nodes | MCP: `mcp-usage-signals` | `usage_events` |
 | 7 | Correlation | Compare "trained" vs. "adopting" per skill | `skill_profile_snapshots`, `usage_events` | `correlation_snapshots` |
@@ -35,6 +36,8 @@ Three active workflows compose them:
 - **`nudge_campaign`**: Nudge Category Generator → Nudge Composer (Phase 7) — admin-initiated; runs on demand, not on a schedule.
 
 The Cert Domain Discovery agent (Phase 10.3) is not part of a workflow — it is invoked directly by admin API endpoints (`POST /admin/cert-domains/discover` and `/discover-all`). Proposals are reviewed and approved/rejected via the Admin UI (Phase 10.4) before any domain data changes.
+
+The Cert Skill Mapper agent (Phase 13.2) is invoked in two ways: (1) automatically during the profile lock call — if no `agent_discovered` skills exist for the cert yet — and (2) on demand by admin via `POST /admin/certs/{cert_id}/discover-skills`. It uses web search to find the current exam guide, then upserts skills directly without a proposal/review step (skills are lower-stakes than domain definitions — incorrect skills are corrected by re-running the mapper, not by reverting a version).
 
 > **Phase 9.1 note:** The `nightly_pulse` workflow (Usage-Signal → Correlation → Nudge Composer → Rollup Reporter) has been removed. Correlation snapshots still feed the admin nudge campaign system, but there is no longer a scheduled automated run.
 
@@ -234,25 +237,73 @@ The Item-Writer auto-refresh path (when questions are exhausted per skill) shows
 
 ---
 
+## Dynamic Cert Skill Mapping (Phase 13)
+
+### Why cert skills cannot be statically seeded
+
+The `certification_skills` table was originally populated by migration seed files — a fixed set of skills per cert, written once and updated manually. This breaks in three ways as exam blueprints evolve:
+
+1. **Staleness.** Cert providers revise domain weights quarterly to yearly. A seed file captures a moment in time and drifts silently.
+2. **Sparseness.** Five skills for five domains (1:1) produces quiz tabs that are almost entirely generic. Official exam blueprints describe three to five knowledge areas per domain — 10–12 skills is the right granularity for a 5-domain cert.
+3. **Catalog pollution.** The Curriculum Planner draws from the full `skills` catalog. Without a tight cert-specific skill set, it pads paths with generic skills (Prompt Engineering, AI Foundations) that don't move exam-domain readiness scores.
+
+### CertSkillMapperAgent — design
+
+The agent takes the cert's name, code, and current domain list (from `certification_domains`) as input, runs web searches against the official exam guide, and returns 10–12 skills with domain linkage. The `certification_skills` table stores these with `source = 'agent_discovered'`, distinguished from the old `'seed'` rows. Agent-discovered rows are replaced on each re-run; seed rows are never touched.
+
+**Trigger points:**
+- **At profile lock** — after the Domain Scorer Agent, before returning. If no `agent_discovered` skills exist for the cert, the mapper runs (60 s timeout; timeout does not fail the lock).
+- **On admin demand** — `POST /admin/certs/{cert_id}/discover-skills`. Replaces existing `agent_discovered` skills with the freshest blueprint data.
+
+**Fallback:** if the mapper has not yet run (e.g. seed-only cert, timed-out first lock), the Curriculum Planner and Quiz Batch Generator fall back to `'seed'` rows. No breakage — just less precise cert alignment until the mapper completes.
+
+### Skill sourcing precedence (runtime)
+
+| Code location | Behaviour |
+|---|---|
+| `generate_learning_path.py` cert context | Prefer `source='agent_discovered'` rows; fall back to `source='seed'` |
+| `quiz-batch` endpoint `is_cert_evaluated` lookup | Same precedence |
+| Domain-colored radar response | Joins `certification_skills` → `certification_domains`; skips if no domain link |
+
+### Domain-weighted Skill Radar (Phase 13.4)
+
+Radar nodes are colored by the exam-domain weight of the skill's primary domain:
+
+| Domain weight | Node color | Intent |
+|---|---|---|
+| Highest (e.g. 25%) | Dark blue `#1a56db` | Highest-priority skills — most likely tested |
+| Mid-range (e.g. 20%) | Medium blue `#3b82f6` | Important — worth sustained focus |
+| Lowest (e.g. 15%) | Light blue `#93c5fd` | Required but less heavily weighted |
+| Supplementary (no domain) | Neutral grey `#9ca3af` | Useful context, not on exam |
+
+A domain legend appears below the radar (color swatch + domain name + weight %).  The color encoding is stable across radar re-renders — domain weight doesn't change between path generations.  When no agent-discovered skills exist yet, the radar remains monochrome.
+
+### 80/20 quiz split enforcement (Phase 13.5)
+
+The structural constraint is enforced by the Curriculum Planner's `supp_max` formula. With 10–12 cert skills: `supp_max = max(1, round(10 × 0.2)) = 2` supplementary slots → ≥83% cert questions in the batch. The QuizBatchGeneratorAgent computes and returns `cert_question_pct` / `supp_question_pct` on every call. The quiz-batch endpoint logs a WARNING (never an exception) if `cert_question_pct < 80`.
+
+---
+
 ## Multi-Model Provider Support (Phase 8)
 
-The system supports two LLM providers selectable at runtime via the `APP_BRAIN_MODEL` environment variable:
+The system supports two LLM provider orientations selectable at runtime via the `APP_BRAIN_MODEL` environment variable.  Within each orientation, a three-tier fallback chain (Phase 15) automatically routes to the next available model on any failure.
 
-| Provider | Env Value | API Key | Base URL | Default Model |
-|---|---|---|---|---|
-| Anthropic (default) | `ANTHROPIC` | `ANTHROPIC_API_KEY` | `https://api.anthropic.com` | `claude-sonnet-5` |
-| NVIDIA Nemotron | `NVIDIA` | `NVIDIA_API_KEY` | `https://integrate.api.nvidia.com/v1` | `nvidia/llama-3.1-nemotron-ultra-253b-v1` |
+| Mode | Tier 1 | Tier 2 | Tier 3 |
+|---|---|---|---|
+| `APP_BRAIN_MODEL=NVIDIA` | Nemotron Ultra (10 s) | Nemotron Lightning (20 s) | Haiku (20 s) |
+| `APP_BRAIN_MODEL=ANTHROPIC` | Haiku (10 s) | Nemotron Ultra (20 s) | Nemotron Lightning (20 s) |
+
+> **Model constraint (this deployment):** all Anthropic calls are pinned to `claude-haiku-4-5-20251001`.  The `APP_ANTHROPIC_MODEL_ID` env var (default `claude-haiku-4-5-20251001`) controls this.  Do not change it to Sonnet, Opus, or Fable without explicit approval.  Individual agent `model` class attributes are intentionally ignored by both `AnthropicModelClient` and `NVIDIAModelClient`; each client always uses its own configured `_model_id`.
 
 ### Abstraction Layer
 
-A unified `ModelClient` protocol in `backend/app/agents/model_client.py` abstracts provider differences. Both `AnthropicModelClient` and `NVIDIAModelClient` implement:
+A unified `ModelClient` protocol in `backend/app/agents/model_client.py` abstracts provider differences. Client types (`AnthropicModelClient`, `NVIDIAModelClient`, `MultiTierModelClient`) all implement:
 
-- `messages.parse()` with Structured Outputs (Pydantic model validation)
+- `parse()` with Structured Outputs (Pydantic model validation)
 - Token usage extraction (`input_tokens`, `output_tokens`)
 - Latency measurement
-- Transient error detection and retry logic
 
-The `Agent` base class accepts any `ModelClient` implementation — no agent code changes required.
+The `Agent` base class accepts any `ModelClient` implementation — no agent code changes required when the tier chain or provider order changes.
 
 ### MCP Compatibility
 
@@ -267,15 +318,94 @@ This is a v1 limitation. Future versions may implement a generic tool-calling lo
 
 ### Configuration
 
-Required `.env` variables:
+Required `.env` variables (Phase 15):
 
 ```bash
-APP_BRAIN_MODEL=ANTHROPIC  # or NVIDIA
-ANTHROPIC_API_KEY=...      # required when ANTHROPIC
-NVIDIA_API_KEY=...         # required when NVIDIA
+APP_BRAIN_MODEL=NVIDIA           # or ANTHROPIC
+NVIDIA_API_KEY=nvapi-...
+NVIDIA_MODEL_ID_PRIMARY=nvidia/nemotron-3-ultra-550b-a55b
+NVIDIA_MODEL_ID_SECONDARY=nvidia/nemotron-3.5-lightning-30b-a3b
 NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
-NVIDIA_MODEL_ID=nvidia/llama-3.1-nemotron-ultra-253b-v1
+ANTHROPIC_API_KEY=sk-ant-...
+APP_ANTHROPIC_MODEL_ID=claude-haiku-4-5-20251001
+# Optional — tuning
+NVIDIA_TIER1_TIMEOUT_SECS=10
+NVIDIA_TIER2_TIMEOUT_SECS=20
+ANTHROPIC_TIER_TIMEOUT_SECS=20
+NVIDIA_CIRCUIT_BREAKER_THRESHOLD=5
+NVIDIA_CIRCUIT_BREAKER_COOLDOWN_SECS=120
 ```
+
+---
+
+## Provider Resilience (Phases 14 & 15)
+
+### Three-tier call chain (Phase 15)
+
+Every `Agent.run()` call passes through `MultiTierModelClient`, which tries each tier in order and moves to the next on any failure (timeout or exception).
+
+```
+Agent.run()
+  └─ MultiTierModelClient.parse()                [APP_BRAIN_MODEL=NVIDIA]
+       ├─ [Tier 1] NVIDIAModelClient(Ultra)       10 s timeout
+       │      success → return; model_used = nvidia/nemotron-3-ultra-550b-a55b
+       │      failure → WARNING: "Primary provider failed (Ultra) — trying next tier"
+       │
+       ├─ [Tier 2] NVIDIAModelClient(Lightning)   20 s timeout
+       │      success → return; model_used = nvidia/nemotron-3.5-lightning-30b-a3b
+       │      failure → WARNING: "Primary provider failed (Lightning) — trying next tier"
+       │
+       └─ [Tier 3] AnthropicModelClient(Haiku)    20 s timeout
+              success → return; model_used = claude-haiku-4-5-20251001
+              failure → raise AllProvidersUnavailableError(errors=[e1, e2, e3])
+```
+
+**Max wall time (all fail):** 10 + 20 + 20 = **50 seconds.**
+
+`MultiTierModelClient` is transparent to agents — they call `.parse()` and receive a result or `AllProvidersUnavailableError`.  The `effective_model` property on `Agent` reflects whichever tier responded, so `agent_runs.model_used` is always truthful.
+
+### In-memory circuit breaker (Phase 15)
+
+The circuit breaker prevents paying the 10 s + 20 s NVIDIA timeout cost on every request during a sustained outage.
+
+```
+NvidiaCircuitBreaker (module-level singleton)
+  CLOSED  ─── both NVIDIA tiers fail ×N calls ──► OPEN (cooldown 2 min)
+  OPEN    ─── all calls skip to Haiku directly ──► CLOSED (after cooldown)
+  CLOSED  ◄── at least one NVIDIA tier succeeds → consecutive_failures = 0
+```
+
+Threshold and cooldown are configurable via `NVIDIA_CIRCUIT_BREAKER_THRESHOLD` and `NVIDIA_CIRCUIT_BREAKER_COOLDOWN_SECS`.  The breaker lives in process memory and resets on server restart.
+
+### Graceful degraded domain scoring (Phase 14, extended by 15)
+
+When `AllProvidersUnavailableError` reaches the profile-lock endpoint (the Domain Scorer call), the endpoint catches it and computes domain scores mechanically:
+
+1. For each cert domain, average the `signal_strength` values from `profile_skill_assessments` for skills linked to that domain via `certification_skills`.
+2. Cap each score at 0.5 (same confidence ceiling as LLM-derived estimates).
+3. Write `certification_domain_scores` rows with `source = 'degraded_estimate'` and `confidence = 0.3`.
+4. Set `practitioner_profiles.domain_scoring_status = 'degraded'`.
+5. Commit and return HTTP 200.  The practitioner's profile locks normally.
+
+For all other endpoints (grader, quiz batch generator, etc.) where no mechanical fallback exists, `AllProvidersUnavailableError` produces **HTTP 503** with a structured body:
+
+```json
+{
+  "error": "all_providers_unavailable",
+  "message": "Our AI services are temporarily unavailable. Your progress is saved — please try again in a few minutes.",
+  "retry_after_seconds": 120
+}
+```
+
+The frontend shows a toast/banner with a Retry button when it receives this body.
+
+### `domain_scoring_status` values
+
+| Value | Meaning |
+|---|---|
+| `pending` | Domain Scorer has not run yet (default for new profiles; transitional state) |
+| `lm_scored` | Domain Scorer ran successfully via any LLM tier |
+| `degraded` | All providers failed; scores computed mechanically from self-assessment |
 
 ---
 

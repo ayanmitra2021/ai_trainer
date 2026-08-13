@@ -15,6 +15,7 @@ import CertDomainManagementPage from "./pages/CertDomainManagementPage";
 import MockExamPage from "./pages/MockExamPage";
 import { auth } from "./api";
 import { PortalLayout } from "./components/PortalLayout";
+import { ProviderUnavailableToast } from "./components/ProviderUnavailableToast/ProviderUnavailableToast";
 
 const navStyle: React.CSSProperties = {
   display: "flex",
@@ -168,6 +169,8 @@ function AppRoutes() {
   return (
     <>
       <NavBar />
+      {/* Phase 15.5: amber toast when all LLM providers return 503 */}
+      <ProviderUnavailableToast />
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<LoginPage />} />
