@@ -747,9 +747,7 @@ export default function QuizRunner({ practitionerId }: Props) {
     const data = (query as { state?: { data?: unknown } })?.state?.data as
       | { items?: { quiz_status?: string }[] }[]
       | undefined;
-    const active = data?.find((p: { status?: string }) =>
-      (p as { status?: string }).status === "active"
-    ) ?? data?.[0];
+    const active = data?.[0];
     const anyPending = active?.items?.some((it) => it.quiz_status === "pending");
     return anyPending ? 5000 : (false as const);
   }, []);
