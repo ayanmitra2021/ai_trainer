@@ -754,8 +754,11 @@ export default function QuizRunner({ practitionerId }: Props) {
     const data = (query as { state?: { data?: unknown } })?.state?.data as
       | { items?: { quiz_status?: string }[] }[]
       | undefined;
-    const active = data?.[0];
-    const anyPending = active?.items?.some((it) => it.quiz_status === "pending");
+    // Check every path, every item — we must not assume the active path is [0].
+    // If any item in any path is pending we need to keep polling every 5 s.
+    const anyPending = data?.some((path) =>
+      path.items?.some((it) => it.quiz_status === "pending"),
+    );
     return anyPending ? 5000 : (false as const);
   }, []);
 
@@ -1045,10 +1048,18 @@ export default function QuizRunner({ practitionerId }: Props) {
             <div style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
               <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⏳</div>
               <p style={{ fontWeight: 600, margin: "0 0 0.375rem" }}>Questions are baking…</p>
-              <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", margin: 0 }}>
+              <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", margin: "0 0 1rem" }}>
                 We're preparing questions for <strong>{activeSkill.name}</strong> in the background.
                 This tab will light up automatically when they're ready.
               </p>
+              <button
+                className="btn btn-outline"
+                style={{ fontSize: "0.8125rem" }}
+                disabled={retryPending}
+                onClick={() => retryGeneration()}
+              >
+                {retryPending ? "Retrying…" : "↻ Stuck? Retry generation"}
+              </button>
             </div>
           ) : activeSkill?.quizStatus === "failed" ? (
             <div style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
