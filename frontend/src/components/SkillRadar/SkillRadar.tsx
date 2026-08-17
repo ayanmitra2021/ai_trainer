@@ -115,7 +115,7 @@ function RadarGrid({ n }: { n: number }) {
 }
 
 function RadarPolygon({
-  scores, fillColor, fillOpacity, strokeColor, strokeWidth, glowId,
+  scores, fillColor, fillOpacity, strokeColor, strokeWidth, glowId, strokeDasharray,
 }: {
   scores: number[];
   fillColor: string;
@@ -123,6 +123,7 @@ function RadarPolygon({
   strokeColor: string;
   strokeWidth: number;
   glowId?: string;
+  strokeDasharray?: string;
 }) {
   const n = scores.length;
   const points = scores.map((s, i) => {
@@ -138,6 +139,7 @@ function RadarPolygon({
       stroke={strokeColor}
       strokeWidth={strokeWidth}
       strokeLinejoin="round"
+      strokeDasharray={strokeDasharray}
       filter={glowId ? `url(#${glowId})` : undefined}
     />
   );
@@ -516,18 +518,18 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
 
             <RadarGrid n={snapshots.length} />
 
-            {/* Confidence polygon — very faint, no distraction from zone colours */}
+            {/* Confidence polygon — dashed dim line; shows algorithm certainty */}
             <RadarPolygon
               scores={confidenceScores}
-              fillColor="rgba(255,255,255,0.04)"
+              fillColor="rgba(255,255,255,0.03)"
               fillOpacity={1}
-              strokeColor="rgba(255,255,255,0.22)"
-              strokeWidth={1}
+              strokeColor="rgba(255,255,255,0.35)"
+              strokeWidth={1.5}
+              strokeDasharray="4 4"
               glowId="conf-glow"
             />
 
-            {/* Mastery polygon — near-transparent fill so zone colours show through;
-                bright white stroke with glow marks the practitioner's actual level */}
+            {/* Mastery polygon — solid bright white stroke; marks actual skill level */}
             <RadarPolygon
               scores={masteryScores}
               fillColor="rgba(255,255,255,0.08)"
@@ -557,24 +559,44 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
             <circle cx={CENTER} cy={CENTER} r={4} fill="rgba(255,255,255,0.55)" />
           </svg>
 
-          {/* Zone legend */}
-          <div style={{ display: "flex", gap: "1rem", fontSize: "0.8125rem", color: "var(--text-muted)", marginTop: "0.75rem", flexWrap: "wrap" }}>
-            {[
-              { color: "#3b82f6", label: "Excellence", sub: "≥ 80%" },
-              { color: "#22c55e", label: "Target",     sub: "55–80%" },
-              { color: "#f97316", label: "Needs work", sub: "< 55%" },
-            ].map(({ color, label, sub }) => (
-              <span key={label} style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-                <span style={{
-                  display: "inline-block", width: 10, height: 10, borderRadius: 2,
-                  background: color,
-                  boxShadow: `0 0 5px ${color}`,
-                  flexShrink: 0,
-                }} />
-                <span>{label}</span>
-                <span style={{ opacity: 0.6 }}>({sub})</span>
+          {/* Legend — zones + polygon lines */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
+            {/* Zone colour bands */}
+            <div style={{ display: "flex", gap: "1rem", fontSize: "0.8125rem", color: "var(--text-muted)", flexWrap: "wrap" }}>
+              {[
+                { color: "#3b82f6", label: "Excellence", sub: "≥ 80%" },
+                { color: "#22c55e", label: "Target",     sub: "55–80%" },
+                { color: "#f97316", label: "Needs work", sub: "< 55%" },
+              ].map(({ color, label, sub }) => (
+                <span key={label} style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                  <span style={{
+                    display: "inline-block", width: 10, height: 10, borderRadius: 2,
+                    background: color, boxShadow: `0 0 5px ${color}`, flexShrink: 0,
+                  }} />
+                  <span>{label}</span>
+                  <span style={{ opacity: 0.6 }}>({sub})</span>
+                </span>
+              ))}
+            </div>
+            {/* Polygon line types */}
+            <div style={{ display: "flex", gap: "1.25rem", fontSize: "0.8125rem", color: "var(--text-muted)", flexWrap: "wrap" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                {/* Solid line swatch */}
+                <svg width={24} height={10}>
+                  <line x1={0} y1={5} x2={24} y2={5}
+                    stroke="rgba(255,255,255,0.85)" strokeWidth={2.5} />
+                </svg>
+                Your mastery level
               </span>
-            ))}
+              <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                {/* Dashed line swatch */}
+                <svg width={24} height={10}>
+                  <line x1={0} y1={5} x2={24} y2={5}
+                    stroke="rgba(255,255,255,0.45)" strokeWidth={1.5} strokeDasharray="4 3" />
+                </svg>
+                Score confidence
+              </span>
+            </div>
           </div>
 
           {/* Phase 13.4: domain legend */}
