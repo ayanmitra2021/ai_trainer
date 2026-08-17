@@ -41,6 +41,13 @@ const CENTER = SIZE / 2;
 const RADIUS = 160;
 const LEVELS = 5;
 
+// ── Zone thresholds (mastery score 0–1) ────────────────────────────────────────
+// Layer 2 — Blue excellence: ≥ 80 % — performing above the optimal target
+const ZONE_EXCELLENCE = 0.80;
+// Layer 1 — Green target: 55–80 % — the optimal zone every practitioner aims for
+const ZONE_TARGET = 0.55;
+// Layer 3 — Orange needs work: < 55 % — significant improvement needed
+
 const polar = (angle: number, r: number) => ({
   x: CENTER + r * RADIUS * Math.cos(angle - Math.PI / 2),
   y: CENTER + r * RADIUS * Math.sin(angle - Math.PI / 2),
@@ -50,41 +57,58 @@ const polar = (angle: number, r: number) => ({
 
 function RadarGrid({ n }: { n: number }) {
   const axes = Array.from({ length: n }, (_, i) => (2 * Math.PI * i) / n);
+  // Build SVG polygon points string at a given radius fraction (0–1)
+  const pts = (r: number) =>
+    axes.map((a) => { const p = polar(a, r); return `${p.x},${p.y}`; }).join(" ");
+
   return (
     <g>
-      {/* Concentric rings */}
+      {/* ── Zone backgrounds (drawn outermost → innermost so each covers the
+           previous polygon's center, creating colored annular rings) ────── */}
+      {/* Layer 2 — Blue excellence: 80 %–100 % */}
+      <polygon points={pts(1.0)} fill="#3b82f6" fillOpacity={0.09} />
+      {/* Layer 1 — Green target: 55 %–80 % (covers centre of blue ring) */}
+      <polygon points={pts(ZONE_EXCELLENCE)} fill="#22c55e" fillOpacity={0.11} />
+      {/* Layer 3 — Orange needs work: 0 %–55 % (covers centre of green ring) */}
+      <polygon points={pts(ZONE_TARGET)} fill="#f97316" fillOpacity={0.14} />
+
+      {/* ── Glowing zone boundary strokes ─────────────────────────────────── */}
+      {/* Outer boundary (blue zone ceiling) */}
+      <polygon points={pts(1.0)} fill="none"
+        stroke="#3b82f6" strokeWidth={1.5} strokeOpacity={0.50}
+        filter="url(#zone-glow-blue)" />
+      {/* 80 % threshold (green/blue boundary) */}
+      <polygon points={pts(ZONE_EXCELLENCE)} fill="none"
+        stroke="#22c55e" strokeWidth={2} strokeOpacity={0.65}
+        filter="url(#zone-glow-green)" />
+      {/* 55 % threshold (orange/green boundary) */}
+      <polygon points={pts(ZONE_TARGET)} fill="none"
+        stroke="#f97316" strokeWidth={2} strokeOpacity={0.65}
+        filter="url(#zone-glow-orange)" />
+
+      {/* ── Fine radial grid rings (very faint — orientation only) ────────── */}
       {Array.from({ length: LEVELS }, (_, i) => {
         const r = ((i + 1) / LEVELS) * RADIUS;
-        const opacity = 0.12 + i * 0.04;
         return (
-          <circle
-            key={i}
-            cx={CENTER} cy={CENTER} r={r}
-            fill="none"
-            stroke="#4dabf7"
-            strokeWidth={i === LEVELS - 1 ? 1.5 : 1}
-            strokeOpacity={opacity}
-          />
+          <circle key={i} cx={CENTER} cy={CENTER} r={r}
+            fill="none" stroke="var(--text)" strokeWidth={0.5} strokeOpacity={0.07} />
         );
       })}
-      {/* Axis spokes */}
+
+      {/* ── Axis spokes ─────────────────────────────────────────────────────── */}
       {axes.map((angle, i) => {
         const end = polar(angle, 1);
         return (
-          <line
-            key={i}
-            x1={CENTER} y1={CENTER}
-            x2={end.x} y2={end.y}
-            stroke="#4dabf7"
-            strokeWidth={1}
-            strokeOpacity={0.18}
-          />
+          <line key={i} x1={CENTER} y1={CENTER} x2={end.x} y2={end.y}
+            stroke="var(--text)" strokeWidth={0.75} strokeOpacity={0.14} />
         );
       })}
-      {/* Outermost-ring end caps */}
+
+      {/* ── Outermost end caps ───────────────────────────────────────────────── */}
       {axes.map((angle, i) => {
         const end = polar(angle, 1);
-        return <circle key={`cap-${i}`} cx={end.x} cy={end.y} r={2.5} fill="#4dabf7" fillOpacity={0.35} />;
+        return <circle key={`cap-${i}`} cx={end.x} cy={end.y} r={2.5}
+          fill="#3b82f6" fillOpacity={0.45} />;
       })}
     </g>
   );
@@ -450,7 +474,7 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
             aria-label="Skill mastery radar chart"
           >
             <defs>
-              {/* Glow filter for mastery polygon */}
+              {/* Mastery polygon glow */}
               <filter id="radar-glow" x="-30%" y="-30%" width="160%" height="160%">
                 <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
                 <feMerge>
@@ -458,9 +482,31 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
                   <feMergeNode in="SourceGraphic" />
                 </feMerge>
               </filter>
-              {/* Subtle glow for confidence layer */}
+              {/* Confidence layer glow */}
               <filter id="conf-glow" x="-20%" y="-20%" width="140%" height="140%">
                 <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              {/* Zone boundary glow filters — sdDev=4 gives ~12 px halo per zone ring */}
+              <filter id="zone-glow-blue" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              <filter id="zone-glow-green" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              <filter id="zone-glow-orange" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
                 <feMerge>
                   <feMergeNode in="blur" />
                   <feMergeNode in="SourceGraphic" />
@@ -470,22 +516,23 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
 
             <RadarGrid n={snapshots.length} />
 
-            {/* Confidence polygon (dim, no glow) */}
+            {/* Confidence polygon — very faint, no distraction from zone colours */}
             <RadarPolygon
               scores={confidenceScores}
-              fillColor="#4dabf7"
-              fillOpacity={0.07}
-              strokeColor="#4dabf7"
+              fillColor="rgba(255,255,255,0.04)"
+              fillOpacity={1}
+              strokeColor="rgba(255,255,255,0.22)"
               strokeWidth={1}
               glowId="conf-glow"
             />
 
-            {/* Mastery polygon (bright, glowing) */}
+            {/* Mastery polygon — near-transparent fill so zone colours show through;
+                bright white stroke with glow marks the practitioner's actual level */}
             <RadarPolygon
               scores={masteryScores}
-              fillColor="#4dabf7"
-              fillOpacity={0.28}
-              strokeColor="#4dabf7"
+              fillColor="rgba(255,255,255,0.08)"
+              fillOpacity={1}
+              strokeColor="rgba(255,255,255,0.90)"
               strokeWidth={2.5}
               glowId="radar-glow"
             />
@@ -507,23 +554,27 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
             })}
 
             {/* Center dot */}
-            <circle cx={CENTER} cy={CENTER} r={4} fill="#4dabf7" fillOpacity={0.6} />
+            <circle cx={CENTER} cy={CENTER} r={4} fill="rgba(255,255,255,0.55)" />
           </svg>
 
-          {/* Legend */}
-          <div style={{ display: "flex", gap: "1.25rem", fontSize: "0.8125rem", color: "var(--text-muted)", marginTop: "0.5rem" }}>
-            <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-              <svg width={14} height={14}>
-                <rect width={14} height={14} rx={3} fill="#4dabf7" fillOpacity={0.55} />
-              </svg>
-              Mastery
-            </span>
-            <span style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
-              <svg width={14} height={14}>
-                <rect width={14} height={14} rx={3} fill="#4dabf7" fillOpacity={0.12} />
-              </svg>
-              Confidence
-            </span>
+          {/* Zone legend */}
+          <div style={{ display: "flex", gap: "1rem", fontSize: "0.8125rem", color: "var(--text-muted)", marginTop: "0.75rem", flexWrap: "wrap" }}>
+            {[
+              { color: "#3b82f6", label: "Excellence", sub: "≥ 80%" },
+              { color: "#22c55e", label: "Target",     sub: "55–80%" },
+              { color: "#f97316", label: "Needs work", sub: "< 55%" },
+            ].map(({ color, label, sub }) => (
+              <span key={label} style={{ display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                <span style={{
+                  display: "inline-block", width: 10, height: 10, borderRadius: 2,
+                  background: color,
+                  boxShadow: `0 0 5px ${color}`,
+                  flexShrink: 0,
+                }} />
+                <span>{label}</span>
+                <span style={{ opacity: 0.6 }}>({sub})</span>
+              </span>
+            ))}
           </div>
 
           {/* Phase 13.4: domain legend */}
