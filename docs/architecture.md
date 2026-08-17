@@ -18,7 +18,7 @@ Each agent is a single-purpose, typed unit: one input contract, one output contr
 | 2 | Skill Profiler | Turn quiz-attempt signals into broad skill mastery estimates | `skill_profile_events` (source=`quiz_attempt` only, Phase 9.4) | `skill_profile_snapshots`, `mastery_history` |
 | 3 | Curriculum Planner | Pick what a practitioner should work on next | `skill_profile_snapshots`, `correlation_snapshots`, `practitioner_certification_goals`, `certification_domains` | `learning_paths`, `learning_path_items` |
 | 4 | Item-Writer | Generate/calibrate a single practice item for one skill; used by the auto-refresh path (Step 10.8) when a practitioner exhausts a skill's existing questions; tags items with `certification_domain_id` and `is_cert_evaluated` | `items`, `attempts` (calibration stats), `certification_domains` | `items` |
-| 4b | Quiz Batch Generator | Generate one starter question per skill for an entire learning path in a single LLM call; called once when the Quiz tab first opens; never called during path generation | `skill_profile_snapshots` (mastery per skill), `certification_domains` | `items` |
+| 4b | Quiz Batch Generator | Called once per skill in a background task (`_generate_quizzes_progressively`); generates 1–2 questions for that skill (~700-1400 output tokens — fits NVIDIA 90 s budget); exhaustion-aware refresh adjusts difficulty per skill from prior attempt scores; cert-evaluated skills get 2-question slots; per-skill failures are logged and skipped (not fatal); Anthropic Haiku only invoked as fallback when all NVIDIA tiers fail | `skill_profile_snapshots` (mastery), `certification_domains`, `items` (prior prompts, no-repeat), `attempts` (exhaustion check) | `items` |
 | 4c | Cert Skill Mapper | Web-research a certification's current exam guide and return 10–12 overarching skills aligned to its official exam domains; persists skills to `certification_skills` with domain linkage; called at profile lock time (if not yet run for this cert) and on demand by admin | `certifications`, `certification_domains` (current version) | `skills` (upsert), `certification_skills` (source=`agent_discovered`) |
 | 5 | Grader | Score an attempt, incl. free-text, with rationale | `items`, submitted response | `attempts` |
 | 6 | Usage-Signal | Ingest real usage evidence, map it to skill nodes | MCP: `mcp-usage-signals` | `usage_events` |
@@ -32,7 +32,7 @@ Each agent is a single-purpose, typed unit: one input contract, one output contr
 
 Three active workflows compose them:
 - **`recommend_certification`**: Certification Advisor alone (Phase 2) — the actual front door for a new practitioner.
-- **`generate_learning_path`**: Skill Profiler → Domain Score computation → Curriculum Planner (Phase 12+: no Item-Writer step) — updates the Skill Radar and domain gap chart, then returns. Completes in < 30 seconds. Quiz questions are generated separately on first Quiz-tab open.
+- **`generate_learning_path`**: Skill Profiler → Domain Score computation → Curriculum Planner — updates the Skill Radar and domain gap chart. On completion, launches a FastAPI background task (`_generate_quizzes_progressively`) that calls `QuizBatchGeneratorAgent` once per skill (1–2 questions each, Phase 17). Per-skill failures set `learning_path_items.quiz_status='failed'`; the practitioner can recover via `POST /practitioners/{id}/quiz-generation/retry`. The HTTP response returns before quiz generation finishes; `quiz_generating=True` signals the client to start polling. Skips quiz generation if unanswered items still exist.
 - **`nudge_campaign`**: Nudge Category Generator → Nudge Composer (Phase 7) — admin-initiated; runs on demand, not on a schedule.
 
 The Cert Domain Discovery agent (Phase 10.3) is not part of a workflow — it is invoked directly by admin API endpoints (`POST /admin/cert-domains/discover` and `/discover-all`). Proposals are reviewed and approved/rejected via the Admin UI (Phase 10.4) before any domain data changes.
@@ -191,32 +191,28 @@ The skill selector tabs are ordered: cert-domain skills first (with a colored "E
 
 ## Quiz Generation Strategy (Phase 12)
 
-### Why question generation is decoupled from path generation
+### Why question generation is background and per-skill (Phase 12 → Phase 17)
 
-A certification path has at most ~16 skills (≤5 domains × 3-4 skills per domain). The quiz tab needs exactly **one starter question per skill** — that is the ceiling. Generating these inside the "Generate Learning Path" workflow (the original design) meant 16 sequential LLM calls, each taking 2-4 minutes, for a total wall time of 32-64 minutes. Practitioners sat waiting while questions were generated for skills they might never visit.
+A certification path has at most ~16 skills. Questions must be available immediately after path generation — but generating 10–12 full MCQs (with `correct_rationale`, `incorrect_rationale`, `trap_explanation`) in a **single LLM call** produces 8–12K output tokens, which consistently exceeds NVIDIA's timeout budgets (90 s Ultra, 45 s Lightning) even after tuning. Calling Anthropic as a primary shortcut to avoid the timeouts would undermine the cost constraint (Haiku is the emergency fallback, not the default).
 
-The fix (Phase 12) decouples the two concerns:
+The Phase 17 solution: the path generation HTTP response returns immediately after the Profiler + Planner complete (~30 s); a FastAPI **background task** then generates questions **one skill at a time**. Each per-skill call produces 1–2 questions (~700–1400 output tokens) — well within NVIDIA's 90-second window.
 
 | User action | What the system does | Time |
 |---|---|---|
-| Click "Generate path" | Profiler + Planner only; updates radar + domain gap chart | **< 30 seconds** |
-| Click the "Quiz" tab (first visit) | Single batch LLM call generates 1 question per skill for all skills in the path | **~20-30 seconds** |
-| Click a skill sub-tab (after batch loaded) | Questions already in DB — renders immediately | **< 1 second** |
-| Answer all questions for a skill | Auto-refresh (Step 10.8): single Item-Writer call generates the next question | **~15-20 seconds** |
+| Click "Generate path" | Profiler + Planner run; background task starts | **< 35 s** (HTTP response) |
+| Open Quiz tab immediately | Shows questions for skills already done; ⏳ badge for skills still being generated | **< 1 s** |
+| Skills finish generating | Quiz tab polls every 5 s; new questions appear without page refresh | **~45-90 s per skill on NVIDIA** |
+| All path skills have questions | Polling stops; all skill tabs show their questions | — |
+| Answer all questions, click "Regenerate path" | Background task restarts with difficulty-adjusted specs (harder for high scorers, easier for low scorers) | same as above |
 
-### QuizBatchGeneratorAgent — one call for all questions
+### QuizBatchGeneratorAgent — one skill per call
 
-Rather than calling Item-Writer once per skill sequentially, or generating more questions than needed, the Quiz Batch Generator takes **all skills in the path** as a single input and returns **one question per skill** in one LLM response.
+The agent is called once per skill (not once for all skills). `SkillQuizSpec.question_count` (1 or 2) tells it how many items to produce for that skill. With a single spec per call:
+- Input: one `{skill_id, skill_name, mastery_score, question_count, prior_prompts, cert_domain, ...}`
+- Output: 1 or 2 `BatchQuizItem` objects for that skill, each with `correct_rationale` + `incorrect_rationale` (Phase 16) and `trap_explanation`
+- `max_tokens = 3000` — covers 2 questions comfortably; tells NVIDIA not to reserve excess compute time
 
-Input (to the agent):
-- List of `{skill_id, skill_name, description, current_mastery_score, cert_domain_name, is_cert_evaluated}` — one entry per skill
-- Certification name, code, and domain list with weights
-- `prior_generation_count` per skill (0 on first load; increments each round so the model avoids repeating concept areas)
-
-Output:
-- Array of `{skill_id, prompt, options[4], correct_index, trap_index, trap_explanation, difficulty, certification_domain_id, is_cert_evaluated}` — exactly one item per input skill
-
-Token budget: 16 skills × ~500 tokens output ≈ 8,000 output tokens — well within all supported models' limits. The single call returns all starter questions in a single round-trip.
+The background task `_generate_quizzes_progressively` iterates the skill list in order, calling the agent once per skill. Per-skill failures (e.g., one skill's call exhausts all provider tiers) are **logged and skipped** — other skills continue generating. Each skill's questions are persisted immediately after that call succeeds, so the frontend can display them without waiting for the full batch.
 
 ### Difficulty calibration across skills
 
@@ -229,11 +225,35 @@ The agent calibrates question difficulty per skill using the practitioner's curr
 | 55–80% | 0.65–0.80 | Challenge — nuanced scenarios, edge cases |
 | 80%+ | 0.80–0.95 | Exam-hard — same difficulty as mock exam questions |
 
-### Loading UX
+On exhaustion-aware refresh, `mastery_score` is adjusted before the spec is built:
+- avg_score ≥ 1.0 → mastery += 0.25 (harder questions for skills the practitioner aced)
+- avg_score < 0.5 → mastery −= 0.10 (easier questions for skills they struggled with)
 
-When the Quiz tab is opened with no items in DB, the entire quiz panel shows a friendly loading screen ("Generating your quiz — one moment ☕") while the single batch call runs. On success, all skill tabs populate simultaneously. On failure, an inline error with a Retry button appears — no partial state, no empty tabs.
+### Loading UX — three states per skill
 
-The Item-Writer auto-refresh path (when questions are exhausted per skill) shows a per-skill loading skeleton on that specific tab, leaving all other skill tabs responsive.
+The Quiz tab is immediately usable after path generation. Each skill tab shows one of three states based on `learning_path_items.quiz_status` and the presence of items in the `items` table:
+
+| State | DB condition | Tab appearance |
+|---|---|---|
+| **Ready** | Items exist for this skill | Normal colour; questions rendered inline |
+| **Pending** | `quiz_status='pending'`, no items yet | ⏳ Dimmed; "Questions being prepared…" |
+| **Failed** | `quiz_status='failed'`, no items | ⚠️ Amber; "Generation failed for this skill" |
+
+The background task sets `quiz_status='ready'` on success or `'failed'` on `AllProvidersUnavailableError` (or any other exception). Per-skill failures are isolated — other skills continue generating.
+
+The frontend polls `GET /items` and the active learning path every 5 seconds. Polling stops once every skill is either `ready` or `failed` (no `pending` skills remain, or a 5-minute ceiling is hit).
+
+### Retry for failed skills
+
+When any skill is in `failed` state, a **"↻ Retry Failed Skills"** button appears at the top of the skill-tab group. Clicking it calls:
+
+```
+POST /practitioners/{id}/quiz-generation/retry
+```
+
+This endpoint: fetches the active path → selects all `learning_path_items` with `quiz_status='failed'` → resets them to `'pending'` → fires `_generate_quizzes_progressively` as a new background task for only those skills → returns `{"retried": N}` immediately. The frontend then invalidates its cache to pick up the new `pending` statuses and resumes polling.
+
+The endpoint is idempotent: if no skills are in `failed` state it returns `{"retried": 0}` without launching a task.
 
 ---
 

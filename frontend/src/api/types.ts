@@ -145,6 +145,8 @@ export interface LearningPathItem {
   resource_type: "item_set" | "scenario_lab" | "external_reading";
   status: "pending" | "in_progress" | "done";
   rationale?: string;
+  /** Phase 17.5: background quiz generation state */
+  quiz_status: "pending" | "ready" | "failed";
 }
 
 export interface LearningPath {
@@ -160,6 +162,9 @@ export interface GenerateLearningPathResponse {
   workflow_run_id: string;
   learning_path_id: string;
   status: string;
+  /** Phase 17.7: true when background quiz generation was launched */
+  quiz_generating?: boolean;
+  quiz_skipped_reason?: string | null;
 }
 
 // ── Items & Attempts ──────────────────────────────────────────────────────────

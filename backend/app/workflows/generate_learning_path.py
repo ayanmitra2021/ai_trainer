@@ -1,10 +1,11 @@
-"""generate_learning_path workflow — Phase 12.1.
+"""generate_learning_path workflow — Phase 12.1 / Phase 17.
 
 Orchestrates: Skill Profiler → Domain Score computation → Curriculum Planner.
 
-Quiz questions are NOT generated here.  The Quiz tab triggers a single
-batch call (QuizBatchGeneratorAgent) the first time it is opened, so path
-generation completes in under 30 seconds.
+Phase 17: Quiz questions ARE now generated as part of path generation — see
+POST /learning-paths/generate route which calls _run_quiz_batch_for_path after
+this workflow completes.  This workflow returns the path; the route layer
+handles exhaustion detection and quiz generation.
 
 One workflow_runs row is written at the start; its status is updated to
 completed or failed at the end.  Each agent writes its own agent_runs row.
@@ -66,8 +67,10 @@ async def run_generate_learning_path(
       5. Compute certification domain scores from cert-evaluated quiz answers
       6. Mark workflow_runs completed (or failed on any exception)
 
-    Quiz questions are generated separately when the Quiz tab first opens
-    (QuizBatchGeneratorAgent, POST /learning-paths/{id}/quiz-batch).
+    Phase 17: Quiz questions ARE now generated as part of path generation.
+    The POST /learning-paths/generate route calls _run_quiz_batch_for_path
+    after this workflow returns, handling exhaustion detection and difficulty
+    adjustment automatically.
     """
     if claude_client is None:
         claude_client = create_model_client()

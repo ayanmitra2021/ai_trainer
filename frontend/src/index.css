@@ -236,6 +236,15 @@ a:hover { text-decoration: underline; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Phase 17.10: quiz tab pending pulse — subtle opacity throb */
+@keyframes quizTabPending {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+.quiz-tab-pending {
+  animation: quizTabPending 1.8s ease-in-out infinite;
+}
+
 /* 3D Portal Effects */
 @keyframes portalPulse {
   0%, 100% { transform: scale(1); opacity: 0.3; }

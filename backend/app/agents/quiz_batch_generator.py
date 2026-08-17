@@ -33,6 +33,8 @@ class SkillQuizSpec(BaseModel):
     certification_domain_name: str | None = None
     is_cert_evaluated: bool = False
     prior_generation_count: int = 0
+    question_count: int = Field(1, ge=1, le=2, description="1 or 2 MCQs for this skill — assigned by caller")
+    prior_prompts: list[str] = Field(default_factory=list, description="Existing question texts for this skill; LLM must not produce semantically similar questions")
 
 
 class BatchQuizItem(BaseModel):
@@ -71,16 +73,16 @@ class QuizBatchGeneratorOutput(BaseModel):
 
 
 class QuizBatchGeneratorAgent(Agent[QuizBatchGeneratorInput, QuizBatchGeneratorOutput]):
-    """Generates one calibrated MCQ per skill in a single LLM call.
+    """Generates calibrated MCQs per skill in a single LLM call.
 
-    Output always has len(items) == len(input.skills) and items are in the
-    same order as the input skills list.
+    Output items list length = sum(spec.question_count for spec in input.skills).
+    Items for a skill with question_count=2 both carry the same skill_id.
     """
 
     name = "quiz_batch_generator"
     model = "claude-sonnet-5"
     output_model = QuizBatchGeneratorOutput
-    max_tokens = 12000  # 16 skills × ~700 tokens + breathing room
+    max_tokens = 3000  # Phase 17.11: per-skill calls only (1-2 questions ≈ 700-1400 tokens); 3000 gives safe headroom
 
     def _build_messages(self, input: QuizBatchGeneratorInput) -> list[dict[str, Any]]:
         skill_specs = []
@@ -106,6 +108,7 @@ class QuizBatchGeneratorAgent(Agent[QuizBatchGeneratorInput, QuizBatchGeneratorO
                 "certification_domain_id": s.certification_domain_id,
                 "certification_domain_name": s.certification_domain_name,
                 "is_cert_evaluated": s.is_cert_evaluated,
+                "question_count": s.question_count,
             }
             if s.prior_generation_count > 0:
                 spec["prior_generation_count"] = s.prior_generation_count
@@ -113,6 +116,8 @@ class QuizBatchGeneratorAgent(Agent[QuizBatchGeneratorInput, QuizBatchGeneratorO
                     "Vary the question style from previous rounds — "
                     "consider EXCEPT, MOST appropriate, FIRST step, or scenario-based formats."
                 )
+            if s.prior_prompts:
+                spec["prior_prompts"] = s.prior_prompts
             skill_specs.append(spec)
 
         context = {
@@ -124,14 +129,17 @@ class QuizBatchGeneratorAgent(Agent[QuizBatchGeneratorInput, QuizBatchGeneratorO
             "skills": skill_specs,
         }
 
+        total_items = sum(s.question_count for s in input.skills)
         return [
             {
                 "role": "user",
                 "content": (
                     f"## Quiz batch generation request\n\n"
                     f"```json\n{json.dumps(context, indent=2)}\n```\n\n"
-                    f"Generate exactly one MCQ per skill entry above (in the same order).\n"
-                    f"Return an `items` array with {len(input.skills)} elements."
+                    f"Each skill entry has a `question_count` (1 or 2). Generate exactly "
+                    f"`question_count` MCQs for each skill.\n"
+                    f"Total items expected = {total_items}. "
+                    f"Return an `items` array with {total_items} elements."
                 ),
             }
         ]

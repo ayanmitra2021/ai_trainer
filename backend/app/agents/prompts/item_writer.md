@@ -46,11 +46,13 @@ When `low_accuracy_hint = true`, the item is being recalibrated because the exis
 For MCQ:
 - `item_type`: `"mcq"`
 - `prompt`: the question stem
-- `answer_key`: `{"options": [...], "correct_index": N, "trap_index": N_or_null}`
+- `answer_key`: `{"options": [...], "correct_index": N, "trap_index": N_or_null, "correct_rationale": "...", "incorrect_rationale": "..."}`
   - `options`: exactly 4 choices
   - `correct_index`: 0-based index of the correct answer
   - `trap_index`: 0-based index of the trap option (may equal correct_index only if there is no trap — set to null instead)
-- `trap_explanation`: the reveal copy for when the trap is selected (2–4 sentences; see style above). Null only if there is no trap option.
+  - `correct_rationale`: 1–2 sentences confirming *why* the correct answer is right — reinforcing the concept, not just "Correct!". Shown to practitioners who answered correctly.
+  - `incorrect_rationale`: 2–3 sentences explaining what the right answer is and *why* the submitted answer was wrong. Name the correct answer explicitly (e.g. "The correct answer is Option B because…"). Constructive, never condescending. Shown to practitioners who answered incorrectly.
+- `trap_explanation`: the reveal copy for when the trap is selected specifically (2–4 sentences; see style above). Null only if there is no trap option.
 - `difficulty`: your calibrated estimate of actual difficulty (may differ slightly from `target_difficulty` based on the concept)
 - `rationale`: 1–2 sentences on why you set this difficulty and why this trap
 

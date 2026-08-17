@@ -130,11 +130,16 @@ export const useUpdateGoalMutation = (practitioner_id: string) => {
 
 // ── Learning Paths ─────────────────────────────────────────────────────────────
 
-export const useLearningPaths = (practitioner_id: string) =>
+export const useLearningPaths = (
+  practitioner_id: string,
+  /** Phase 17.10: optional poll interval (ms) or false to disable; supports callback form */
+  refetchInterval?: number | false | ((data: unknown) => number | false),
+) =>
   useQuery({
     queryKey: ["practitioners", practitioner_id, "learning-paths"],
     queryFn: () => learningPaths.list(practitioner_id),
     enabled: !!practitioner_id,
+    ...(refetchInterval !== undefined && { refetchInterval }),
   });
 
 export const useGenerateLearningPath = (practitioner_id: string) => {
@@ -144,24 +149,50 @@ export const useGenerateLearningPath = (practitioner_id: string) => {
     onSuccess: () => {
       // The workflow re-runs Skill Profiler as its first step, so both the
       // skill-profile snapshot and the learning-path list need to be refreshed.
+      // Phase 17: quiz batch is now generated as part of path generation, so
+      // invalidate items so the Quiz tab picks up new questions immediately.
       qc.invalidateQueries({
         queryKey: ["practitioners", practitioner_id, "learning-paths"],
       });
       qc.invalidateQueries({
         queryKey: ["practitioners", practitioner_id, "skill-profile"],
       });
+      qc.invalidateQueries({ queryKey: ["items"] });
     },
   });
 };
 
-/** Phase 12.2: fire a single batch LLM call to generate one MCQ per path skill. */
+/**
+ * Phase 17.8: admin override — kept for manual/debugging use only.
+ * Normal generation goes through useGenerateLearningPath → background task.
+ */
 export const useGenerateQuizBatch = (practitioner_id: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (path_id: string) =>
       learningPaths.generateQuizBatch(practitioner_id, path_id),
     onSuccess: () => {
-      // Invalidate all items queries so every skill tab re-fetches its new question.
+      qc.invalidateQueries({ queryKey: ["items"] });
+      qc.invalidateQueries({
+        queryKey: ["practitioners", practitioner_id, "learning-paths"],
+      });
+    },
+  });
+};
+
+/**
+ * Phase 17.9: retry quiz generation for all skills with status="failed".
+ * After mutation succeeds the learning-paths list is invalidated so the
+ * QuizRunner picks up the updated quiz_status values via its polling loop.
+ */
+export const useRetryQuizGeneration = (practitioner_id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => learningPaths.retryQuizGeneration(practitioner_id),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["practitioners", practitioner_id, "learning-paths"],
+      });
       qc.invalidateQueries({ queryKey: ["items"] });
     },
   });

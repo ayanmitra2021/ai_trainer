@@ -921,6 +921,8 @@ class LearningPathItem(Base):
     # pending | in_progress | done
     status: Mapped[str] = mapped_column(sa.String(20), nullable=False, default="pending")
     rationale: Mapped[str | None] = mapped_column(sa.Text)
+    # Phase 17.5: quiz generation state — pending | ready | failed
+    quiz_status: Mapped[str] = mapped_column(sa.String(20), nullable=False, default="pending")
 
     learning_path: Mapped["LearningPath"] = relationship(back_populates="items")
     skill: Mapped["Skill"] = relationship()
@@ -933,6 +935,10 @@ class LearningPathItem(Base):
         sa.CheckConstraint(
             "status IN ('pending','in_progress','done')",
             name="ck_learning_path_items_status",
+        ),
+        sa.CheckConstraint(
+            "quiz_status IN ('pending','ready','failed')",
+            name="ck_learning_path_items_quiz_status",
         ),
     )
 

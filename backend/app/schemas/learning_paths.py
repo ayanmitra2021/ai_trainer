@@ -12,6 +12,8 @@ class LearningPathItemRead(BaseModel):
     resource_type: str
     status: str
     rationale: str | None
+    # Phase 17.5: background quiz generation state — pending | ready | failed
+    quiz_status: str = "pending"
 
     model_config = {"from_attributes": True}
 
@@ -37,6 +39,9 @@ class GenerateLearningPathResponse(BaseModel):
     workflow_run_id: str
     learning_path_id: str
     status: str
+    # Phase 17.7: True = background task was launched (generation in progress, not complete)
+    quiz_generating: bool = False
+    quiz_skipped_reason: str | None = None  # "unanswered_items" | None
 
 
 # ── Agent I/O (used by agents, not directly by routes) ────────────────────────

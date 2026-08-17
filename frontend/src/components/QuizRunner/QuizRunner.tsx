@@ -1,13 +1,13 @@
 /** QuizRunner — interactive quiz with trap-reveal mechanic. */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueries } from "@tanstack/react-query";
 import {
   useCertifications,
-  useGenerateQuizBatch,
   useItemsBySkill,
   useLearningPaths,
   usePractitionerAttempts,
+  useRetryQuizGeneration,
   useSkills,
   useSubmitAttempt,
 } from "../../hooks";
@@ -703,22 +703,27 @@ function SkillItemQuiz({
   );
 }
 
+// ── Quiz-status badge glyphs ────────────────────────────────────────────────────
+
+function quizStatusGlyph(status: "pending" | "ready" | "failed") {
+  if (status === "ready") return null;   // clean — no badge needed once ready
+  if (status === "failed") return "⚠️";
+  return "⏳";  // pending
+}
+
 // ── Main QuizRunner ────────────────────────────────────────────────────────────
 
 export default function QuizRunner({ practitionerId }: Props) {
-  const { data: paths, isLoading: pathsLoading } = useLearningPaths(practitionerId);
   const { data: allSkills } = useSkills();
   const { data: certList } = useCertifications();
-  // Hoisted here for tab progress display; also called in SkillItemQuiz (deduped by React Query).
   const { data: allAttempts } = usePractitionerAttempts(practitionerId);
   const { session } = useSession();
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const certCode = session?.active_certification_code ?? null;
 
-  // Phase 12.2: batch quiz generation — one call when Quiz tab first opens with no items.
-  const generateQuizBatch = useGenerateQuizBatch(practitionerId);
-  const batchTriggeredRef = useRef(false);
+  const { mutate: retryGeneration, isPending: retryPending } = useRetryQuizGeneration(practitionerId);
 
+  // ── Skill name & cert-membership lookups ──────────────────────────────────
   const skillNameById = useMemo(() => {
     const map = new Map<string, string>();
     allSkills?.forEach((s) => map.set(s.id, s.name));
@@ -734,7 +739,27 @@ export default function QuizRunner({ practitionerId }: Props) {
     return ids;
   }, [certList, session?.active_certification_code]);
 
-  // Attempt map for progress display and forwarding to SkillItemQuiz.
+  // ── Paths with polling — poll every 5s while any skill is pending ─────────
+  //
+  // refetchInterval receives the raw Query object in TanStack v5; we pull
+  // `.state.data` (typed as unknown) and cast it ourselves.
+  const refetchInterval = useCallback((query: unknown) => {
+    const data = (query as { state?: { data?: unknown } })?.state?.data as
+      | { items?: { quiz_status?: string }[] }[]
+      | undefined;
+    const active = data?.find((p: { status?: string }) =>
+      (p as { status?: string }).status === "active"
+    ) ?? data?.[0];
+    const anyPending = active?.items?.some((it) => it.quiz_status === "pending");
+    return anyPending ? 5000 : (false as const);
+  }, []);
+
+  const { data: paths, isLoading: pathsLoading } = useLearningPaths(
+    practitionerId,
+    refetchInterval,
+  );
+
+  // ── Attempt map ───────────────────────────────────────────────────────────
   const attemptsByItemId = useMemo(() => {
     const map: Record<string, Attempt> = {};
     allAttempts?.forEach((a) => {
@@ -743,19 +768,20 @@ export default function QuizRunner({ practitionerId }: Props) {
     return map;
   }, [allAttempts]);
 
-  // Compute pathSkills BEFORE early returns so useQueries is always called unconditionally.
-  // Tab ordering is stable: cert skills first, then supplementary — computed once from data.
+  // ── pathSkills — cert-first, includes quiz_status ─────────────────────────
+  // Must be computed BEFORE early returns so useQueries hook count is stable.
   const pathSkills = useMemo(() => {
     const activePath = paths?.find((p) => p.status === "active") ?? paths?.[0];
     if (!activePath || activePath.items.length === 0) return [];
     const rawPathSkills = activePath.items.reduce<
-      { id: string; name: string; isCert: boolean }[]
+      { id: string; name: string; isCert: boolean; quizStatus: "pending" | "ready" | "failed" }[]
     >((acc, item) => {
       if (!acc.find((s) => s.id === item.skill_id)) {
         acc.push({
           id: item.skill_id,
           name: skillNameById.get(item.skill_id) ?? `Skill ${item.skill_id.slice(0, 8)}`,
           isCert: certSkillIds.has(item.skill_id),
+          quizStatus: item.quiz_status ?? "pending",
         });
       }
       return acc;
@@ -766,16 +792,17 @@ export default function QuizRunner({ practitionerId }: Props) {
     ];
   }, [paths, skillNameById, certSkillIds]);
 
-  // Fetch items for all path skills. Same cache keys as SkillItemQuiz → no double network calls.
+  // ── Prefetch items for all ready skills ───────────────────────────────────
   const skillItemQueries = useQueries({
     queries: pathSkills.map((s) => ({
       queryKey: ["items", "skill", s.id] as const,
       queryFn: () => items.listBySkill(s.id),
-      enabled: !!s.id,
+      // Only fetch items once questions are ready (avoid 404-ish empty returns for pending skills)
+      enabled: s.quizStatus === "ready",
     })),
   });
 
-  // Per-skill tab progress: (answered / total)
+  // ── Per-skill tab progress ────────────────────────────────────────────────
   const skillProgressById = useMemo(() => {
     const map: Record<string, { answered: number; total: number }> = {};
     pathSkills.forEach((s, i) => {
@@ -786,29 +813,11 @@ export default function QuizRunner({ practitionerId }: Props) {
     return map;
   }, [pathSkills, skillItemQueries, attemptsByItemId]);
 
-  // Determine if any skill in the path has items yet (after all queries settle).
-  const allQueriesSettled = skillItemQueries.every((q) => !q.isLoading);
-  const anySkillHasItems =
-    allQueriesSettled &&
-    skillItemQueries.some((q) => Array.isArray(q.data) && (q.data as unknown[]).length > 0);
+  const anyFailed = pathSkills.some((s) => s.quizStatus === "failed");
 
-  // Auto-trigger batch generation exactly once when the quiz tab opens with no items.
   const activePath = paths?.find((p) => p.status === "active") ?? paths?.[0];
-  useEffect(() => {
-    if (
-      !batchTriggeredRef.current &&
-      allQueriesSettled &&
-      activePath &&
-      pathSkills.length > 0 &&
-      !anySkillHasItems &&
-      !generateQuizBatch.isPending &&
-      !generateQuizBatch.isSuccess
-    ) {
-      batchTriggeredRef.current = true;
-      generateQuizBatch.mutate(activePath.id);
-    }
-  }, [allQueriesSettled, activePath, pathSkills.length, anySkillHasItems, generateQuizBatch]);
 
+  // ── Early returns (after all hooks) ──────────────────────────────────────
   if (pathsLoading) {
     return (
       <div style={{ textAlign: "center", padding: "3rem" }}>
@@ -825,82 +834,6 @@ export default function QuizRunner({ practitionerId }: Props) {
     );
   }
 
-  // Full-panel loading screen while the batch LLM call is in flight.
-  if (generateQuizBatch.isPending || (!anySkillHasItems && allQueriesSettled && pathSkills.length > 0 && !generateQuizBatch.isError)) {
-    const skillCount = pathSkills.length;
-    return (
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          padding: "4rem 2rem",
-          textAlign: "center",
-          gap: "1.25rem",
-        }}
-      >
-        <div style={{ fontSize: "2.5rem" }}>☕</div>
-        <h2 style={{ margin: 0 }}>Generating your quiz — one moment</h2>
-        <p style={{ color: "var(--text-muted)", maxWidth: "36rem", lineHeight: 1.6, margin: 0 }}>
-          We're crafting{" "}
-          <strong>
-            {skillCount} question{skillCount !== 1 ? "s" : ""}
-          </strong>
-          , one per skill, calibrated to your current mastery level.
-        </p>
-        <div
-          style={{
-            width: "min(28rem, 90vw)",
-            height: "0.5rem",
-            borderRadius: "999px",
-            background: "var(--surface-alt)",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              height: "100%",
-              borderRadius: "999px",
-              background: "var(--primary)",
-              animation: "quizBatchProgress 3s ease-in-out infinite alternate",
-              width: "60%",
-            }}
-          />
-        </div>
-        <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", margin: 0 }}>
-          This usually takes 20–30 seconds…
-        </p>
-        <style>{`
-          @keyframes quizBatchProgress {
-            from { width: 15%; }
-            to   { width: 85%; }
-          }
-        `}</style>
-      </div>
-    );
-  }
-
-  // Error state after a failed batch generation attempt.
-  if (generateQuizBatch.isError && !anySkillHasItems) {
-    return (
-      <div className="empty-state">
-        <p>⚠ Could not generate quiz questions. Check your connection and try again.</p>
-        <button
-          className="btn btn-primary"
-          style={{ marginTop: "1rem" }}
-          onClick={() => {
-            batchTriggeredRef.current = false;
-            generateQuizBatch.reset();
-            if (activePath) generateQuizBatch.mutate(activePath.id);
-          }}
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-
   const defaultSkillId = (pathSkills.find((s) => s.isCert) ?? pathSkills[0])?.id ?? null;
   const active = selectedSkillId ?? defaultSkillId;
 
@@ -908,16 +841,137 @@ export default function QuizRunner({ practitionerId }: Props) {
   const suppSkills = pathSkills.filter((s) => !s.isCert);
   const hasBothGroups = certSkills.length > 0 && suppSkills.length > 0;
 
+  // ── Skill tab renderer (shared between cert and supp groups) ─────────────
+  function SkillTab({
+    s,
+    isCertStyle,
+  }: {
+    s: { id: string; name: string; isCert: boolean; quizStatus: "pending" | "ready" | "failed" };
+    isCertStyle: boolean;
+  }) {
+    const prog = skillProgressById[s.id];
+    const isActive = active === s.id;
+    const glyph = quizStatusGlyph(s.quizStatus);
+
+    // Colour override for failed skills
+    const failedStyle =
+      s.quizStatus === "failed" && !isActive
+        ? { borderColor: "var(--warning)", color: "var(--warning)", opacity: 0.9 }
+        : {};
+
+    // Pulse animation class for pending skills
+    const pendingClass = s.quizStatus === "pending" && !isActive ? " quiz-tab-pending" : "";
+
+    return (
+      <button
+        key={s.id}
+        className={`btn ${isActive ? "btn-primary" : "btn-outline"}${pendingClass}`}
+        onClick={() => setSelectedSkillId(s.id)}
+        title={
+          s.quizStatus === "pending"
+            ? "Questions are being prepared…"
+            : s.quizStatus === "failed"
+            ? "Question generation failed — click ↻ Retry above to try again"
+            : undefined
+        }
+        style={
+          isCertStyle && !isActive
+            ? { borderColor: "var(--primary)", color: "var(--primary)", ...failedStyle }
+            : failedStyle
+        }
+      >
+        {glyph && <span style={{ marginRight: "0.25rem" }}>{glyph}</span>}
+        {s.name}
+        {prog && prog.total > 0 && (
+          <span
+            style={{
+              marginLeft: "0.35rem",
+              fontSize: "0.7rem",
+              color: isActive ? "rgba(255,255,255,0.7)" : "var(--text-muted)",
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            ({prog.answered}/{prog.total})
+          </span>
+        )}
+        {isCertStyle && (
+          <span
+            style={{
+              marginLeft: "0.4rem",
+              fontSize: "0.6rem",
+              padding: "0.1rem 0.35rem",
+              borderRadius: "999px",
+              background: isActive ? "rgba(255,255,255,0.28)" : "var(--primary)",
+              color: "#fff",
+              fontWeight: 700,
+              letterSpacing: "0.03em",
+              verticalAlign: "middle",
+            }}
+          >
+            EXAM
+          </span>
+        )}
+        {!isCertStyle && (
+          <span
+            style={{
+              marginLeft: "0.4rem",
+              fontSize: "0.6rem",
+              padding: "0.1rem 0.35rem",
+              borderRadius: "999px",
+              background: isActive ? "rgba(255,255,255,0.18)" : "var(--surface-alt)",
+              color: isActive ? "rgba(255,255,255,0.85)" : "var(--text-muted)",
+              border: isActive ? "none" : "1px solid var(--border)",
+              fontWeight: 600,
+              letterSpacing: "0.02em",
+              verticalAlign: "middle",
+            }}
+          >
+            SUPP
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  // ── Active skill pane ─────────────────────────────────────────────────────
+  const activeSkill = pathSkills.find((s) => s.id === active);
+
   return (
     <div>
       <h2>Quiz</h2>
-      <p style={{ color: "var(--text-muted)", marginBottom: "1.25rem", fontSize: "0.875rem" }}>
+      <p style={{ color: "var(--text-muted)", marginBottom: "1rem", fontSize: "0.875rem" }}>
         Practice questions for your active learning path. Select a skill to begin.
       </p>
 
-      {/* Skill selector — cert skills first, then supplementary, with a divider */}
+      {/* ── Retry banner — shown when any skill failed ── */}
+      {anyFailed && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            marginBottom: "1rem",
+            padding: "0.625rem 1rem",
+            borderRadius: "var(--radius)",
+            border: "1px solid var(--warning)",
+            background: "color-mix(in srgb, var(--warning) 8%, var(--surface))",
+            fontSize: "0.875rem",
+          }}
+        >
+          <span>⚠️ Some skills couldn't generate questions.</span>
+          <button
+            className="btn btn-outline"
+            style={{ fontSize: "0.8125rem", borderColor: "var(--warning)", color: "var(--warning)" }}
+            disabled={retryPending}
+            onClick={() => retryGeneration()}
+          >
+            {retryPending ? <><span className="spinner" style={{ width: "0.75rem", height: "0.75rem" }} /> Retrying…</> : "↻ Retry Failed Skills"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Skill selector ── */}
       <div style={{ marginBottom: "1.5rem" }}>
-        {/* Cert-skill group */}
         {certSkills.length > 0 && (
           <>
             {hasBothGroups && (
@@ -942,56 +996,13 @@ export default function QuizRunner({ practitionerId }: Props) {
                 marginBottom: hasBothGroups ? "0.75rem" : "0",
               }}
             >
-              {certSkills.map((s) => {
-                const prog = skillProgressById[s.id];
-                return (
-                  <button
-                    key={s.id}
-                    className={`btn ${active === s.id ? "btn-primary" : "btn-outline"}`}
-                    onClick={() => setSelectedSkillId(s.id)}
-                    style={{
-                      borderColor: active === s.id ? undefined : "var(--primary)",
-                      color: active === s.id ? undefined : "var(--primary)",
-                    }}
-                  >
-                    {s.name}
-                    {prog && prog.total > 0 && (
-                      <span
-                        style={{
-                          marginLeft: "0.35rem",
-                          fontSize: "0.7rem",
-                          color:
-                            active === s.id ? "rgba(255,255,255,0.7)" : "var(--text-muted)",
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      >
-                        ({prog.answered}/{prog.total})
-                      </span>
-                    )}
-                    <span
-                      style={{
-                        marginLeft: "0.4rem",
-                        fontSize: "0.6rem",
-                        padding: "0.1rem 0.35rem",
-                        borderRadius: "999px",
-                        background:
-                          active === s.id ? "rgba(255,255,255,0.28)" : "var(--primary)",
-                        color: "#fff",
-                        fontWeight: 700,
-                        letterSpacing: "0.03em",
-                        verticalAlign: "middle",
-                      }}
-                    >
-                      EXAM
-                    </span>
-                  </button>
-                );
-              })}
+              {certSkills.map((s) => (
+                <SkillTab key={s.id} s={s} isCertStyle={true} />
+              ))}
             </div>
           </>
         )}
 
-        {/* Divider */}
         {hasBothGroups && (
           <div
             style={{ display: "flex", alignItems: "center", gap: "0.5rem", margin: "0.25rem 0 0.6rem" }}
@@ -1013,67 +1024,55 @@ export default function QuizRunner({ practitionerId }: Props) {
           </div>
         )}
 
-        {/* Supplementary-skill group */}
         {suppSkills.length > 0 && (
           <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            {suppSkills.map((s) => {
-              const prog = skillProgressById[s.id];
-              return (
-                <button
-                  key={s.id}
-                  className={`btn ${active === s.id ? "btn-primary" : "btn-outline"}`}
-                  onClick={() => setSelectedSkillId(s.id)}
-                >
-                  {s.name}
-                  {prog && prog.total > 0 && (
-                    <span
-                      style={{
-                        marginLeft: "0.35rem",
-                        fontSize: "0.7rem",
-                        color:
-                          active === s.id ? "rgba(255,255,255,0.7)" : "var(--text-muted)",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      ({prog.answered}/{prog.total})
-                    </span>
-                  )}
-                  <span
-                    style={{
-                      marginLeft: "0.4rem",
-                      fontSize: "0.6rem",
-                      padding: "0.1rem 0.35rem",
-                      borderRadius: "999px",
-                      background:
-                        active === s.id ? "rgba(255,255,255,0.18)" : "var(--surface-alt)",
-                      color:
-                        active === s.id ? "rgba(255,255,255,0.85)" : "var(--text-muted)",
-                      border: active === s.id ? "none" : "1px solid var(--border)",
-                      fontWeight: 600,
-                      letterSpacing: "0.02em",
-                      verticalAlign: "middle",
-                    }}
-                  >
-                    SUPP
-                  </span>
-                </button>
-              );
-            })}
+            {suppSkills.map((s) => (
+              <SkillTab key={s.id} s={s} isCertStyle={false} />
+            ))}
           </div>
         )}
       </div>
 
+      {/* ── Active skill pane ── */}
       {active && (
         <div className="card">
-          {/* key={active} resets itemIndex to 0 when the user switches skill tabs */}
-          <SkillItemQuiz
-            key={active}
-            practitionerId={practitionerId}
-            skillId={active}
-            skillName={pathSkills.find((s) => s.id === active)?.name ?? active}
-            certCode={certCode}
-            attemptsByItemId={attemptsByItemId}
-          />
+          {activeSkill?.quizStatus === "pending" ? (
+            <div style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
+              <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⏳</div>
+              <p style={{ fontWeight: 600, margin: "0 0 0.375rem" }}>Questions are baking…</p>
+              <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", margin: 0 }}>
+                We're preparing questions for <strong>{activeSkill.name}</strong> in the background.
+                This tab will light up automatically when they're ready.
+              </p>
+            </div>
+          ) : activeSkill?.quizStatus === "failed" ? (
+            <div style={{ textAlign: "center", padding: "2.5rem 1rem" }}>
+              <div style={{ fontSize: "2rem", marginBottom: "0.5rem" }}>⚠️</div>
+              <p style={{ fontWeight: 600, margin: "0 0 0.375rem" }}>Generation failed</p>
+              <p style={{ fontSize: "0.8125rem", color: "var(--text-muted)", margin: "0 0 1rem" }}>
+                Couldn't prepare questions for <strong>{activeSkill.name}</strong> — the AI provider
+                was unavailable. Use the retry button above to try again.
+              </p>
+              <button
+                className="btn btn-outline"
+                style={{ fontSize: "0.8125rem", borderColor: "var(--warning)", color: "var(--warning)" }}
+                disabled={retryPending}
+                onClick={() => retryGeneration()}
+              >
+                {retryPending ? "Retrying…" : "↻ Retry now"}
+              </button>
+            </div>
+          ) : (
+            /* quiz_status === "ready" — render the quiz */
+            <SkillItemQuiz
+              key={active}
+              practitionerId={practitionerId}
+              skillId={active}
+              skillName={pathSkills.find((s) => s.id === active)?.name ?? active}
+              certCode={certCode}
+              attemptsByItemId={attemptsByItemId}
+            />
+          )}
         </div>
       )}
     </div>

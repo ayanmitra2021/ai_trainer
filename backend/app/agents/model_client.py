@@ -290,6 +290,50 @@ def _extract_json_from_content(content: str) -> str:
     return content
 
 
+def _build_nvidia_output_instruction(schema: dict) -> str:
+    """Build an output instruction that NVIDIA models can follow reliably.
+
+    Why NOT to embed json.dumps(schema)
+    ------------------------------------
+    The raw JSON schema looks like:
+        {"type": "object", "description": "GraderOutput", "properties": {...}}
+    Smaller models (e.g. Lightning 30B) interpret this JSON object as the answer
+    template and echo it back unchanged — Pydantic then fails with "Field required"
+    because the returned dict has ``"type"`` and ``"description"`` keys instead of
+    the expected field names.
+
+    What we do instead
+    ------------------
+    Describe each field explicitly as a FIELD_NAME: <type> line, without wrapping
+    it in a JSON object.  This makes it impossible for the model to confuse the
+    schema definition with the expected output.
+    """
+    props = schema.get("properties", {})
+    required = set(schema.get("required", []))
+
+    # Required fields first, then optional.
+    ordered = sorted(props.items(), key=lambda kv: (kv[0] not in required, kv[0]))
+
+    lines: list[str] = []
+    for fname, fschema in ordered:
+        ftype = fschema.get("type", "any")
+        fdesc = fschema.get("description", "")
+        req_label = "REQUIRED" if fname in required else "optional, null if unknown"
+        # Truncate very long descriptions so the system prompt stays compact.
+        desc_part = f" — {fdesc[:100]}" if fdesc else ""
+        lines.append(f'  "{fname}": <{ftype}> ({req_label}){desc_part}')
+
+    fields_block = "\n".join(lines)
+    return (
+        "\n\n## Output format\n"
+        "Respond with a single valid JSON object only — no markdown fences, "
+        "no prose or explanation outside the braces.\n"
+        "The JSON object must contain exactly these fields:\n"
+        + fields_block
+        + "\n\nDo NOT return the field descriptions above — return the actual values."
+    )
+
+
 class NVIDIAMessagesClient(MessagesClient):
     """Wrapper around openai.AsyncOpenAI for NVIDIA Nemotron Structured Outputs.
 
@@ -322,16 +366,18 @@ class NVIDIAMessagesClient(MessagesClient):
         # Convert Pydantic model to JSON schema for the prompt
         schema = output_format.model_json_schema()
 
-        # Embed the schema as an explicit instruction.  response_format below
-        # guarantees valid JSON; the schema text tells the model which fields
-        # to fill and what types they must have.
-        schema_instruction = (
-            f"\n\nRespond with a single JSON object — no markdown fences, no prose "
-            f"outside the JSON, no explanation.  The object must contain exactly "
-            f"these fields (fill every required field; use null for optional ones "
-            f"you cannot determine):\n"
-            f"{json.dumps(schema, indent=2)}"
-        )
+        # Build the output instruction WITHOUT embedding the raw JSON schema object.
+        #
+        # Root cause of the Lightning failure: embedding json.dumps(schema) produces a
+        # JSON object like {"type":"object","description":"...","properties":{...}}.
+        # Lightning (and similar smaller models) misinterpret this as the answer itself
+        # and echo the schema structure back instead of filling in the field values.
+        # The Pydantic validation then fails with "Field required" because the returned
+        # dict has keys like "type" and "description" instead of the actual field names.
+        #
+        # Fix: describe the fields in plain text so the model cannot confuse the schema
+        # definition with the expected output instance.
+        schema_instruction = _build_nvidia_output_instruction(schema)
 
         openai_messages = [
             {"role": "system", "content": system + schema_instruction}
@@ -901,6 +947,36 @@ def create_model_client() -> ModelClient:
 
     # ANTHROPIC mode: no circuit breaker (NVIDIA is already the fallback)
     return MultiTierModelClient(tiers=anthro_tiers, circuit_breaker=None)
+
+
+def create_haiku_only_client() -> ModelClient:
+    """Single-tier Haiku client for large structured-content generation.
+
+    The QuizBatchGeneratorAgent produces 8-12K output tokens per call (10-12
+    MCQs, each with correct_rationale + incorrect_rationale + trap_explanation).
+    NVIDIA Ultra times out at 90 s and Lightning at 45 s on this workload — both
+    far too slow.  Haiku handles ~5K tokens comfortably in <60 s per chunk.
+
+    This client bypasses the NVIDIA tier entirely so there is no 90-s + 45-s
+    wasted wait before Haiku even gets a chance.  Falls back to the standard
+    multi-tier chain only when no Anthropic key is configured.
+
+    Timeout budget: 120 s — safe headroom for a 4-skill / 8-question chunk at
+    Haiku's ~100 tokens/s generation rate.
+    """
+    from app.config import get_settings
+    s = get_settings()
+
+    if not s.anthropic_api_key:
+        # No Anthropic key configured — use whatever the standard chain provides
+        return create_model_client()
+
+    haiku = AnthropicModelClient(
+        api_key=s.anthropic_api_key,
+        model_id=s.app_anthropic_model_id,
+        request_timeout=125.0,  # 120 s budget + 5 s TCP buffer
+    )
+    return MultiTierModelClient(tiers=[(haiku, 120.0)], circuit_breaker=None)
 
 
 # ── Helper for extracting parsed output ───────────────────────────────────────

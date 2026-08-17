@@ -127,10 +127,16 @@ export const learningPaths = {
     }),
   list: (practitioner_id: string) =>
     api.get<LearningPath[]>(`/practitioners/${practitioner_id}/learning-paths`),
-  /** Phase 12.2: generate one starter MCQ per skill for the active path. */
+  /** Phase 17.8: admin override — synchronously regenerates all skills in a path. */
   generateQuizBatch: (practitioner_id: string, path_id: string) =>
-    api.post<{ item_ids: string[] }>(
+    api.post<{ quiz_generating: boolean; skills_queued: number }>(
       `/practitioners/${practitioner_id}/learning-paths/${path_id}/quiz-batch`,
+      {}
+    ),
+  /** Phase 17.9: retry quiz generation for all failed skills in the latest path. */
+  retryQuizGeneration: (practitioner_id: string) =>
+    api.post<{ message: string; retried: number }>(
+      `/practitioners/${practitioner_id}/quiz-generation/retry`,
       {}
     ),
 };

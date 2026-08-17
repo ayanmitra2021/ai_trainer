@@ -47,11 +47,19 @@ class ItemWriterInput(BaseModel):
 
 
 class MCQAnswerKey(BaseModel):
-    """Structured answer key for MCQ items."""
+    """Structured answer key for MCQ items.
+
+    Phase 16: correct_rationale and incorrect_rationale are pre-generated at
+    question-creation time so MCQ grading is instant (no LLM call in POST /attempts).
+    Both fields are optional to maintain backward compatibility with legacy items.
+    """
 
     options: list[str] = Field(..., min_length=3, max_length=5)
     correct_index: int
     trap_index: int | None = None
+    # Phase 16: pre-generated rationales for instant deterministic grading
+    correct_rationale: str | None = None    # shown when practitioner answers correctly
+    incorrect_rationale: str | None = None  # shown when practitioner answers incorrectly
 
 
 class FreeTextAnswerKey(BaseModel):

@@ -137,6 +137,30 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 15.5 Graceful degraded response — informative 503 when all three tiers fail
 - [x] 15.6 Documentation freeze — update `docs/MULTI_PROVIDER.md` and `docs/architecture.md`
 
+**Phase 16 — Instant MCQ Feedback (Pre-generated Rationales)**
+- [x] 16.1 Extend `MCQAnswerKey` schema — add optional `correct_rationale` and `incorrect_rationale` fields
+- [x] 16.2 Update `QuizBatchGeneratorAgent` prompt — LLM generates both rationales at question-creation time
+- [x] 16.3 Update `ItemWriter` prompt — auto-refresh path also generates rationales
+- [x] 16.4 Deterministic MCQ grading in `POST /attempts` — `_grade_mcq_instantly()` picks pre-written rationale; no LLM call for Phase 16 items
+- [x] 16.5 Graceful fallback for legacy items — if rationale fields absent, route falls through to `GraderAgent`
+- [x] 16.6 Scenario tests — 20 tests covering correct/incorrect/trap scoring, boundary cases, schema backward-compat, and GraderAgent fallback trigger
+- [x] 16.7 Documentation freeze — update `docs/architecture.md`, `docs/data-model.md`, `project_plan.md`
+
+**Phase 17 — Continuous Quiz: Progressive Per-Skill Background Generation**
+- [x] 17.1 `GenerateLearningPathResponse` — add `quiz_generating` and `quiz_skipped_reason` fields
+- [x] 17.2 `SkillQuizSpec` — add `question_count` (1 or 2) and `prior_prompts` fields; update `_build_messages` and agent docstring
+- [x] 17.3 `QuizBatchGeneratorAgent` prompt — per-spec `question_count` rules, no-repeat constraint, Phase 16 rationale fields
+- [x] 17.4 Route helpers — `_check_quiz_exhaustion`, `_compute_skill_avg_scores`, `_assign_question_counts`
+- [x] 17.5 DB migration — add `quiz_status VARCHAR(20) DEFAULT 'pending'` to `learning_path_items`; values: `pending | ready | failed`; seeded as `'pending'` when a path item row is created
+- [x] 17.6 Background engine — `_generate_quizzes_progressively`; one LLM call per skill; 1-2 questions per call (~700-1400 output tokens; fits NVIDIA); on success: set `quiz_status='ready'` and persist items; on exception: set `quiz_status='failed'`, log warning, continue to next skill; uses a fresh DB session (request session already closed)
+- [x] 17.7 `POST /learning-paths/generate` — fire background task via FastAPI `BackgroundTasks`; return path immediately; `quiz_generating=True`; no blocking wait for quiz completion
+- [x] 17.8 `POST /quiz-batch` — admin/recovery wrapper (synchronous, awaited)
+- [x] 17.9 `POST /practitioners/{id}/quiz-generation/retry` — fetch active path; filter `learning_path_items` where `quiz_status='failed'`; reset each to `'pending'`; fire a new background task for only those skills; idempotent (noop if no failed items)
+- [x] 17.10 Frontend three-state quiz tab — poll `GET /items` + learning path every 5 s; **ready** (items in DB): render questions normally; **pending** (status=`pending`, no items): ⏳ dimmed tab, "Questions being prepared…"; **failed** (status=`failed`, no items): ⚠️ amber tab, "Generation failed"; "↻ Retry Failed Skills" button shown at tab-group top when any skill is `failed`; stop polling once all skills are either `ready` or `failed`
+- [x] 17.11 Reduce `QuizBatchGeneratorAgent.max_tokens` to 3000 (1 skill × max 2 questions ≈ 1400 output tokens; prevents NVIDIA reserving excess compute time)
+- [x] 17.12 Scenario tests — background invocation, per-skill error recovery, failure status persisted, retry re-queues only failed skills, all-ready stops polling
+- [x] 17.13 Documentation freeze
+
 ---
 
 # Phase 14 — Provider Resilience: Haiku Fallback & Graceful Degradation
@@ -3175,3 +3199,196 @@ Scenario: Batch endpoint logs warning when cert ratio falls below 80%
 **Definition of done:** `py -m pytest` green; `cert_question_pct` and `supp_question_pct`
 present in quiz-batch response; warning logged (not raised) when ratio < 80%; CCAR-P path
 with 10 agent-discovered skills yields cert_pct ≥ 80% in a live smoke test.
+
+---
+
+# Phase 17 — Continuous Quiz: Progressive Per-Skill Background Generation
+
+**Why this phase exists.** After generating a learning path, practitioners want to see quiz
+questions immediately — not after another 30-second wait. At the same time, generating
+10–12 full MCQs (with rationales) in a single LLM call produces ~8-12K output tokens,
+which consistently exceeds NVIDIA's timeout budgets even after tuning. The fix decouples
+generation from the HTTP response: the path response returns immediately; a FastAPI
+background task then generates questions **one skill at a time**, each call producing
+1-2 questions (~700-1400 tokens) — well within NVIDIA's 90-second window. Questions
+appear in the Quiz tab as they finish, with a per-skill "preparing" indicator for skills
+not yet ready.
+
+**Design constraint — provider priority:** NVIDIA is always the primary provider.
+Anthropic Haiku is only invoked as a fallback when all NVIDIA tiers fail for a given skill.
+This is non-negotiable for cost control.
+
+**Rules:**
+- 10–12 questions total per round, 1 or 2 per skill (random), cert-evaluated skills
+  prioritised for 2-question slots.
+- All questions include `correct_rationale` + `incorrect_rationale` (Phase 16 format).
+- No question text may be repeated across generations (no-repeat constraint in prompt).
+- Per-skill generation errors are **logged and skipped** — one bad skill does not abort
+  the rest of the batch.
+
+**Two generation triggers (only two):**
+
+Stage 1 — `POST /learning-paths/generate` called and **no items exist** for the new
+path's skills → start background generation immediately after path workflow completes.
+
+Stage 2 — `POST /learning-paths/generate` called again (path regeneration) → check if ALL
+existing items for the path's skills have been attempted by this practitioner.
+- All answered → start background generation with difficulty adjustment per skill:
+  avg_score ≥ 1.0 → push mastery up 0.25 (harder); avg_score < 0.5 → push mastery down
+  0.10 (easier); else keep.
+- Some unanswered → skip quiz generation entirely, just return the updated path
+  (`quiz_skipped_reason = "unanswered_items"`).
+
+**Preconditions:** Phase 16 Definition of Done is met.
+
+---
+
+### Step 17.1 — Schema extension ✅
+
+Add `quiz_generating: bool = False` and `quiz_skipped_reason: str | None = None` to
+`GenerateLearningPathResponse` in `backend/app/schemas/learning_paths.py`.
+`quiz_generating=True` means a background task was launched; it says nothing about whether
+generation has completed.
+
+### Step 17.2 — SkillQuizSpec extension ✅
+
+Add `question_count: int = Field(1, ge=1, le=2)` and `prior_prompts: list[str] = Field(default_factory=list)` to `SkillQuizSpec` in `quiz_batch_generator.py`. Update `_build_messages` to include both fields in the per-skill spec dict and update the user message to say "total items expected = {sum(s.question_count for s in input.skills)}". Update the agent docstring.
+
+### Step 17.3 — Prompt update ✅
+
+Update `backend/app/agents/prompts/quiz_batch_generator.md`:
+- Replace "exactly one MCQ per skill" coverage rules with per-spec `question_count` rules.
+- Add no-repeat constraint section using `prior_prompts`.
+- Update output format example to show a skill with `question_count=2` producing two items.
+- Ensure Phase 16 `correct_rationale` / `incorrect_rationale` fields are documented.
+
+### Step 17.4 — Route helpers ✅
+
+Add three helpers to `backend/app/api/routes/learning_paths.py` (before the routes):
+- `_check_quiz_exhaustion(practitioner_id, skill_ids, db)` → `(should_generate, is_first_time)`
+- `_compute_skill_avg_scores(practitioner_id, skill_ids, db)` → `dict[skill_id, avg_score]`
+- `_assign_question_counts(skill_specs, target_min=10, target_max=12)` → None (mutates in-place)
+
+### Step 17.5 — DB migration: `quiz_status` on `learning_path_items`
+
+Add `quiz_status VARCHAR(20) NOT NULL DEFAULT 'pending'` to `learning_path_items`.
+
+| Value | Meaning |
+|---|---|
+| `pending` | Background task has not yet attempted this skill (or path was just created) |
+| `ready` | Agent call succeeded; items are in the `items` table for this skill |
+| `failed` | Agent call exhausted all provider tiers; no items were written for this skill |
+
+Alembic migration file: `backend/alembic/versions/018_learning_path_item_quiz_status.py`.
+
+### Step 17.6 — Background generation engine
+
+Add `_generate_quizzes_progressively` as a top-level async function in `learning_paths.py`.
+
+```
+_generate_quizzes_progressively(
+    practitioner_id: str,
+    learning_path_id: str,           # needed to update quiz_status on learning_path_items
+    skill_specs: list[SkillQuizSpec],
+    cert_code: str,
+    cert_name: str,
+    certification_domains: list[dict] | None,
+    max_gen_by_skill: dict[str, int],
+) -> None
+```
+
+Behaviour:
+- Opens a **fresh `AsyncSession`** (the request session is closed the moment the HTTP response is sent).
+- Iterates `skill_specs` in order. For each skill:
+  1. Call `QuizBatchGeneratorAgent` with `skills=[spec]` (single-skill, 1–2 questions, ~700–1400 output tokens).
+  2. **Success**: persist items, then set `learning_path_items.quiz_status = 'ready'` where `learning_path_id=X` and `skill_id=Y`. Commit.
+  3. **Exception** (including `AllProvidersUnavailableError`): set `quiz_status = 'failed'`, log a `WARNING` with the error, commit, continue to the next skill.
+
+`QuizBatchGeneratorAgent.max_tokens` is reduced to 3000 at step 17.11.
+
+### Step 17.7 — `POST /learning-paths/generate` route update
+
+After calling `run_generate_learning_path`:
+
+1. Fetch the new path's `learning_path_id` and skill IDs.
+2. Call `_check_quiz_exhaustion` and `_assign_question_counts`.
+3. Build the full `skill_specs` list (cert context, prior prompts, difficulty adjustment).
+4. If generation is needed: add `_generate_quizzes_progressively(...)` to FastAPI `BackgroundTasks`. Path item rows are already at `quiz_status='pending'` (the default). Return `GenerateLearningPathResponse(quiz_generating=True)` **immediately**.
+5. If skipped: return with `quiz_skipped_reason`.
+
+Response time drops from 165 s (3-tier timeout wall) + quiz time back to ~30 s (profiler + planner only).
+
+### Step 17.8 — `POST /quiz-batch` — admin/recovery wrapper
+
+Refactor to call `_generate_quizzes_progressively` synchronously (awaited) for operator-triggered rebuilds. Docstring: "Admin/manual endpoint — normal trigger is POST /learning-paths/generate (background task)."
+
+### Step 17.9 — Retry endpoint
+
+```
+POST /practitioners/{practitioner_id}/quiz-generation/retry
+```
+
+Logic:
+1. Fetch the practitioner's active learning path.
+2. Select all `learning_path_items` where `quiz_status = 'failed'` for that path.
+3. If none: return `{"retried": 0, "detail": "no failed skills to retry"}` (idempotent noop).
+4. Reset each failed item to `quiz_status = 'pending'`.
+5. Build `SkillQuizSpec` list for only the failed skills (same helper as 17.7 — cert context, prior prompts, difficulty).
+6. Fire `_generate_quizzes_progressively(...)` as a background task.
+7. Return `{"retried": N}` immediately.
+
+No auth change needed — enforce `self_or_admin` as with other practitioner endpoints.
+
+### Step 17.10 — Frontend three-state quiz tab
+
+The quiz tab fetches two things on a 5-second poll:
+- `GET /items?practitioner_id={id}` — to know which skills have items
+- The active learning path — to know each skill's `quiz_status` from `learning_path_items`
+
+Per-skill states (derive from both sources):
+
+| State | Condition | Tab appearance |
+|---|---|---|
+| **Ready** | items exist for this skill | normal color, questions rendered |
+| **Pending** | `quiz_status='pending'`, no items | ⏳ dimmed; "Questions being prepared…" |
+| **Failed** | `quiz_status='failed'`, no items | ⚠️ amber; "Generation failed for this skill" |
+
+**"↻ Retry Failed Skills" button** — displayed at the top of the skill-tab group when one or more skills are in `failed` state. Clicking it calls `POST /practitioners/{id}/quiz-generation/retry`, then immediately invalidates the items and path queries to pick up the new `pending` statuses.
+
+Stop polling when every skill is either `ready` or `failed` (no more `pending` skills).
+
+Changes:
+- `useGenerateLearningPath.onSuccess` — already invalidates `["items"]`; also invalidate `["learning-path"]` to get fresh `quiz_status` values.
+- `QuizRunner` — replace the single ⏳/ready binary with the three-state logic above; add `useRetryQuizGeneration` mutation calling the retry endpoint.
+
+### Step 17.11 — Reduce `QuizBatchGeneratorAgent.max_tokens`
+
+Change from 12000 to 3000. One skill per call = max 2 questions × ~700 tokens ≈ 1400 tokens. 3000 gives safe headroom without telling NVIDIA to reserve compute time for tokens that will not be produced.
+
+### Step 17.12 — Scenario tests
+
+New file `tests/scenarios/test_phase17b_progressive_quiz.py`:
+
+- *Background task invoked* — `POST /learning-paths/generate` with stub, `BackgroundTasks.add_task` called with `_generate_quizzes_progressively`; response has `quiz_generating=True`.
+- *Per-skill generation succeeds* — 3 specs, stub client, 3 `db.add(Item)` calls + 3 `quiz_status='ready'` updates.
+- *Per-skill failure is isolated* — second skill raises `AllProvidersUnavailableError`; first and third items persisted; second skill's `quiz_status='failed'`; only a WARNING logged; function returns normally.
+- *Retry re-queues only failed* — Given path with 2 ready + 1 failed skill, `POST .../retry` resets 1 skill to `pending`, fires background task with 1 spec, returns `{"retried": 1}`.
+- *Retry is idempotent* — Given no failed skills, retry returns `{"retried": 0}` and does not fire a background task.
+- *Exhaustion skip* — unanswered items exist → `quiz_generating=False`, `quiz_skipped_reason="unanswered_items"`.
+- *Difficulty adjustment on refresh* — all answered, one skill avg ≥ 1.0 → mastery pushed up 0.25 in the spec.
+
+### Step 17.13 — Documentation freeze
+
+Update `docs/architecture.md` quiz section and `docs/data-model.md` `learning_path_items` row.
+
+**Definition of done:**
+```
+py -m pytest tests/scenarios/test_phase17_quiz_generation.py \
+             tests/scenarios/test_phase17b_progressive_quiz.py \
+             tests/scenarios/test_quiz_batch_ratio.py \
+             tests/scenarios/test_phase16_instant_mcq_grading.py -q
+```
+All pass. Full suite `py -m pytest tests/scenarios/ -q --tb=short` passes.
+`POST /learning-paths/generate` returns in under 35 s with `quiz_generating: true`.
+Quiz tab shows three distinct states (ready / pending / failed) without a full-screen loading blocker.
+`POST .../retry` re-queues only failed skills and returns immediately.
