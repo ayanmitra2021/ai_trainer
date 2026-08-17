@@ -589,6 +589,13 @@ function SkillItemQuiz({
   const attempt = attemptsByItemId[item.id] ?? null;
   const currentGeneration = item.generation;
 
+  // Items belonging to the current round only — drives the "X / Y" counter so
+  // that Round 3 shows "1 / 3" not "7 / 9" (cumulative across all rounds).
+  const currentRoundItems = skillItems.filter(
+    (it) => it.generation === currentGeneration,
+  );
+  const currentRoundIndex = currentRoundItems.findIndex((it) => it.id === item.id);
+
   // All answered items for this skill — used by the accordion below.
   const answeredItems = skillItems
     .map((it, idx) => ({ item: it, idx, attempt: attemptsByItemId[it.id] ?? null }))
@@ -647,7 +654,7 @@ function SkillItemQuiz({
           )}
         </div>
         <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)" }}>
-          {itemIndex + 1} / {skillItems.length}
+          {currentRoundIndex + 1} / {currentRoundItems.length}
         </span>
       </div>
 
