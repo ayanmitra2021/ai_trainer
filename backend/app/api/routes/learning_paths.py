@@ -540,31 +540,34 @@ async def retry_quiz_generation(
     if latest_path is None:
         raise HTTPException(status_code=404, detail="No learning path found")
 
-    # Find failed items
-    failed_result = await db.execute(
+    # Find items that need generation: failed OR stuck-pending (background task
+    # never ran or crashed before updating quiz_status to ready/failed).
+    stuck_result = await db.execute(
         select(LearningPathItem)
         .where(
             LearningPathItem.learning_path_id == latest_path.id,
-            LearningPathItem.quiz_status == "failed",
+            LearningPathItem.quiz_status.in_(["failed", "pending"]),
         )
         .order_by(LearningPathItem.sequence_order)
     )
-    failed_items = failed_result.scalars().all()
-    if not failed_items:
-        return {"message": "No failed skills to retry", "retried": 0}
+    stuck_items = stuck_result.scalars().all()
+    if not stuck_items:
+        return {"message": "No skills need generation", "retried": 0}
 
-    failed_skill_ids = [fi.skill_id for fi in failed_items]
+    stuck_skill_ids = [si.skill_id for si in stuck_items]
 
-    # Reset failed → pending
+    # Ensure all stuck items are in pending state before relaunching
     await db.execute(
         sa_update(LearningPathItem)
         .where(
             LearningPathItem.learning_path_id == latest_path.id,
-            LearningPathItem.skill_id.in_(failed_skill_ids),
+            LearningPathItem.skill_id.in_(stuck_skill_ids),
         )
         .values(quiz_status="pending")
     )
     await db.commit()
+
+    failed_skill_ids = stuck_skill_ids  # reuse variable name for the rest of the function
 
     skill_specs, cert_code, cert_name, cert_domains = await _build_quiz_spec_list(
         practitioner_id, failed_skill_ids, db
