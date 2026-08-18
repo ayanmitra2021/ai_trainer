@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.agents.base import ModelClient
-from app.agents.model_client import create_model_client
+from app.agents.model_client import create_haiku_only_client, create_model_client
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
@@ -289,6 +289,10 @@ async def _generate_quizzes_progressively(
 
     _bg_log = _bg_logging.getLogger(__name__)
 
+    # Quiz generation produces 8-12K output tokens per call — NVIDIA Ultra/Lightning
+    # time out on this workload. Use Haiku directly; bypass the NVIDIA tier chain.
+    model_client = create_haiku_only_client()
+
     async with AsyncSessionLocal() as db:
         for spec in skill_specs:
             try:
@@ -298,7 +302,6 @@ async def _generate_quizzes_progressively(
                     cert_name=cert_name,
                     certification_domains=certification_domains,
                 )
-                model_client = create_model_client()
                 agent = QuizBatchGeneratorAgent(client=model_client, db_session=db)
                 batch_output = await agent.run(batch_input)
 
