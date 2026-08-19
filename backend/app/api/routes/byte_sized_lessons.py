@@ -714,15 +714,23 @@ async def list_byte_sized_lessons(
         else:
             history.append(summary)
 
-    # Only surface history rows from a genuinely different learning path
-    # AND with at least one ready lesson.
-    history_eligible_seqs: set[int] = {
-        l.path_generation_seq
-        for l in lessons
-        if l.path_generation_seq < max_seq
-        and l.generation_status == "ready"
-        and l.learning_path_id != current_path_id
-    }
+    # Only surface history rows from a genuinely different learning path AND with
+    # at least one ready lesson.  Per previous learning_path_id, show only the
+    # HIGHEST seq (the most recent generation of that old path) — earlier retry
+    # seqs for the same path would otherwise cause every skill to repeat once
+    # per retry attempt.
+    latest_seq_by_prev_path: dict[str, int] = {}
+    for l in lessons:
+        if (
+            l.path_generation_seq < max_seq
+            and l.learning_path_id != current_path_id
+            and l.generation_status == "ready"
+        ):
+            pid = l.learning_path_id
+            if pid not in latest_seq_by_prev_path or l.path_generation_seq > latest_seq_by_prev_path[pid]:
+                latest_seq_by_prev_path[pid] = l.path_generation_seq
+
+    history_eligible_seqs: set[int] = set(latest_seq_by_prev_path.values())
     history = [s for s in history if s.path_generation_seq in history_eligible_seqs]
 
     return LessonListResponse(current=current, history=history)
