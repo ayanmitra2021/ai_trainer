@@ -148,7 +148,7 @@ function ConfidenceGauge({
           fontSize="18"
           fontWeight="700"
           fill={gaugeColor}
-          fontVariantNumeric="tabular-nums"
+          style={{ fontVariantNumeric: "tabular-nums" }}
         >
           {pct}%
         </text>
