@@ -1,8 +1,15 @@
 """Byte-Sized Lesson Agent — Phase 18.2.
 
 Generates a short (≤5 min read), engaging, bulleted write-up per skill gap
-with curated external links. Called once per skill in a background task after
-path generation (same lifecycle as QuizBatchGeneratorAgent).
+with curated external links.  When wrong-answer evidence is available (from
+quiz attempts or mock exam answers), the lesson targets the *specific
+misconception the practitioner demonstrated* rather than giving generic
+skill coverage.
+
+Priority order for wrong-answer evidence (controlled by caller):
+  1. Incorrectly answered quiz attempts           (score == 0)
+  2. Low mastery with no quiz evidence yet        (broad skill coverage)
+  3. Incorrectly answered mock exam questions     (score == 0, completed sessions)
 """
 
 from __future__ import annotations
@@ -25,6 +32,18 @@ class ExternalLink(BaseModel):
     type: str  # 'blog' | 'docs' | 'video'
 
 
+class WrongAnswerEvidence(BaseModel):
+    """One wrong answer the practitioner gave, used to anchor the lesson."""
+    question_text: str = Field(..., description="The full question text verbatim")
+    user_selected_text: str = Field(..., description="The option text the practitioner chose")
+    correct_answer_text: str = Field(..., description="The text of the correct option")
+    misconception_explanation: str = Field(
+        ...,
+        description="Why the chosen answer is wrong / the exact misconception it reveals",
+    )
+    source: str = Field(..., description="'quiz' or 'mock_exam'")
+
+
 class ByteSizedLessonInput(BaseModel):
     """Input to the ByteSizedLessonAgent."""
     skill_name: str
@@ -34,6 +53,12 @@ class ByteSizedLessonInput(BaseModel):
     certification_name: str
     domain_name: str
     domain_description: str
+    # Priority-1/3 signal: wrong answers the practitioner gave for this skill.
+    # Empty list → priority-2 mode (broad skill-gap coverage, no specific misconception).
+    wrong_answers: list[WrongAnswerEvidence] = Field(
+        default_factory=list,
+        description="Up to 2 wrong answers for this skill. Empty = broad coverage mode.",
+    )
 
 
 class ByteSizedLessonOutput(BaseModel):
@@ -76,12 +101,40 @@ class ByteSizedLessonAgent(Agent[ByteSizedLessonInput, ByteSizedLessonOutput]):
             },
         }
 
+        # Include wrong-answer evidence when available — this is the primary
+        # signal for targeted lesson generation (Priority 1 and 3).
+        if input.wrong_answers:
+            context["wrong_answers"] = [
+                {
+                    "question": wa.question_text,
+                    "user_selected": wa.user_selected_text,
+                    "correct_answer": wa.correct_answer_text,
+                    "misconception": wa.misconception_explanation,
+                    "source": wa.source,
+                }
+                for wa in input.wrong_answers
+            ]
+            mode_note = (
+                "**MISCONCEPTION-TARGETED MODE**: The practitioner answered one or more "
+                "questions on this skill incorrectly. Their specific wrong answers and "
+                "the misconceptions they reveal are included in `wrong_answers` above. "
+                "The lesson MUST correct these exact misconceptions — do NOT write a "
+                "generic overview of the skill."
+            )
+        else:
+            mode_note = (
+                "**BROAD COVERAGE MODE**: No specific wrong answers recorded yet for "
+                "this skill. Write a solid foundational lesson covering the skill gap "
+                "indicated by the mastery score."
+            )
+
         return [
             {
                 "role": "user",
                 "content": (
                     f"## Byte-sized lesson request\n\n"
                     f"```json\n{json.dumps(context, indent=2)}\n```\n\n"
+                    f"{mode_note}\n\n"
                     f"Generate a byte-sized lesson for the skill gap above. "
                     f"The practitioner is preparing for **{input.certification_name}**. "
                     f"Their current mastery is {round(input.current_mastery_score * 100, 0):.0f}% "

@@ -6,6 +6,13 @@ Routes:
   GET  /practitioners/{id}/byte-sized-lessons/{lesson_id}  full lesson detail
   POST /practitioners/{id}/byte-sized-lessons/{lesson_id}/read-sessions         open a read session
   PATCH /practitioners/{id}/byte-sized-lessons/{lesson_id}/read-sessions/{sid}  close a read session
+
+Generation priority (per Phase 18.4 redesign):
+  1. Skills with incorrectly answered quiz attempts (score == 0) — lesson targets
+     the specific misconception demonstrated by the wrong answer.
+  2. Skills in the path with low mastery but no quiz evidence yet — broad coverage.
+  3. Skills with incorrectly answered mock exam questions — lesson targets the
+     specific misconception from the mock exam wrong answer.
 """
 
 import uuid
@@ -19,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.byte_sized_lesson import (
     ByteSizedLessonAgent,
     ByteSizedLessonInput,
+    WrongAnswerEvidence,
 )
 from app.agents.model_client import create_model_client
 from app.api.deps.session import (
@@ -27,12 +35,16 @@ from app.api.deps.session import (
     require_any_authenticated,
 )
 from app.db.models import (
+    Attempt,
     ByteSizedLesson,
     CertificationDomain,
     CertificationSkill,
+    Item,
     LearningPath,
     LearningPathItem,
     LessonRead,
+    MockExamQuestion,
+    MockExamSession,
     Practitioner,
     PractitionerProfile,
     Skill,
@@ -85,6 +97,184 @@ class ReadSessionResponse(BaseModel):
     started_at: str
 
 
+# ── Wrong-answer evidence collection ─────────────────────────────────────────
+
+
+async def _collect_wrong_quiz_evidence(
+    practitioner_id: str,
+    skill_ids: list[str],
+    db: AsyncSession,
+) -> dict[str, list[WrongAnswerEvidence]]:
+    """Return wrong-answer evidence from quiz attempts, keyed by skill_id.
+
+    Takes the 3 most recent wrong attempts per skill, deduplicating by question
+    text so repeated errors on the same question appear once.
+    Only attempts with score == 0.0 are included.
+    """
+    if not skill_ids:
+        return {}
+
+    result = await db.execute(
+        select(Attempt, Item)
+        .join(Item, Attempt.item_id == Item.id)
+        .where(
+            Attempt.practitioner_id == practitioner_id,
+            Attempt.score == 0.0,
+            Item.skill_id.in_(skill_ids),
+        )
+        .order_by(Attempt.attempted_at.desc())
+    )
+    rows = result.all()
+
+    by_skill: dict[str, list[WrongAnswerEvidence]] = {}
+    seen_per_skill: dict[str, set[str]] = {}  # skill_id → set of question_text keys already added
+
+    for attempt, item in rows:
+        skill_id = item.skill_id
+        question_key = item.prompt[:100]  # dedup key — first 100 chars of prompt
+        if skill_id not in seen_per_skill:
+            seen_per_skill[skill_id] = set()
+        if question_key in seen_per_skill[skill_id]:
+            continue
+        if len(by_skill.get(skill_id, [])) >= 2:
+            continue  # cap at 2 per skill
+
+        opts: list[str] = item.answer_key.get("options", [])
+        user_idx: int | None = (attempt.response or {}).get("selected_index")
+        correct_idx: int = item.answer_key.get("correct_index", 0)
+
+        user_text = opts[user_idx] if (user_idx is not None and 0 <= user_idx < len(opts)) else "Unknown"
+        correct_text = opts[correct_idx] if 0 <= correct_idx < len(opts) else "Unknown"
+
+        # Best available explanation of the misconception, in priority order:
+        #   1. grader_rationale (from GraderAgent or pre-generated incorrect_rationale)
+        #   2. incorrect_rationale stored in answer_key (Phase 16+)
+        #   3. trap_explanation (when the wrong answer was the trap option)
+        misconception = (
+            attempt.grader_rationale
+            or item.answer_key.get("incorrect_rationale")
+            or item.trap_explanation
+            or ""
+        )
+
+        evidence = WrongAnswerEvidence(
+            question_text=item.prompt,
+            user_selected_text=user_text,
+            correct_answer_text=correct_text,
+            misconception_explanation=misconception,
+            source="quiz",
+        )
+        by_skill.setdefault(skill_id, []).append(evidence)
+        seen_per_skill[skill_id].add(question_key)
+
+    return by_skill
+
+
+async def _collect_wrong_mock_evidence(
+    practitioner_id: str,
+    skill_ids: list[str],
+    skills_by_id: dict[str, Skill],
+    db: AsyncSession,
+) -> dict[str, list[WrongAnswerEvidence]]:
+    """Return wrong-answer evidence from completed mock exam sessions, keyed by skill_id.
+
+    MockExamQuestion uses skill_name (not skill_id) — we resolve via the skills map.
+    Only questions from *completed* sessions are considered.
+    """
+    if not skill_ids or not skills_by_id:
+        return {}
+
+    # Build skill_name → skill_id map for the path's skills only
+    name_to_skill_id: dict[str, str] = {
+        s.name: s.id
+        for sid, s in skills_by_id.items()
+        if s is not None and sid in skill_ids
+    }
+    if not name_to_skill_id:
+        return {}
+
+    result = await db.execute(
+        select(MockExamQuestion, MockExamSession.completed_at)
+        .join(MockExamSession, MockExamQuestion.session_id == MockExamSession.id)
+        .where(
+            MockExamSession.practitioner_id == practitioner_id,
+            MockExamSession.status == "completed",
+            MockExamQuestion.score == 0.0,
+            MockExamQuestion.skill_name.in_(list(name_to_skill_id.keys())),
+        )
+        .order_by(MockExamSession.completed_at.desc())
+    )
+    rows = result.all()
+
+    by_skill: dict[str, list[WrongAnswerEvidence]] = {}
+    seen_per_skill: dict[str, set[str]] = {}
+
+    for q, _completed_at in rows:
+        skill_id = name_to_skill_id.get(q.skill_name)
+        if skill_id is None:
+            continue
+        question_key = q.prompt[:100]
+        if skill_id not in seen_per_skill:
+            seen_per_skill[skill_id] = set()
+        if question_key in seen_per_skill[skill_id]:
+            continue
+        if len(by_skill.get(skill_id, [])) >= 2:
+            continue
+
+        opts: list[str] = q.answer_key.get("options", [])
+        user_idx: int | None = (q.response or {}).get("selected_index")
+        correct_idx: int = q.answer_key.get("correct_index", 0)
+
+        user_text = opts[user_idx] if (user_idx is not None and 0 <= user_idx < len(opts)) else "Unknown"
+        correct_text = opts[correct_idx] if 0 <= correct_idx < len(opts) else "Unknown"
+
+        misconception = (
+            q.trap_explanation
+            or q.answer_key.get("explanation")
+            or ""
+        )
+
+        evidence = WrongAnswerEvidence(
+            question_text=q.prompt,
+            user_selected_text=user_text,
+            correct_answer_text=correct_text,
+            misconception_explanation=misconception,
+            source="mock_exam",
+        )
+        by_skill.setdefault(skill_id, []).append(evidence)
+        seen_per_skill[skill_id].add(question_key)
+
+    return by_skill
+
+
+def _skill_sort_key(
+    item: LearningPathItem,
+    mastery_by_skill: dict[str, float],
+    wrong_quiz: dict[str, list],
+    wrong_mock: dict[str, list],
+) -> tuple[int, float]:
+    """Sort key for lesson generation order.
+
+    Returns (priority_bucket, -mastery_score) so within each bucket the
+    most-behind skills are generated first.
+
+    Bucket 0 — Priority 1: has wrong quiz answers         → highest urgency
+    Bucket 1 — Priority 2: no quiz evidence, low mastery  → skill gap
+    Bucket 2 — Priority 3: has wrong mock exam answers    → exam experience gap
+    Bucket 3 — No evidence, on track                      → lowest urgency
+    """
+    skill_id = item.skill_id
+    mastery = mastery_by_skill.get(skill_id, 0.0)
+
+    if skill_id in wrong_quiz:
+        return (0, -mastery)
+    if mastery < 0.55 and skill_id not in wrong_mock:
+        return (1, -mastery)
+    if skill_id in wrong_mock:
+        return (2, -mastery)
+    return (3, -mastery)
+
+
 # ── Background generation engine ──────────────────────────────────────────────
 
 
@@ -93,7 +283,11 @@ async def _generate_byte_sized_lessons(
     learning_path_id: str,
     path_generation_seq: int,
 ) -> None:
-    """Background task: one LLM call per skill gap.
+    """Background task: one LLM call per skill gap, ordered by evidence priority.
+
+    Priority 1 — Wrong quiz answers: lesson targets the specific misconception.
+    Priority 2 — Low mastery, no quiz data yet: broad skill-gap coverage.
+    Priority 3 — Wrong mock exam answers: lesson targets mock exam misconception.
 
     Opens its own AsyncSession — the request session is closed before this runs.
     Per-skill failures are isolated (log WARNING, continue).
@@ -107,15 +301,16 @@ async def _generate_byte_sized_lessons(
 
     async with AsyncSessionLocal() as db:
         try:
-            # Fetch path items to get skill list
+            # ── Fetch path items ──────────────────────────────────────────────
             path_items_result = await db.execute(
                 select(LearningPathItem)
                 .where(LearningPathItem.learning_path_id == learning_path_id)
                 .order_by(LearningPathItem.sequence_order)
             )
-            path_items = path_items_result.scalars().all()
+            path_items = list(path_items_result.scalars().all())
+            skill_ids = [pi.skill_id for pi in path_items]
 
-            # Fetch cert context
+            # ── Fetch cert context ────────────────────────────────────────────
             profile_result = await db.execute(
                 select(PractitionerProfile).where(
                     PractitionerProfile.practitioner_id == practitioner_id,
@@ -132,8 +327,7 @@ async def _generate_byte_sized_lessons(
                     cert_name = cert.name
                 domain_version_id = profile.domain_version_id
 
-            # Fetch mastery snapshots
-            skill_ids = [pi.skill_id for pi in path_items]
+            # ── Fetch mastery snapshots ───────────────────────────────────────
             snapshots_result = await db.execute(
                 select(SkillProfileSnapshot).where(
                     SkillProfileSnapshot.practitioner_id == practitioner_id,
@@ -145,7 +339,13 @@ async def _generate_byte_sized_lessons(
                 for s in snapshots_result.scalars().all()
             }
 
-            # Fetch domains (for context), keyed by domain id
+            # ── Fetch skill objects (needed for mock-exam name→id resolution) ─
+            skills_result = await db.execute(
+                select(Skill).where(Skill.id.in_(skill_ids))
+            )
+            skills_by_id: dict[str, Skill] = {s.id: s for s in skills_result.scalars().all()}
+
+            # ── Fetch domains, keyed by domain id ─────────────────────────────
             domains_by_id: dict[str, CertificationDomain] = {}
             if domain_version_id:
                 domains_result = await db.execute(
@@ -155,8 +355,7 @@ async def _generate_byte_sized_lessons(
                 )
                 domains_by_id = {d.id: d for d in domains_result.scalars().all()}
 
-            # Build skill → domain mapping via certification_skills
-            # (LearningPathItem has no certification_domain_id — look it up from the cert-skills join)
+            # ── Build skill → domain map via certification_skills ─────────────
             skill_domain_map: dict[str, CertificationDomain] = {}
             if profile and domains_by_id:
                 cs_result = await db.execute(
@@ -170,7 +369,28 @@ async def _generate_byte_sized_lessons(
                     if cs.certification_domain_id in domains_by_id:
                         skill_domain_map[cs.skill_id] = domains_by_id[cs.certification_domain_id]
 
-            for item in path_items:
+            # ── Collect wrong-answer evidence (Priority 1 and 3) ─────────────
+            wrong_quiz = await _collect_wrong_quiz_evidence(
+                practitioner_id, skill_ids, db
+            )
+            wrong_mock = await _collect_wrong_mock_evidence(
+                practitioner_id, skill_ids, skills_by_id, db
+            )
+
+            _logger.info(
+                "byte_sized_lesson: evidence — %d skills with wrong quiz answers, "
+                "%d with wrong mock answers",
+                len(wrong_quiz), len(wrong_mock),
+            )
+
+            # ── Sort path items by priority ───────────────────────────────────
+            sorted_items = sorted(
+                path_items,
+                key=lambda pi: _skill_sort_key(pi, mastery_by_skill, wrong_quiz, wrong_mock),
+            )
+
+            # ── Generate one lesson per skill ─────────────────────────────────
+            for item in sorted_items:
                 # Fetch lesson row (already created as pending)
                 lesson_result = await db.execute(
                     select(ByteSizedLesson).where(
@@ -182,26 +402,44 @@ async def _generate_byte_sized_lessons(
                 )
                 lesson = lesson_result.scalars().first()
                 if lesson is None:
-                    _logger.warning("byte_sized_lesson: no lesson row for skill=%s — skipping", item.skill_id)
+                    _logger.warning(
+                        "byte_sized_lesson: no lesson row for skill=%s — skipping", item.skill_id
+                    )
                     continue
 
-                # Skip already-generated lessons (retry calls reset only failed/pending
-                # rows to pending — ready lessons must not be re-generated).
+                # Skip already-generated lessons (retry resets only failed/pending rows)
                 if lesson.generation_status == "ready":
-                    _logger.debug("byte_sized_lesson: skill=%s already ready — skipping", item.skill_id)
+                    _logger.debug(
+                        "byte_sized_lesson: skill=%s already ready — skipping", item.skill_id
+                    )
                     continue
 
                 try:
-                    skill = await db.get(Skill, item.skill_id)
+                    skill = skills_by_id.get(item.skill_id)
                     mastery = mastery_by_skill.get(item.skill_id, 0.0)
 
-                    # Domain context — looked up via certification_skills, not LearningPathItem
+                    # Domain context
                     domain_name = "General AI Knowledge"
                     domain_description = "Core AI and machine learning concepts"
                     if item.skill_id in skill_domain_map:
                         d = skill_domain_map[item.skill_id]
                         domain_name = d.domain_name
                         domain_description = d.domain_description or domain_name
+
+                    # Assemble wrong-answer evidence in priority order:
+                    #   Priority 1 — quiz wrong answers
+                    #   Priority 3 — mock exam wrong answers (only if no quiz evidence)
+                    wrong_evidence: list[WrongAnswerEvidence] = (
+                        wrong_quiz.get(item.skill_id)
+                        or wrong_mock.get(item.skill_id)
+                        or []
+                    )
+
+                    priority_label = (
+                        "quiz_wrong_answer" if item.skill_id in wrong_quiz
+                        else "mock_exam_wrong_answer" if item.skill_id in wrong_mock
+                        else "skill_gap"
+                    )
 
                     agent_input = ByteSizedLessonInput(
                         skill_name=skill.name if skill else lesson.skill_name,
@@ -211,6 +449,7 @@ async def _generate_byte_sized_lessons(
                         certification_name=cert_name,
                         domain_name=domain_name,
                         domain_description=domain_description,
+                        wrong_answers=wrong_evidence,
                     )
 
                     agent = ByteSizedLessonAgent(client=model_client, db_session=db)
@@ -223,21 +462,28 @@ async def _generate_byte_sized_lessons(
                     lesson.generation_status = "ready"
                     await db.commit()
 
-                    _logger.info("byte_sized_lesson: skill=%s status=ready", item.skill_id)
+                    _logger.info(
+                        "byte_sized_lesson: skill=%s status=ready priority=%s wrong_answers=%d",
+                        item.skill_id, priority_label, len(wrong_evidence),
+                    )
 
                 except Exception as exc:  # noqa: BLE001
-                    _logger.warning("byte_sized_lesson: skill=%s FAILED: %s", item.skill_id, exc)
+                    _logger.warning(
+                        "byte_sized_lesson: skill=%s FAILED: %s", item.skill_id, exc
+                    )
                     try:
                         await db.rollback()
                         lesson.generation_status = "failed"
                         await db.commit()
                     except Exception as err2:  # noqa: BLE001
-                        _logger.error("byte_sized_lesson: could not mark skill=%s failed: %s", item.skill_id, err2)
+                        _logger.error(
+                            "byte_sized_lesson: could not mark skill=%s failed: %s",
+                            item.skill_id, err2,
+                        )
 
         except Exception as top_exc:  # noqa: BLE001
-            # Top-level failure (e.g. DB connection lost, session setup error).
-            # Mark ALL remaining pending lessons for this seq as failed so they
-            # never get stuck in 'pending' forever.
+            # Top-level failure — mark ALL remaining pending lessons as failed
+            # so they never get stuck in 'pending' forever.
             _logger.error(
                 "byte_sized_lesson: top-level task failure for seq=%d: %s — marking all pending as failed",
                 path_generation_seq, top_exc,
@@ -338,9 +584,6 @@ async def generate_byte_sized_lessons(
         retryable = retryable_result.scalars().all()
 
         if retryable:
-            # Reuse the same lesson rows — reset to pending, no new seq created.
-            # This prevents the history section from accumulating identical retry
-            # attempts of the same path generation.
             lesson_path_id = retryable[0].learning_path_id
             await db.execute(
                 sa_update(ByteSizedLesson)
@@ -363,9 +606,6 @@ async def generate_byte_sized_lessons(
             return {"started": True, "path_generation_seq": max_seq, "retried": True}
 
     # ── Creation mode: no existing lessons (or all already ready) ──────────────
-    # This branch is typically only reached when triggered from learning_paths.py
-    # after a fresh path generation, because that hook passes new_seq explicitly.
-    # Calling standalone when all lessons are already ready is a no-op.
     new_seq = (max_seq or 0) + 1
 
     # Fetch path items
@@ -439,7 +679,6 @@ async def list_byte_sized_lessons(
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
 
-    # All lessons for practitioner
     lessons_result = await db.execute(
         select(ByteSizedLesson).where(
             ByteSizedLesson.practitioner_id == practitioner_id
@@ -452,9 +691,6 @@ async def list_byte_sized_lessons(
 
     max_seq = max(l.path_generation_seq for l in lessons)
 
-    # learning_path_id of the current (max-seq) generation.
-    # All seqs that share this path id are retry attempts of the same path —
-    # they must never appear in "Previous paths" history.
     current_path_id: str | None = next(
         (l.learning_path_id for l in lessons if l.path_generation_seq == max_seq),
         None,
@@ -478,20 +714,14 @@ async def list_byte_sized_lessons(
         else:
             history.append(summary)
 
-    # Only surface history rows that come from a genuinely different learning path
-    # AND have at least one ready lesson.
-    #
-    # Two reasons to exclude a historical seq:
-    #   1. Same learning_path_id as current → it was a retry attempt of the same
-    #      path generation (created by the old retry logic before the fix). These
-    #      are noise; the user never had a different "path" — don't show them.
-    #   2. No ready lessons in that seq → abandoned generation, nothing to read.
+    # Only surface history rows from a genuinely different learning path
+    # AND with at least one ready lesson.
     history_eligible_seqs: set[int] = {
         l.path_generation_seq
         for l in lessons
         if l.path_generation_seq < max_seq
         and l.generation_status == "ready"
-        and l.learning_path_id != current_path_id  # different path generation
+        and l.learning_path_id != current_path_id
     }
     history = [s for s in history if s.path_generation_seq in history_eligible_seqs]
 
