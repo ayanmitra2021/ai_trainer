@@ -65,8 +65,10 @@ class QuizBatchGeneratorOutput(BaseModel):
     items: list[BatchQuizItem]
     # Phase 13.5: cert/supp ratio audit — computed post-generation, not by LLM.
     # Default 0.0; the quiz-batch endpoint overrides these after calling the agent.
-    cert_question_pct: float = 0.0
-    supp_question_pct: float = 0.0
+    # float | None so that NVIDIA models that return null for these don't fail
+    # Pydantic validation — callers coerce None → 0.0 when reading.
+    cert_question_pct: float | None = 0.0
+    supp_question_pct: float | None = 0.0
 
 
 # ── Agent ─────────────────────────────────────────────────────────────────────

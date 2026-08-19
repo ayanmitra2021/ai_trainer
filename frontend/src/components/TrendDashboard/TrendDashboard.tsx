@@ -6,9 +6,11 @@
  *   2. AdoptionTrendChart  — self-assessed baseline vs. weekly quiz performance
  *                            (real-time, no nightly batch required)
  *   3. ProgressTrendChart  — mastery score over time (Skill Profiler synthesis)
+ *   4. MockExamHistory     — exam table + recency-weighted confidence gauge
  */
 
 import AdoptionTrendChart from "../AdoptionTrendChart";
+import MockExamHistory from "../MockExamHistory/MockExamHistory";
 import NudgeInbox from "../NudgeInbox";
 import ProgressTrendChart from "../ProgressTrendChart";
 
@@ -27,6 +29,9 @@ export default function TrendDashboard({ practitionerId }: Props) {
 
       {/* ── 3. Mastery score history (Skill Profiler snapshots over time) ── */}
       <ProgressTrendChart practitionerId={practitionerId} />
+
+      {/* ── 4. Mock exam history + confidence score (Phase 19) ──────────── */}
+      <MockExamHistory practitionerId={practitionerId} />
     </div>
   );
 }

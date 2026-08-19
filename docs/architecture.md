@@ -27,12 +27,13 @@ Each agent is a single-purpose, typed unit: one input contract, one output contr
 | 9 | Nudge Category Generator | Analyze aggregate KPI data and propose up to 10 nudge categories with machine-readable criteria | `practitioners`, `skill_profile_snapshots`, `attempts`, `usage_events`, `nudges` (aggregate counts only — no PII) | `nudge_categories` (via API) |
 | 10 | Domain Scorer | Map self-assessment proficiency ratings → initial certification domain scores at profile-lock time; also pins the active `certification_domain_version` to the profile | `profile_skill_assessments`, `certification_domains` (filtered to the profile's pinned version), `certification_domain_versions` | `certification_domain_scores` (source=`self_assessment_estimate`); sets `practitioner_profiles.domain_version_id` |
 | 11 | Cert Domain Discovery | Research and propose updated exam domain definitions for any certification; called on demand by admin to keep domain data current as exams are revised or new certs are added | `certifications`, `certification_domain_versions` (current version, for comparison), `certification_domains` | `certification_domain_proposals` (status=`pending_review`) → on admin approval: new `certification_domain_versions` + `certification_domains` rows |
+| 12 | Byte-Sized Lesson | For one skill gap, generate a short (≤5 min) engaging write-up in Markdown plus 3–5 curated external links (blog posts, official vendor docs, YouTube); called once per skill in a background task after path generation | `skills`, `certification_domains`, `practitioner_profiles` (cert context), current mastery score | `byte_sized_lessons` (status `ready` on success, `failed` on provider error) |
 
 > **Phase 9.1 note:** Agent 9 (Rollup Reporter) has been removed from the active product. The archived implementation lives in `backend/app/agents/_deprecated/rollup_reporter.py`.
 
 Three active workflows compose them:
 - **`recommend_certification`**: Certification Advisor alone (Phase 2) — the actual front door for a new practitioner.
-- **`generate_learning_path`**: Skill Profiler → Domain Score computation → Curriculum Planner — updates the Skill Radar and domain gap chart. On completion, launches a FastAPI background task (`_generate_quizzes_progressively`) that calls `QuizBatchGeneratorAgent` once per skill (1–2 questions each, Phase 17). Per-skill failures set `learning_path_items.quiz_status='failed'`; the practitioner can recover via `POST /practitioners/{id}/quiz-generation/retry`. The HTTP response returns before quiz generation finishes; `quiz_generating=True` signals the client to start polling. Skips quiz generation if unanswered items still exist.
+- **`generate_learning_path`**: Skill Profiler → Domain Score computation → Curriculum Planner — updates the Skill Radar and domain gap chart. On completion, launches **two** FastAPI background tasks: (1) `_generate_quizzes_progressively` — calls `QuizBatchGeneratorAgent` once per skill (1–2 questions each, Phase 17); (2) `_generate_byte_sized_lessons` — calls `ByteSizedLessonAgent` once per skill gap (Phase 18). Both tasks run independently; per-skill failures in either are isolated (log WARNING, continue). The HTTP response returns before either task finishes. Polling for quiz status and lesson generation_status happens client-side. Skips quiz generation if unanswered items still exist; always regenerates lessons on a new path.
 - **`nudge_campaign`**: Nudge Category Generator → Nudge Composer (Phase 7) — admin-initiated; runs on demand, not on a schedule.
 
 The Cert Domain Discovery agent (Phase 10.3) is not part of a workflow — it is invoked directly by admin API endpoints (`POST /admin/cert-domains/discover` and `/discover-all`). Proposals are reviewed and approved/rejected via the Admin UI (Phase 10.4) before any domain data changes.
@@ -133,6 +134,142 @@ Default to **Claude Sonnet 5** (`claude-sonnet-5`) unless a row below says other
 For the nightly `nightly_pulse` workflow specifically: it's not latency-sensitive, so route it through the **Message Batches API** (structured outputs are fully compatible with it, and it runs at a 50% discount) instead of the synchronous Messages API. That's a real cost lever for a workflow that runs on every practitioner, every night.
 
 **Note:** NVIDIA Nemotron does not support the Message Batches API. When `APP_BRAIN_MODEL=NVIDIA`, the nightly pulse workflow falls back to synchronous execution.
+
+---
+
+## Byte-Sized Learning (Phase 18)
+
+### What it is
+
+After each path generation, the `ByteSizedLessonAgent` produces one short write-up per skill gap — a crisp, bulleted, fun-to-read micro-article the practitioner can consume in ≤5 minutes. Content is calibrated to the practitioner's current mastery gap and the cert's exam-domain context. At the bottom of each write-up, 3–5 curated external links (official vendor docs, reputable blog posts, YouTube videos) point to deeper reading.
+
+### Where it lives
+
+The Byte-Sized Learning section appears in the **Skill Radar tab**, above the Learning Journey section. It is a table with columns: Skill, Current Gap %, Target %, What You Might Be Missing, Time Spent, and Read (button). Unread lessons have a pulsing left-border glow. Lessons from previous path generations are preserved and shown below a "Previous paths" divider at reduced opacity — nothing is discarded.
+
+### Generation lifecycle (mirrors quiz generation)
+
+| State | Meaning |
+|---|---|
+| `pending` | Row created; background task not yet reached this skill |
+| `ready` | `ByteSizedLessonAgent` succeeded; `content_md` populated |
+| `failed` | All provider tiers failed for this skill; surfaced in UI with a Retry link |
+
+Each path regeneration increments `path_generation_seq`. Current lessons (max seq) are the action items; history (prior seq values) is reference.
+
+### Read modal
+
+Clicking "Read" opens a full-screen modal with:
+- **Content:** `content_md` rendered as Markdown.
+- **Circular clock timer:** SVG ring that fills in over the estimated read time; turns green when the full time is reached.
+- **Read Aloud (🔊):** Web Speech API `speechSynthesis` — no external service, no API key. Speed selector: 0.75× / 1× / 1.25× / 1.5× / 2×, matching YouTube's UI convention.
+- **External links:** labeled list at the bottom with type icons (📝 blog / 📖 docs / 🎥 video).
+
+### Time-spent tracking
+
+- On modal open: `POST /byte-sized-lessons/{id}/read-sessions` creates a `lesson_reads` row.
+- On modal close: `PATCH .../read-sessions/{session_id}` records `duration_seconds`.
+- Table display: if `total_read_seconds < 50% of estimated_read_minutes × 60`, the Time Spent column shows "⚡ Read again" (amber); otherwise shows elapsed time (green).
+
+### Read Aloud — no external dependencies
+
+`speechSynthesis` is a browser standard available in Chrome, Edge, Firefox, and Safari. Content is stripped of Markdown syntax before being passed to `SpeechSynthesisUtterance`. The button is hidden silently when `window.speechSynthesis` is undefined (e.g. headless test environments). No backend involvement.
+
+---
+
+## Mock Exam (Phase 11 — updated Phases 18 & 19)
+
+The Mock Exam is always accessible from the Skill Radar tab — **the 80% mastery gate introduced in Phase 11 is removed in Phase 18.** Practitioners are trusted to decide when they are ready to test themselves.
+
+A soft advisory tip is shown when aggregate mastery is below 40%: *"💡 Tip: answering more quizzes first will sharpen your readiness — but you're welcome to try anytime!"* No tip is shown between 40% and 80%.
+
+### Session lifecycle (Phase 19 extended)
+
+```
+[POST /mock-exams] → status=generating → [background task generates questions domain-by-domain]
+                                       ↓
+                              status=in_progress  ←──── resume
+                                /       \
+                           abandon      pause
+                              ↓           ↓
+                         abandoned      paused ──── resume ──→ in_progress
+                                           ↓
+                                       complete
+                                           ↓
+                                       completed
+```
+
+At most one "live" session (`generating`, `in_progress`, `paused`) per practitioner. `completed`, `failed`, and `abandoned` sessions are all retained for history and recycling.
+
+### Question generation — background task with domain-by-domain commits
+
+`POST /mock-exams` returns immediately with `status=generating`. A FastAPI `BackgroundTasks` function `_generate_exam_questions_bg` then:
+1. Iterates domains sequentially (not concurrently) — avoids blowing the circuit breaker via simultaneous NVIDIA calls
+2. Per domain, calls `_pick_recycled_questions()` first (see below)
+3. Calls `MockExamGeneratorAgent` only for remaining slots
+4. Commits each domain's batch immediately — frontend polls `GET /mock-exams/{id}` and shows questions as they arrive
+5. On completion: transitions to `in_progress`, sets `last_resumed_at`, corrects `total_count`
+6. On total failure (all domains failed): transitions to `failed`
+
+Options are shuffled with index remapping at storage time to counter the LLM's positional bias (models consistently place the correct answer at index 0).
+
+### Smart question recycling (Phase 19)
+
+When building a new exam for a domain with `N` question slots:
+
+```
+unexercised_pool  = abandoned sessions → questions with response IS NULL, matching domain
+                    ordered: newest session first, random within session
+
+remediation_pool  = any prior session → questions with score = 0.0, matching domain
+                    ordered: random (mix in for variety)
+
+slots = N
+recycled = []
+
+# Step a — unexercised questions get top priority (API-free)
+for q in unexercised_pool:
+    if slots == 0: break
+    recycled.append(copy_and_reshuffle(q))
+    slots -= 1
+
+# Step b — remediation questions (up to 30% of N, randomly interspersed)
+remedia_cap = max(1, round(N * 0.3))
+for q in remediation_pool[:remedia_cap]:
+    if slots == 0: break
+    recycled.append(copy_and_reshuffle(q))
+    slots -= 1
+
+# Step c — LLM call only for remaining slots
+if slots > 0:
+    new_questions = await MockExamGeneratorAgent.run(batch_size=slots, domain_focus=domain)
+    recycled.extend(new_questions)
+```
+
+Recycled questions are copied into the new session (new IDs, `response=null`, re-shuffled options) — sessions remain self-contained.
+
+### Abandonment (Phase 19)
+
+`POST /mock-exams/{session_id}/abandon` requires a non-empty `reason` string. Sets `status='abandoned'`, `abandoned_at`, and `abandoned_reason`. The active-session guard allows a new session to be started immediately after abandonment. Abandoned sessions appear in the history table with their reason visible.
+
+### Mock Exam History table (Adoption Trend tab — Phase 19)
+
+All sessions for a practitioner are listed newest-first: date, certification, status (colour-coded), score %, questions answered / total, time spent, abandon reason (if applicable). For the single live session (if any), an "Abandon" button opens a dialog requiring a non-empty reason before confirming.
+
+### Exam Confidence Score (Adoption Trend tab — Phase 19)
+
+Computed client-side from the practitioner's `completed` session history:
+
+```
+weight(i) = 2^i / Σ(2^j for j in 0..n-1)   # most-recent exam has highest weight
+            where i=0 is the oldest, i=n-1 is the newest
+
+weighted_avg = Σ(weight(i) × session[i].score)
+
+confidence_pct = round(weighted_avg × 100)
+```
+
+Displayed as a circular progress gauge showing `confidence_pct` vs. `exam_passing_score_pct`. A trend arrow (↑ / ↓ / →) compares the last two exams. An "Exam Ready" badge appears when `weighted_avg ≥ exam_passing_score_pct / 100` and there are at least 2 completed exams. No score shown if there are 0 completed exams ("No exams completed yet").
 
 ---
 

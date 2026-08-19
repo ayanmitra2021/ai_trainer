@@ -21,6 +21,7 @@ import type {
   AttemptCreate,
   MockExamQuestion,
   MockExamSession,
+  MockExamSessionSummary,
   PractitionerCreate,
   ProfileCreate,
   ProfileSkillUpsert,
@@ -543,10 +544,15 @@ export const useActiveMockExam = (
   });
 
 export const useMockExamSession = (practitionerId: string, sessionId: string) =>
-  useQuery({
+  useQuery<MockExamSession>({
     queryKey: ["mock-exam-session", sessionId],
     queryFn: () => practitioners.mockExams.getById(practitionerId, sessionId),
     enabled: !!practitionerId && !!sessionId,
+    // Poll every 2 s while the backend is still generating questions
+    refetchInterval: (query) => {
+      const data = query.state.data as MockExamSession | undefined;
+      return data?.status === "generating" ? 2000 : false;
+    },
   });
 
 export const usePauseMockExam = (practitionerId: string, sessionId: string) => {
@@ -599,6 +605,28 @@ export const useCompleteMockExam = (practitionerId: string, sessionId: string) =
     onSuccess: (data) => {
       qc.setQueryData(["mock-exam-session", sessionId], data);
       qc.invalidateQueries({ queryKey: ["mock-exam-active", practitionerId] });
+      qc.invalidateQueries({ queryKey: ["mock-exam-list", practitionerId] });
     },
   });
 };
+
+export const useAbandonMockExam = (practitionerId: string, sessionId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (reason: string) =>
+      practitioners.mockExams.abandon(practitionerId, sessionId, reason),
+    onSuccess: (data) => {
+      qc.setQueryData(["mock-exam-session", sessionId], data);
+      qc.invalidateQueries({ queryKey: ["mock-exam-active", practitionerId] });
+      qc.invalidateQueries({ queryKey: ["mock-exam-list", practitionerId] });
+    },
+  });
+};
+
+export const useMockExamList = (practitionerId: string) =>
+  useQuery<MockExamSessionSummary[]>({
+    queryKey: ["mock-exam-list", practitionerId],
+    queryFn: () => practitioners.mockExams.list(practitionerId),
+    enabled: !!practitionerId,
+    staleTime: 30_000,
+  });

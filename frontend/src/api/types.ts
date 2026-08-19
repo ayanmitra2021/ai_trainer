@@ -605,7 +605,8 @@ export interface MockExamQuestion {
   prompt: string;
   options: string[];           // 4 options
   trap_index: number | null;   // revealed after answering
-  trap_explanation: string | null; // revealed after answering
+  trap_explanation: string | null; // revealed after answering — shown when trap option chosen
+  explanation: string | null;      // revealed after answering — shown when any wrong answer chosen
   difficulty: number;
   response: { selected_index: number } | null;
   score: number | null;        // 1.0 or 0.0 or null
@@ -622,12 +623,56 @@ export interface MockExamSession {
   exam_question_count: number;
   exam_duration_minutes: number;
   exam_passing_score_pct: number;
-  status: 'in_progress' | 'paused' | 'completed';
+  status: 'generating' | 'in_progress' | 'paused' | 'completed' | 'failed' | 'abandoned';
   time_elapsed_seconds: number;
   score: number | null;
   correct_count: number | null;
   total_count: number;
   started_at: string;
   completed_at: string | null;
+  abandoned_reason: string | null;
+  abandoned_at: string | null;
   questions: MockExamQuestion[];
+}
+
+export interface MockExamSessionSummary {
+  id: string;
+  certification_id: string;
+  certification_code: string;
+  certification_name: string;
+  exam_passing_score_pct: number;
+  status: 'generating' | 'in_progress' | 'paused' | 'completed' | 'failed' | 'abandoned';
+  score: number | null;
+  correct_count: number | null;
+  total_count: number;
+  answered_count: number;
+  time_elapsed_seconds: number;
+  started_at: string;
+  completed_at: string | null;
+  abandoned_reason: string | null;
+  abandoned_at: string | null;
+}
+
+// ── Byte-Sized Lessons (Phase 18) ─────────────────────────────────────────────
+
+export interface ByteSizedLesson {
+  id: string;
+  skill_id: string;
+  skill_name: string;
+  gap_pct: number;
+  target_pct: number;
+  what_missing: string | null;
+  estimated_read_minutes: number | null;
+  generation_status: "pending" | "ready" | "failed";
+  path_generation_seq: number;
+  total_read_seconds: number | null;
+  last_read_at: string | null;
+  // Only in detail response:
+  content_md?: string | null;
+  external_links?: Array<{ title: string; url: string; type: string }> | null;
+}
+
+export interface LessonListResponse {
+  current: ByteSizedLesson[];
+  history: ByteSizedLesson[];
 }

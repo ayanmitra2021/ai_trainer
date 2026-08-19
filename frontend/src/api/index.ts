@@ -25,6 +25,7 @@ import type {
   MeResponse,
   MockExamQuestion,
   MockExamSession,
+  MockExamSessionSummary,
   Nudge,
   NudgeCategory,
   NudgeExtended,
@@ -84,6 +85,10 @@ export const practitioners = {
       api.post<MockExamQuestion>(`/practitioners/${practitionerId}/mock-exams/${sessionId}/answer/${questionId}`, { selected_index: selectedIndex }),
     complete: (practitionerId: string, sessionId: string) =>
       api.post<MockExamSession>(`/practitioners/${practitionerId}/mock-exams/${sessionId}/complete`, {}),
+    abandon: (practitionerId: string, sessionId: string, reason: string) =>
+      api.post<MockExamSession>(`/practitioners/${practitionerId}/mock-exams/${sessionId}/abandon`, { reason }),
+    list: (practitionerId: string) =>
+      api.get<MockExamSessionSummary[]>(`/practitioners/${practitionerId}/mock-exams`),
   },
 };
 

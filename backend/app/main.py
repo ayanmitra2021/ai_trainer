@@ -154,3 +154,8 @@ app.include_router(mock_exams.router, prefix="/api/v1")
 from app.api.routes import cert_discovery
 
 app.include_router(cert_discovery.router, prefix="/api/v1")
+
+# ── Phase 18 routes ────────────────────────────────────────────────────────────
+from app.api.routes import byte_sized_lessons
+
+app.include_router(byte_sized_lessons.router, prefix="/api/v1")

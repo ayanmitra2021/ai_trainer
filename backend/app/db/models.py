@@ -124,6 +124,9 @@ class Practitioner(Base):
     mock_exam_sessions: Mapped[list["MockExamSession"]] = relationship(
         back_populates="practitioner", cascade="all, delete-orphan"
     )
+    byte_sized_lessons: Mapped[list["ByteSizedLesson"]] = relationship(
+        back_populates="practitioner", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         return f"<Practitioner id={self.id!r} email={self.email!r}>"
@@ -1719,10 +1722,10 @@ class MockExamSession(Base):
         nullable=False,
         index=True,
     )
-    # in_progress | paused | completed
+    # generating | in_progress | paused | completed | failed | abandoned
     status: Mapped[str] = mapped_column(
-        sa.String(20), nullable=False, default="in_progress",
-        server_default="in_progress",
+        sa.String(20), nullable=False, default="generating",
+        server_default="generating",
     )
     # Cumulative elapsed seconds before the last pause
     time_elapsed_seconds: Mapped[int] = mapped_column(
@@ -1743,6 +1746,11 @@ class MockExamSession(Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
+    # Phase 19 — abandonment
+    abandoned_reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    abandoned_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False,
         server_default=sa.text("now()"), default=_now_utc,
@@ -1758,7 +1766,7 @@ class MockExamSession(Base):
 
     __table_args__ = (
         sa.CheckConstraint(
-            "status IN ('in_progress','paused','completed')",
+            "status IN ('generating','in_progress','paused','completed','failed','abandoned')",
             name="ck_mock_exam_sessions_status",
         ),
     )
@@ -1812,3 +1820,60 @@ class MockExamQuestion(Base):
             f"<MockExamQuestion id={self.id!r} session={self.session_id!r} "
             f"order={self.sequence_order} answered={self.answered_at is not None}>"
         )
+
+
+# ── byte_sized_lessons ────────────────────────────────────────────────────────
+
+class ByteSizedLesson(Base):
+    """AI-generated micro-content per skill gap, one per skill per path generation."""
+
+    __tablename__ = "byte_sized_lessons"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    practitioner_id: Mapped[str] = mapped_column(
+        sa.String(36), sa.ForeignKey("practitioners.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    learning_path_id: Mapped[str] = mapped_column(
+        sa.String(36), sa.ForeignKey("learning_paths.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    skill_id: Mapped[str] = mapped_column(
+        sa.String(36), sa.ForeignKey("skills.id", ondelete="CASCADE"), nullable=False
+    )
+    skill_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    gap_pct: Mapped[float] = mapped_column(sa.Float, nullable=False)
+    target_pct: Mapped[float] = mapped_column(sa.Float, nullable=False, server_default="0.85", default=0.85)
+    what_missing: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    content_md: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    external_links: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    estimated_read_minutes: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
+    path_generation_seq: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    generation_status: Mapped[str] = mapped_column(
+        sa.String(20), nullable=False, server_default="pending", default="pending"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+    )
+
+    practitioner: Mapped["Practitioner"] = relationship(back_populates="byte_sized_lessons")
+    reads: Mapped[list["LessonRead"]] = relationship(back_populates="lesson", cascade="all, delete-orphan")
+
+
+class LessonRead(Base):
+    """Tracks when a practitioner opens and closes a lesson modal."""
+
+    __tablename__ = "lesson_reads"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    lesson_id: Mapped[str] = mapped_column(
+        sa.String(36), sa.ForeignKey("byte_sized_lessons.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    practitioner_id: Mapped[str] = mapped_column(
+        sa.String(36), sa.ForeignKey("practitioners.id", ondelete="CASCADE"), nullable=False
+    )
+    started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    duration_seconds: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+    )
+
+    lesson: Mapped["ByteSizedLesson"] = relationship(back_populates="reads")

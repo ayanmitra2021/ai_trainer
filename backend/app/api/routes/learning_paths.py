@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.agents.base import ModelClient
-from app.agents.model_client import create_haiku_only_client, create_model_client
+from app.agents.model_client import create_model_client
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
@@ -39,6 +39,7 @@ from app.api.deps.session import (
 from app.config import settings
 from app.db.models import (
     Attempt,
+    ByteSizedLesson,
     Certification,
     CertificationDomain,
     CertificationDomainScore,
@@ -284,83 +285,116 @@ async def _generate_quizzes_progressively(
     Opens its own AsyncSession — the request session is closed before this runs.
     NVIDIA is primary; Haiku is only used if all NVIDIA tiers fail for that skill.
     Per-skill failures set quiz_status='failed' and continue to the next skill.
+
+    Top-level try/except: if setup (model client or DB session) fails before the
+    per-skill loop, all pending items are marked 'failed' so they never get stuck.
     """
     import logging as _bg_logging
 
     _bg_log = _bg_logging.getLogger(__name__)
+    _bg_log.info(
+        "quiz_progress: background task started for path=%s skills=%d",
+        learning_path_id, len(skill_specs),
+    )
 
-    # Quiz generation produces 8-12K output tokens per call — NVIDIA Ultra/Lightning
-    # time out on this workload. Use Haiku directly; bypass the NVIDIA tier chain.
-    model_client = create_haiku_only_client()
+    # Quiz generation uses the full tier chain: NVIDIA Ultra → Lightning → Haiku.
+    # NVIDIA tiers may time out on large output; the chain falls through to Haiku
+    # automatically — never bypass NVIDIA with create_haiku_only_client().
+    model_client = create_model_client()
 
     async with AsyncSessionLocal() as db:
-        for spec in skill_specs:
-            try:
-                batch_input = QuizBatchGeneratorInput(
-                    skills=[spec],
-                    cert_code=cert_code,
-                    cert_name=cert_name,
-                    certification_domains=certification_domains,
-                )
-                agent = QuizBatchGeneratorAgent(client=model_client, db_session=db)
-                batch_output = await agent.run(batch_input)
-
-                # Compute generation number fresh — avoids stale data on retries
-                max_gen_q = await db.execute(
-                    select(sa_func.max(Item.generation)).where(Item.skill_id == spec.skill_id)
-                )
-                gen = (max_gen_q.scalar() or 0) + 1
-
-                for quiz_item in batch_output.items:
-                    db.add(Item(
-                        id=str(uuid.uuid4()),
-                        skill_id=quiz_item.skill_id,
-                        item_type=quiz_item.item_type,
-                        prompt=quiz_item.prompt,
-                        answer_key=quiz_item.answer_key.model_dump(),
-                        trap_explanation=quiz_item.trap_explanation,
-                        difficulty=quiz_item.difficulty,
-                        calibration_stats={"attempt_count": 0, "total_score": 0.0, "trap_selection_count": 0},
-                        certification_domain_id=quiz_item.certification_domain_id,
-                        is_cert_evaluated=quiz_item.is_cert_evaluated,
-                        generation=gen,
-                    ))
-
-                await db.execute(
-                    sa_update(LearningPathItem)
-                    .where(
-                        LearningPathItem.learning_path_id == learning_path_id,
-                        LearningPathItem.skill_id == spec.skill_id,
-                    )
-                    .values(quiz_status="ready")
-                )
-                await db.commit()
-                _bg_log.info(
-                    "quiz_progress: skill=%s items=%d gen=%d",
-                    spec.skill_id, len(batch_output.items), gen,
-                )
-
-            except Exception as exc:  # noqa: BLE001
-                _bg_log.warning(
-                    "quiz_progress: skill=%s FAILED: %s — marking failed",
-                    spec.skill_id, exc,
-                )
+        try:
+            for spec in skill_specs:
                 try:
-                    await db.rollback()
+                    batch_input = QuizBatchGeneratorInput(
+                        skills=[spec],
+                        cert_code=cert_code,
+                        cert_name=cert_name,
+                        certification_domains=certification_domains,
+                    )
+                    agent = QuizBatchGeneratorAgent(client=model_client, db_session=db)
+                    batch_output = await agent.run(batch_input)
+
+                    # Compute generation number fresh — avoids stale data on retries
+                    max_gen_q = await db.execute(
+                        select(sa_func.max(Item.generation)).where(Item.skill_id == spec.skill_id)
+                    )
+                    gen = (max_gen_q.scalar() or 0) + 1
+
+                    for quiz_item in batch_output.items:
+                        db.add(Item(
+                            id=str(uuid.uuid4()),
+                            skill_id=quiz_item.skill_id,
+                            item_type=quiz_item.item_type,
+                            prompt=quiz_item.prompt,
+                            answer_key=quiz_item.answer_key.model_dump(),
+                            trap_explanation=quiz_item.trap_explanation,
+                            difficulty=quiz_item.difficulty,
+                            calibration_stats={"attempt_count": 0, "total_score": 0.0, "trap_selection_count": 0},
+                            certification_domain_id=quiz_item.certification_domain_id,
+                            is_cert_evaluated=quiz_item.is_cert_evaluated,
+                            generation=gen,
+                        ))
+
                     await db.execute(
                         sa_update(LearningPathItem)
                         .where(
                             LearningPathItem.learning_path_id == learning_path_id,
                             LearningPathItem.skill_id == spec.skill_id,
                         )
-                        .values(quiz_status="failed")
+                        .values(quiz_status="ready")
                     )
                     await db.commit()
-                except Exception as status_err:  # noqa: BLE001
-                    _bg_log.error(
-                        "quiz_progress: could not mark skill=%s as failed: %s",
-                        spec.skill_id, status_err,
+                    _bg_log.info(
+                        "quiz_progress: skill=%s items=%d gen=%d",
+                        spec.skill_id, len(batch_output.items), gen,
                     )
+
+                except Exception as exc:  # noqa: BLE001
+                    _bg_log.warning(
+                        "quiz_progress: skill=%s FAILED: %s — marking failed",
+                        spec.skill_id, exc, exc_info=True,
+                    )
+                    try:
+                        await db.rollback()
+                        await db.execute(
+                            sa_update(LearningPathItem)
+                            .where(
+                                LearningPathItem.learning_path_id == learning_path_id,
+                                LearningPathItem.skill_id == spec.skill_id,
+                            )
+                            .values(quiz_status="failed")
+                        )
+                        await db.commit()
+                    except Exception as status_err:  # noqa: BLE001
+                        _bg_log.error(
+                            "quiz_progress: could not mark skill=%s as failed: %s",
+                            spec.skill_id, status_err,
+                        )
+
+        except Exception as top_exc:  # noqa: BLE001
+            # Top-level failure (e.g. DB connection lost, session setup error).
+            # Mark ALL remaining pending items for this path as failed so they
+            # never stay stuck in 'pending' forever.
+            skill_ids = [s.skill_id for s in skill_specs]
+            _bg_log.error(
+                "quiz_progress: top-level task failure for path=%s: %s — marking all pending as failed",
+                learning_path_id, top_exc, exc_info=True,
+            )
+            try:
+                await db.rollback()
+                await db.execute(
+                    sa_update(LearningPathItem)
+                    .where(
+                        LearningPathItem.learning_path_id == learning_path_id,
+                        LearningPathItem.skill_id.in_(skill_ids),
+                        LearningPathItem.quiz_status == "pending",
+                    )
+                    .values(quiz_status="failed")
+                )
+                await db.commit()
+            except Exception as cleanup_err:  # noqa: BLE001
+                _bg_log.error("quiz_progress: cleanup also failed: %s", cleanup_err)
 
 
 # ── Learning path generation ───────────────────────────────────────────────────
@@ -426,6 +460,50 @@ async def generate_learning_path(
             response.quiz_generating = True
     else:
         response.quiz_skipped_reason = "unanswered_items"
+
+    # ── Phase 18.3: byte-sized lesson generation (always runs on new path) ─────
+    from app.api.routes.byte_sized_lessons import _generate_byte_sized_lessons
+    import uuid as _uuid_mod
+
+    max_seq_q = await db.execute(
+        select(sa_func.max(ByteSizedLesson.path_generation_seq)).where(
+            ByteSizedLesson.practitioner_id == practitioner_id
+        )
+    )
+    lesson_seq = (max_seq_q.scalar() or 0) + 1
+
+    skills_q = await db.execute(select(Skill).where(Skill.id.in_(new_skill_ids)))
+    skills_map = {s.id: s for s in skills_q.scalars().all()}
+    snaps_q = await db.execute(
+        select(SkillProfileSnapshot).where(
+            SkillProfileSnapshot.practitioner_id == practitioner_id,
+            SkillProfileSnapshot.skill_id.in_(new_skill_ids),
+        )
+    )
+    mastery_map = {s.skill_id: float(s.mastery_score) for s in snaps_q.scalars().all()}
+
+    for sid in new_skill_ids:
+        sk = skills_map.get(sid)
+        mastery = mastery_map.get(sid, 0.0)
+        db.add(ByteSizedLesson(
+            id=str(_uuid_mod.uuid4()),
+            practitioner_id=practitioner_id,
+            learning_path_id=response.learning_path_id,
+            skill_id=sid,
+            skill_name=sk.name if sk else sid,
+            gap_pct=1.0 - mastery,
+            target_pct=0.85,
+            path_generation_seq=lesson_seq,
+            generation_status="pending",
+        ))
+    await db.commit()
+
+    background_tasks.add_task(
+        _generate_byte_sized_lessons,
+        practitioner_id,
+        response.learning_path_id,
+        lesson_seq,
+    )
 
     return response
 

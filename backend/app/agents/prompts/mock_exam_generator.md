@@ -58,7 +58,8 @@ Each question must have:
 - `options`: **exactly 4** choices — approximately equal length, no giveaway formatting
 - `correct_index`: 0-based index of the unambiguously correct answer
 - `trap_index`: 0-based index of the trap option (must differ from `correct_index`; set to null only if no single option qualifies as the main trap)
-- `trap_explanation`: 2–4 sentences; required when `trap_index` is set
+- `trap_explanation`: 2–4 sentences explaining why the trap is compelling and what the correct mental model is; required when `trap_index` is set
+- `explanation`: **always required** — 2–4 sentences explaining why the correct answer is the right choice. This is shown to the practitioner whenever they answer incorrectly. It should clearly state the key principle, rule, or trade-off that makes the correct answer unambiguous. Write it as a teaching moment that closes the knowledge gap — not as a re-statement of the question.
 - `difficulty`: your calibrated float in [0.70, 1.00]
 - `certification_domain_name`: domain label, or null if uncategorised
 - `skill_name`: specific skill under test, or null
@@ -77,3 +78,4 @@ Do not include any text outside the structured output.
 - Do not generate questions answerable by pattern-matching the options (e.g. "all of the above")
 - Do not set `difficulty` below 0.70 — this agent only generates hard questions
 - Do not repeat a question from a previous batch (vary scenarios, framing, and focus areas)
+- Do not omit `explanation` — it is mandatory for every question regardless of whether a trap exists

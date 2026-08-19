@@ -8,6 +8,7 @@
  *  - Full learning-journey section
  */
 
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useActiveMockExam,
@@ -19,9 +20,11 @@ import {
   useStartMockExam,
 } from "../../hooks";
 import { useSession } from "../../context/SessionContext";
-import type { SkillSnapshot } from "../../api/types";
+import type { ByteSizedLesson, SkillSnapshot } from "../../api/types";
 import LearningPathRoad from "./LearningPathRoad";
 import CertDomainGapChart from "../CertDomainGapChart";
+import ByteSizedLearningTable from "./ByteSizedLearningTable";
+import LessonModal from "./LessonModal";
 
 interface Props {
   practitionerId: string;
@@ -326,25 +329,29 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
   const { data: certList } = useCertifications();
   const generatePath = useGenerateLearningPath(practitionerId);
   const startMockExam = useStartMockExam(practitionerId);
+  const { session } = useSession();
+  const navigate = useNavigate();
 
-  // Compute mastery early (before early-returns) so we can gate the active-session
-  // query: only fire it when the CTA will actually appear (mastery ≥ 80 % and not readOnly).
-  // This prevents repeated 404 noise for practitioners who haven't reached that threshold.
+  // Compute mastery early (before early-returns) so we can conditionally style the Mock Exam CTA.
   const prelimCertMastery =
     snapshots && snapshots.length > 0
       ? snapshots.reduce((sum, s) => sum + s.mastery_score, 0) / snapshots.length
       : null;
 
-  // 404 ⇒ no active session (returns null); only enabled at ≥ 80 % mastery
+  // certCode needed before hooks to avoid ordering violations
+  const activeProfilePrelim = profilesList?.find((p) => p.is_active);
+  const certCodePrelim = activeProfilePrelim?.certification_code ?? session?.active_certification_code;
+
+  // 404 ⇒ no active session (returns null); always enabled when not readOnly and cert is set
   const { data: activeMockExam } = useActiveMockExam(
     practitionerId,
-    !readOnly && prelimCertMastery !== null && prelimCertMastery >= 0.80,
+    !readOnly && certCodePrelim != null,
   );
-  const { session } = useSession();
-  const navigate = useNavigate();
+  const [selectedLesson, setSelectedLesson] = useState<ByteSizedLesson | null>(null);
+  const [lessonRefreshTick, setLessonRefreshTick] = useState(0);
 
-  const activeProfile = profilesList?.find((p) => p.is_active);
-  const certCode = activeProfile?.certification_code ?? session?.active_certification_code;
+  const activeProfile = activeProfilePrelim;
+  const certCode = certCodePrelim;
 
   if (profilesLoading || isLoading) {
     return <div style={{ textAlign: "center", padding: "3rem" }}><span className="spinner" /></div>;
@@ -444,6 +451,54 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
       {/* ProfileBanner is suppressed in read-only (admin) mode — the admin page
           renders its own read-only profile panel above the radar. */}
       {!readOnly && <ProfileBanner profile={activeProfile} onEdit={() => navigate("/profile")} />}
+
+      {/* ── Regenerate path button — prominent, just below profile banner ── */}
+      {!readOnly && (
+        <div style={{ marginBottom: "1.5rem" }}>
+          <button
+            className="btn btn-3d"
+            disabled={generatePath.isPending}
+            onClick={() => generatePath.mutate()}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              padding: "0.6rem 1.25rem",
+              fontSize: "0.9rem",
+              fontWeight: 600,
+              background: generatePath.isPending
+                ? "var(--surface)"
+                : "linear-gradient(135deg, var(--primary) 0%, #6366f1 100%)",
+              color: generatePath.isPending ? "var(--text-muted)" : "#fff",
+              border: "1px solid var(--primary)",
+              borderRadius: "10px",
+              cursor: generatePath.isPending ? "default" : "pointer",
+              boxShadow: generatePath.isPending
+                ? "none"
+                : "0 0 18px rgba(77, 171, 247, 0.35), 0 2px 8px rgba(0,0,0,0.2)",
+              transition: "box-shadow 0.2s, opacity 0.2s",
+            }}
+          >
+            {generatePath.isPending ? (
+              <><span className="spinner" /> Generating path…</>
+            ) : activePath ? (
+              <><span style={{ fontSize: "1.1rem" }}>🔄</span> Regenerate learning path</>
+            ) : (
+              <><span style={{ fontSize: "1.1rem" }}>✨</span> Generate learning path</>
+            )}
+          </button>
+          {generatePath.isError && (
+            <p style={{ color: "var(--danger)", marginTop: "0.5rem", fontSize: "0.8125rem" }}>
+              {(generatePath.error as Error).message}
+            </p>
+          )}
+          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "0.35rem" }}>
+            {activePath
+              ? "Re-runs after you answer quizzes — updates your radar and refreshes lessons."
+              : "Creates your personalised path toward " + (certCode ?? "your certification") + "."}
+          </p>
+        </div>
+      )}
 
       {/* ── Radar + side panel ─────────────────────────────────────────── */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: "2rem", flexWrap: "wrap" }}>
@@ -691,7 +746,7 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
       </div>
 
       {/* ── Mock Exam CTA ─────────────────────────────────────────────── */}
-      {!readOnly && certMastery !== null && certMastery >= 0.80 && certCode && (() => {
+      {!readOnly && certCode && (() => {
         const matchingCert = certList?.find((c) => c.code === certCode);
         const hasActiveSession =
           activeMockExam?.status === "in_progress" ||
@@ -710,28 +765,33 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
           openMockExam(newSession.id);
         };
 
+        const mastery = certMastery ?? 0;
+        const isExamReady = mastery >= 0.90;
+
         return (
           <div
             style={{
               marginTop: "2rem",
               padding: "1.5rem",
-              background: "color-mix(in srgb, var(--primary) 6%, var(--surface))",
-              border: "2px solid var(--primary)",
+              background: isExamReady
+                ? "color-mix(in srgb, var(--primary) 6%, var(--surface))"
+                : "var(--surface)",
+              border: `2px solid ${isExamReady ? "var(--primary)" : "var(--border)"}`,
               borderRadius: "12px",
-              boxShadow: "0 0 24px rgba(77, 171, 247, 0.12)",
+              boxShadow: isExamReady ? "0 0 24px rgba(77, 171, 247, 0.12)" : "none",
             }}
           >
             <div style={{ display: "flex", alignItems: "flex-start", gap: "1rem", flexWrap: "wrap" }}>
               <div style={{ flex: 1, minWidth: 200 }}>
-                <h3 style={{ margin: "0 0 0.375rem", color: "var(--primary)" }}>
-                  🎯 You're exam-ready! Time for a mock exam.
+                <h3 style={{ margin: "0 0 0.375rem", color: isExamReady ? "var(--primary)" : "var(--text)" }}>
+                  {isExamReady ? "🎯 You're exam-ready! Time for a mock exam." : "🎯 Mock Exam"}
                 </h3>
                 <p style={{ margin: "0 0 0.75rem", fontSize: "0.875rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
-                  Your skill mastery is at{" "}
-                  <strong style={{ color: "var(--text)" }}>
-                    {(certMastery * 100).toFixed(0)}%
-                  </strong>{" "}
-                  — above the 80% readiness threshold.
+                  {isExamReady
+                    ? <>Your skill mastery is at <strong style={{ color: "var(--text)" }}>{(mastery * 100).toFixed(0)}%</strong> — above the 90% readiness threshold.</>
+                    : mastery >= 0.40
+                    ? "Practice questions first, then stress-test with a full mock exam whenever you're ready."
+                    : "Build your skills with quizzes first for best results — but you're welcome to try anytime!"}
                 </p>
                 {matchingCert &&
                   (matchingCert.exam_question_count ||
@@ -749,6 +809,11 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
                       )}
                     </p>
                   )}
+                {mastery < 0.40 && (
+                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.8125rem", color: "#b45309", lineHeight: 1.5 }}>
+                    💡 Tip: answering more quizzes first will sharpen your readiness before the mock exam — but you're welcome to try anytime!
+                  </p>
+                )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
                 {hasActiveSession ? (
@@ -787,37 +852,28 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
         );
       })()}
 
+      {/* ── Byte-Sized Learning Table — hidden in read-only (admin) view ──── */}
+      {!readOnly && (
+        <div style={{ marginTop: "2.5rem" }}>
+          <ByteSizedLearningTable
+            practitionerId={practitionerId}
+            onOpenLesson={(lesson) => setSelectedLesson(lesson)}
+            refreshTrigger={lessonRefreshTick}
+          />
+        </div>
+      )}
+
       {/* ── Learning Journey — hidden in read-only (admin) view ──────── */}
       {!readOnly && (
         <div style={{ marginTop: "2.5rem" }}>
-          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem", marginBottom: "1rem" }}>
-            <div>
-              <h2 style={{ marginBottom: "0.25rem" }}>Your learning journey</h2>
-              <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", margin: 0 }}>
-                {activePath
-                  ? `${activePath.items.length} milestone${activePath.items.length !== 1 ? "s" : ""} · generated ${new Date(activePath.generated_at).toLocaleDateString()}`
-                  : "Generate a personalised path toward " + (certCode ?? "your certification") + "."}
-              </p>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.25rem" }}>
-              <button
-                className="btn btn-primary btn-3d"
-                disabled={generatePath.isPending}
-                onClick={() => generatePath.mutate()}
-              >
-                {generatePath.isPending ? <><span className="spinner" /> Generating…</> : activePath ? "Regenerate path" : "Generate path"}
-              </button>
-              <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                Updates after you answer quizzes.
-              </span>
-            </div>
-          </div>
-
-          {generatePath.isError && (
-            <p style={{ color: "var(--danger)", marginBottom: "0.75rem", fontSize: "0.875rem" }}>
-              {(generatePath.error as Error).message}
+          <div style={{ marginBottom: "1rem" }}>
+            <h2 style={{ marginBottom: "0.25rem" }}>Your learning journey</h2>
+            <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", margin: 0 }}>
+              {activePath
+                ? `${activePath.items.length} milestone${activePath.items.length !== 1 ? "s" : ""} · generated ${new Date(activePath.generated_at).toLocaleDateString()}`
+                : "Generate a personalised path toward " + (certCode ?? "your certification") + "."}
             </p>
-          )}
+          </div>
 
           {activePath ? (
             <LearningPathRoad path={activePath} />
@@ -827,6 +883,20 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
             </div>
           )}
         </div>
+      )}
+
+      {/* ── Lesson Modal ──────────────────────────────────────────────── */}
+      {selectedLesson && (
+        <LessonModal
+          lesson={selectedLesson}
+          practitionerId={practitionerId}
+          onClose={() => {
+            setSelectedLesson(null);
+            // Bump the tick so ByteSizedLearningTable re-fetches and shows
+            // the updated total_read_seconds immediately after modal close.
+            setLessonRefreshTick((t) => t + 1);
+          }}
+        />
       )}
     </div>
   );
