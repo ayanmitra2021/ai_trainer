@@ -757,6 +757,19 @@ The product admin portal runs at `/product-admin/*` in the same React app. It is
 
 All analytics queries aggregate at the `organization` level or by `plan tier` — no query returns a row with `practitioner_id` as a selected column.
 
+### Activation / deactivation — two layers, one precedence order
+
+A practitioner can be blocked from login at two independent levels. The login guard in `POST /auth/practitioner-login` checks them in this order:
+
+| Order | Condition | HTTP response | Who sets it |
+|---|---|---|---|
+| 1 | `practitioner.is_active = false` | 403 `account_deactivated` — "Your Mastery Pulse account has been deactivated. Please contact your administrator." | Org admin (Phase 21) **or** product admin (Phase 22) |
+| 2 | `organization.is_active = false` | 403 `org_suspended` — message is tier-aware: enterprise orgs → "contact your enterprise administrator"; free/paid orgs → "contact your plan administrator" | Product admin only |
+
+If both are false, the practitioner-level check (order 1) wins. The org-level deactivation is a blanket action that affects every practitioner in the org simultaneously — useful for suspending access to an entire enterprise tenant without needing to enumerate every user.
+
+**Product admin practitioner controls** — unlike org admins (who can only touch practitioners in their own org), the product admin can deactivate or reactivate any practitioner across any org at any tier. `GET /product-admin/practitioners` exposes identity fields only (`id`, `name`, `email`, `org_name`, `plan_tier`, `is_active`, `created_at`) — no quiz scores, no skill data, no learning content — consistent with the product admin's aggregate-only access policy.
+
 ### Enterprise features
 
 Enterprise orgs get two capabilities unavailable to Free and Paid orgs:
@@ -778,8 +791,11 @@ Enterprise orgs get two capabilities unavailable to Free and Paid orgs:
 | GET/POST | `/product-admin/organizations` | product_admin | List / create orgs |
 | GET/PATCH | `/product-admin/organizations/{id}` | product_admin | Read / update org |
 | POST | `/product-admin/organizations/{id}/regenerate-code` | product_admin | New enrollment code |
-| PATCH | `/product-admin/organizations/{id}/deactivate` | product_admin | Block all org users |
+| PATCH | `/product-admin/organizations/{id}/deactivate` | product_admin | Block all org users (tier-aware message) |
 | PATCH | `/product-admin/organizations/{id}/reactivate` | product_admin | Re-enable org |
+| GET | `/product-admin/practitioners` | product_admin | List practitioners (identity fields only, no learning data) |
+| PATCH | `/product-admin/practitioners/{id}/deactivate` | product_admin | Deactivate any practitioner across all orgs |
+| PATCH | `/product-admin/practitioners/{id}/reactivate` | product_admin | Reactivate any practitioner across all orgs |
 | GET | `/product-admin/analytics/usage` | product_admin | Practitioner counts by plan |
 | GET | `/product-admin/analytics/agents` | product_admin | Agent run stats |
 | GET | `/product-admin/analytics/plans` | product_admin | Plan distribution |

@@ -365,18 +365,37 @@ New router: `backend/app/api/routes/product_admin.py` (or extend into separate f
 - `GET /product-admin/organizations/{id}` — org detail including full plan parameters and practitioner count.
 - `PATCH /product-admin/organizations/{id}` — update org name, billing email, plan. Plan changes take effect immediately (enforcement uses the plan at request time, not at enrollment time).
 - `POST /product-admin/organizations/{id}/regenerate-code` — invalidate the current active code (set `is_active = false`) and generate a new 16-char code. Returns the new code. Old code stops working immediately.
-- `PATCH /product-admin/organizations/{id}/deactivate` — set `organization.is_active = false`. Practitioners in the org can no longer log in (enforced at login guard). Data preserved.
-- `PATCH /product-admin/organizations/{id}/reactivate` — restore `is_active = true`.
+- `PATCH /product-admin/organizations/{id}/deactivate` — set `organization.is_active = false`. **Every practitioner in the org is immediately blocked from logging in.** On next login attempt they receive HTTP 403 with a plan-tier-aware message:
+  - Enterprise org: `{"error": "org_suspended", "message": "Your organization's Mastery Pulse access has been suspended. Please contact your enterprise administrator."}`
+  - Free / Paid org: `{"error": "org_suspended", "message": "Your Mastery Pulse account has been suspended. Please contact your plan administrator."}`
+  All data is fully preserved; the org can be reactivated at any time. Existing active sessions are not terminated — practitioners who are already logged in continue to browse until they next re-authenticate. New session creation is blocked.
+- `PATCH /product-admin/organizations/{id}/reactivate` — restore `is_active = true`. All practitioners in the org can log in immediately on next attempt.
+
+**Practitioner-level activation (product admin — all plan tiers):**
+- `PATCH /product-admin/practitioners/{practitioner_id}/deactivate` — product admin can deactivate any individual practitioner across all orgs (Free, Paid, or Enterprise). Sets `practitioner.is_active = false`. Login returns HTTP 403: `{"error": "account_deactivated", "message": "Your Mastery Pulse account has been deactivated. Please contact your administrator."}`. This complements the org-admin deactivation in Phase 21 (which is scoped to one org); the product admin's version is global — it can reach any practitioner regardless of org.
+- `PATCH /product-admin/practitioners/{practitioner_id}/reactivate` — restore `is_active = true`. Returns 204. Idempotent (noop if already active).
+- `GET /product-admin/practitioners` — list practitioners across all orgs with their `is_active` status, org name, and plan tier. Supports query params: `?org_id=`, `?is_active=`, `?plan_tier=`. **Returns only identity fields** (`id`, `name`, `email`, `org_name`, `plan_tier`, `is_active`, `created_at`) — no quiz scores, no skill data, no profiles. This is consistent with the product admin's aggregate-only data access policy.
+
+**Activation precedence rules** (enforced at login guard, checked in order):
+1. If `practitioner.is_active = false` → 403 `account_deactivated` (set by either org admin or product admin).
+2. Else if `organization.is_active = false` → 403 `org_suspended` with tier-aware message.
+3. Else → allow login.
 
 **Code generation logic:** `secrets.token_hex(8).upper()` produces 16 hex characters (0-9, A-F). Store as-is; validate at enrollment: case-insensitive compare.
 
 **Scenario tests:**
 - Creating an org generates exactly one 16-char uppercase alphanumeric code.
 - Regenerating a code deactivates the old code and returns a new one that is different.
-- Deactivating an org → practitioners in it get 403 at login.
+- Deactivating an enterprise org → practitioner login returns 403 with message containing "enterprise administrator".
+- Deactivating a free plan org → practitioner login returns 403 with message containing "plan administrator".
+- Reactivating an org → practitioners can log in immediately.
+- Product admin deactivates a Free plan practitioner → login returns 403 `account_deactivated`.
+- Product admin deactivates a Paid plan practitioner → login returns 403 `account_deactivated`.
+- `GET /product-admin/practitioners` response rows contain no skill or quiz data.
+- Activation precedence: practitioner `is_active = false` AND org `is_active = false` → error is `account_deactivated` (practitioner check takes priority).
 - Changing an org's plan from Free to Paid → plan limits update immediately (confirmed via plan-enforcement endpoint check).
 
-**Definition of done:** all four scenario tests pass.
+**Definition of done:** all ten scenario tests pass; tier-aware org-suspended messages are verified for both enterprise and free/paid orgs.
 
 ---
 
@@ -394,7 +413,7 @@ New router: `backend/app/api/routes/product_admin.py` (or extend into separate f
      - If `enrollment_code` is provided: validate code (exists, active, org is active, org is not at practitioner capacity). If valid: set `practitioner.organization_id` to the org. If invalid: return 400 with a specific error code (`invalid_code`, `org_full`, `org_inactive`).
      - If no code: set `organization_id` to the hardcoded Free Tier org ID.
    - **On subsequent login (existing practitioner):** ignore `enrollment_code` — org membership is fixed at first enrollment. Do not allow re-enrollment after the first login.
-   - Deactivated-org guard: if the practitioner's org has `is_active = false`, return 403 `{"error": "org_suspended"}`.
+   - Deactivated-org guard: if the practitioner's org has `is_active = false`, return 403 with a tier-aware message — enterprise orgs say "contact your enterprise administrator"; free/paid orgs say "contact your plan administrator" (see Step 22.4 for exact strings). This guard runs **after** the `practitioner.is_active` check so per-user deactivation takes precedence.
 
 2. **`GET /auth/enrollment-info`** — public endpoint (no auth). Accepts `?code=XXXX`. Returns `{valid: bool, org_name: str | null, plan_name: str | null, plan_tier: str | null}`. Used by the frontend to show a preview of what plan the code gives access to before the practitioner submits the form.
 
