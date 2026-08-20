@@ -27,6 +27,10 @@ const navStyle: React.CSSProperties = {
   background: "var(--surface)",
   borderBottom: "1px solid var(--border)",
   boxShadow: "var(--shadow)",
+  // Sticky nav — stays visible while GuidePage sidebar uses top: 52px
+  position: "sticky",
+  top: 0,
+  zIndex: 50,
 };
 
 const brandStyle: React.CSSProperties = {
