@@ -137,7 +137,42 @@ function NavBar() {
         Guide
       </NavLink>
 
-      <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginLeft: "auto" }}>
+      {/* Plan / org badge — practitioners only */}
+      {session.identity_type === "practitioner" && session.plan_tier && (
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.3rem",
+            padding: "0.2rem 0.6rem",
+            borderRadius: 999,
+            fontSize: "0.72rem",
+            fontWeight: 700,
+            letterSpacing: "0.02em",
+            marginLeft: "auto",
+            whiteSpace: "nowrap",
+            ...(session.plan_tier === "enterprise"
+              ? { background: "rgba(109,40,217,0.1)", color: "#7c3aed", border: "1px solid rgba(109,40,217,0.25)" }
+              : session.plan_tier === "paid"
+              ? { background: "rgba(37,99,235,0.09)", color: "#2563eb", border: "1px solid rgba(37,99,235,0.22)" }
+              : { background: "rgba(100,116,139,0.1)", color: "var(--text-muted)", border: "1px solid var(--border)" }),
+          }}
+        >
+          {session.plan_tier === "enterprise" && session.org_name
+            ? session.org_name
+            : session.plan_tier === "paid"
+            ? "Paid"
+            : "Free"}
+        </span>
+      )}
+
+      <span
+        style={{
+          fontSize: "0.8125rem",
+          color: "var(--text-muted)",
+          ...(session.identity_type !== "practitioner" || !session.plan_tier ? { marginLeft: "auto" } : {}),
+        }}
+      >
         Hi, {session.first_name}
       </span>
       <button

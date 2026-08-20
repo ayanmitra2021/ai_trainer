@@ -117,8 +117,9 @@ class MeResponse(BaseModel):
     active_certification_code: str | None = None
     # Phase 9.3: exposed so the frontend can gate wizard access without an extra round-trip.
     active_profile_is_locked: bool | None = None
-    # Phase 22: plan tier for the practitioner's org
+    # Phase 22: plan tier and org name for the practitioner's org
     plan_tier: str | None = None
+    org_name: str | None = None
 
 
 class EnrollmentInfoResponse(BaseModel):
@@ -444,6 +445,7 @@ async def me(
     active_certification_code: str | None = None
     active_profile_is_locked: bool | None = None
     plan_tier: str | None = None
+    org_name: str | None = None
 
     if session.identity_type == "practitioner" and session.practitioner_id:
         # Active profile
@@ -463,11 +465,12 @@ async def me(
                 if cert:
                     active_certification_code = cert.code
 
-        # Phase 22: resolve plan_tier via org
+        # Phase 22: resolve plan_tier and org_name via org
         practitioner = await db.get(Practitioner, session.practitioner_id)
         if practitioner and practitioner.organization_id:
             org = await db.get(Organization, practitioner.organization_id)
             if org:
+                org_name = org.name
                 plan = await db.get(SubscriptionPlan, org.plan_id)
                 if plan:
                     plan_tier = plan.tier
@@ -482,4 +485,5 @@ async def me(
         active_certification_code=active_certification_code,
         active_profile_is_locked=active_profile_is_locked,
         plan_tier=plan_tier,
+        org_name=org_name,
     )

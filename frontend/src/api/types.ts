@@ -334,6 +334,8 @@ export interface MeResponse {
   active_profile_is_locked?: boolean;
   /** Phase 22: subscription plan tier for the org this session belongs to. */
   plan_tier?: "free" | "paid" | "enterprise" | null;
+  /** Phase 22: org name — only set for practitioner sessions with an assigned org. */
+  org_name?: string | null;
 }
 
 export interface ChangePasswordRequest {
