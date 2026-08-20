@@ -13,6 +13,7 @@ import BuildProfilePage from "./pages/BuildProfilePage";
 import ProfileSkillAssessmentPage from "./pages/ProfileSkillAssessmentPage";
 import CertDomainManagementPage from "./pages/CertDomainManagementPage";
 import MockExamPage from "./pages/MockExamPage";
+import GuidePage from "./pages/GuidePage";
 import { auth } from "./api";
 import { PortalLayout } from "./components/PortalLayout";
 import { ProviderUnavailableToast } from "./components/ProviderUnavailableToast/ProviderUnavailableToast";
@@ -115,6 +116,11 @@ function NavBar() {
           </NavLink>
         </>
       )}
+
+      {/* Guide — visible to all authenticated users */}
+      <NavLink to="/guide" style={navLinkStyle}>
+        Guide
+      </NavLink>
 
       <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)", marginLeft: "auto" }}>
         Hi, {session.first_name}
@@ -268,6 +274,18 @@ function AppRoutes() {
                 <CertDomainManagementPage />
               </PortalLayout>
             </RequireAdmin>
+          }
+        />
+
+        {/* Interactive User Guide — Phase 20 */}
+        <Route
+          path="/guide"
+          element={
+            <RequireAuth>
+              <PortalLayout>
+                <GuidePage />
+              </PortalLayout>
+            </RequireAuth>
           }
         />
 

@@ -177,6 +177,173 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 19.4 Mock Exam History table on Adoption Trend tab — table shows all sessions (date, cert, status, score %, questions answered, time spent, abandon reason); "Abandon" button for in_progress/paused sessions; abandon dialog requires a non-empty reason; abandoned sessions are listed with their reason
 - [x] 19.5 Exam confidence score on Adoption Trend tab — recency-weighted average of all completed exam scores vs. the cert's `exam_passing_score_pct`; displayed as a visual gauge (circular progress) with a trend arrow (↑ improving / ↓ declining / → stable); "Exam Ready" badge shown when weighted average ≥ passing threshold across ≥ 2 exams
 
+**Phase 20 — Interactive User Guide**
+- [ ] 20.1 `GuidePage` React component — sidebar-nav docs layout with 2-min quick-read summaries + full detail
+- [ ] 20.2 Role-gated sections — general practitioners see 6 sections; admin users see 5 additional admin sections
+- [ ] 20.3 "Ask Ayan" floating chat widget — client-side pattern-matching Q&A; funny off-topic responses; zero API calls
+- [ ] 20.4 Route + nav link — `/guide` route wired in `App.tsx`; "Guide" NavLink visible to all authenticated users
+
+---
+
+# Phase 20 — Interactive User Guide
+
+**Why this phase exists.** The portal has accumulated significant functionality across 19 phases — certification selection, skill profiling, quiz generation, byte-sized lessons, mock exams, nudges, domain gap charts, and more. There is no in-product guidance on how any of this works. A practitioner landing for the first time, or an admin setting up a campaign for the first time, has to discover each feature by trial and error. Phase 20 adds an interactive user guide — a well-designed, always-accessible reference that explains every feature in plain language, with role-sensitive sections (practitioners see their features; admins see theirs). The "Ask Ayan" widget adds a lightweight, fully client-side conversational interface for quick contextual help.
+
+**No backend, no LLM calls.** The entire guide is static React — content hardcoded in the component, no database, no API routes. The "Ask Ayan" chat is pure client-side pattern matching; it never calls Anthropic or NVIDIA. This keeps the feature cost-free at runtime and always available (no provider timeouts, no degraded mode).
+
+**Preconditions:** Phase 19 Definition of Done is met.
+
+---
+
+### Step 20.1 — `GuidePage` React component
+
+**Goal:** a polished, navigable docs page at `/guide` that a practitioner or admin can read from start to finish or jump around in via a left-sidebar table of contents.
+
+**Context to load:** `frontend/src/App.tsx`, `frontend/src/index.css`.
+
+**Build:**
+
+**`frontend/src/pages/GuidePage.tsx`** — two-column layout:
+
+*Left sidebar (200px, fixed on desktop, collapsible on mobile):*
+- Portal wordmark at top ("Mastery Pulse Guide")
+- Section list with nested sub-items; the active section is highlighted
+- Smooth-scroll anchors; clicking a section heading scrolls the right pane to that anchor
+
+*Right content pane:*
+- Each section starts with a **Quick Read box** (2-min summary card with a light-accent background, ⚡ icon, and a "Expand full guide ↓" chevron that reveals the detailed content below). Quick Read is always expanded by default; the full guide below is also expanded by default — the chevron is a visual affordance to collapse detail when skimming.
+- **Section headings** are large, serif, blue-purple, with a thin left accent border.
+- **Feature callout boxes** (e.g. tips, admin-only notes) use a distinct background colour.
+- **Screenshots / illustrations:** use stylized ASCII-art or SVG icon grids (no external images — CSP blocks them in production). Emoji can substitute where a small visual signal helps.
+
+*Sections for general practitioners (always visible):*
+1. **Getting Started** — the onboarding journey: log in → build profile → select cert → wait for skill radar
+2. **Your Skill Radar** — reading the radar polygon, mastery score %, domain gap chart, what moves each score
+3. **Quizzes** — how questions are generated in the background, tab states (⏳/⚠️), trap-reveal mechanic, "Exam Relevant" vs "Good to Know" badges, retry failed skills
+4. **Byte-Sized Learning** — what the lesson table is for, how to open the read modal, circular timer, TTS "Read Aloud" speed controls, when "⚡ Read again" appears
+5. **Mock Exams** — starting an exam, timer mechanics, answering questions with instant feedback, pausing/resuming, abandonment with reason, history table, confidence score gauge
+6. **Adoption Trends & Nudges** — the Adoption Trends tab, nudge inbox, unread badge, what a nudge is and who sends them
+
+*Sections visible to admin users only (rendered only when `session.identity_type === "admin"`):*
+7. **Managing Practitioners** — viewing all practitioners, opening their read-only Skill Radar
+8. **Nudge Campaigns** — generate categories → preview recipients → compose message → send; privacy model (LLM never sees PII)
+9. **Cert Domain Management** — triggering the Cert Domain Discovery Agent, reviewing proposals, approving/rejecting, version semantics
+10. **Observability** — agent_runs table, model_used field, status/latency, how to diagnose a stuck quiz or failed lesson
+11. **Admin Users** — creating new admin accounts, first-login password change, admin vs leadership roles
+
+**Scenario tests:** none (static content page — covered by route existence test in Step 20.4 and visual QA).
+
+**Definition of done:** page renders without error for both practitioner and admin sessions; admin-only sections are absent from a practitioner's view; sidebar links smooth-scroll correctly.
+
+---
+
+### Step 20.2 — Role-gated sections
+
+**Goal:** admin-only sections (7–11) are invisible to practitioners. The check is purely client-side, driven by `useSession()`.
+
+**Context to load:** `frontend/src/context/SessionContext.tsx`.
+
+**Build:**
+
+In `GuidePage.tsx`:
+```tsx
+const { session } = useSession();
+const isAdmin = session?.identity_type === "admin";
+```
+
+Sections 7–11 are wrapped in `{isAdmin && (<Section .../>)}`. The sidebar table of contents conditionally renders those items too, so the sidebar and content are always in sync.
+
+An **"🔐 Admin-only section"** small label appears at the top of each admin section as a visual affordance (helps admins know this content is not visible to practitioners).
+
+**Definition of done:** rendered sidebar and content both omit admin sections for practitioners; both show them for admins. No API call made.
+
+---
+
+### Step 20.3 — "Ask Ayan" floating chat widget
+
+**Goal:** a floating action button in the bottom-right corner of the guide page opens a compact chat panel. The practitioner can type a portal-related question and receive an instant, helpful answer. Off-topic questions receive a friendly, funny response. Zero API calls — fully client-side.
+
+**Context to load:** `frontend/src/pages/GuidePage.tsx` (Step 20.1).
+
+**Build:**
+
+**`frontend/src/components/Guide/AskAyanChat.tsx`**
+
+*Floating button:* 60×60px circle, `var(--primary)` fill, a subtle wave/pulse animation at rest. Icon: 💬 (or a custom SVG silhouette of Ayan if a SVG is supplied; default to emoji). Positioned `fixed; bottom: 2rem; right: 2rem; z-index: 1000`.
+
+*Chat panel (opens above the button):* 360×480px card with:
+- **Header:** "Ask Ayan 🧠" + a small tag "Portal questions only!" + × close button
+- **Message thread:** scrollable list of `{role: 'user'|'ayan', text}` bubbles; Ayan's messages appear with a small "🧠 Ayan" label
+- **Input row:** text input + "Send ↵" button; also submits on Enter
+
+*Response engine (pure client-side — zero API calls):*
+
+A static `respondToQuestion(text: string): string` function in `AskAyanChat.tsx`:
+1. Lowercase + trim the input
+2. Check against a keyword map (array of `{keywords: string[], answer: string}` entries, tested in order, first match wins):
+   - `['skill radar', 'radar', 'mastery', 'score']` → explanation of the radar
+   - `['quiz', 'question', 'generating', 'pending', 'failed', 'retry']` → explanation of quiz generation
+   - `['byte', 'lesson', 'micro', 'read aloud', 'tts', 'timer']` → explanation of byte-sized lessons
+   - `['mock exam', 'exam', 'abandon', 'confidence', 'pause', 'resume']` → explanation of mock exams
+   - `['nudge', 'inbox', 'adoption', 'trend']` → explanation of nudges
+   - `['profile', 'certification', 'cert', 'domain', 'assessment']` → explanation of profiles
+   - `['admin', 'observability', 'agent run', 'campaign']` → explanation of admin features (no role gate — general info is fine)
+   - `['login', 'log in', 'password', 'account']` → login / account guidance
+3. If no keyword matches → a randomly selected funny response from a pool of ~8, e.g.:
+   - "That's a great question for a different chatbot! I only know about Mastery Pulse — try asking about your Skill Radar or quizzes 😄"
+   - "Hmm, I'm just a portal guide embedded in a React component — philosophy isn't really my forte. Ask me about mock exams instead! 🤔"
+   - "Even Ayan wouldn't know the answer to that one. But I *do* know how certification domain scoring works. Want to hear? 🎓"
+   - "I checked my entire knowledge base (one TypeScript file) and found nothing about that. But I know a lot about quiz generation! 📚"
+
+*Initial welcome message:* when the panel first opens, show one Ayan message: "Hi! I'm Ayan's guide assistant 👋 Ask me anything about the Mastery Pulse portal — quizzes, skill radar, mock exams, byte-sized lessons, or admin features."
+
+**No API calls.** No `fetch`. No LLM. The `respondToQuestion` function is synchronous — response appears instantly.
+
+**Scenario tests:** none (UI widget — manual QA is sufficient for a static keyword-match function).
+
+**Definition of done:** clicking the button opens the panel; typing a portal question returns a relevant canned answer; typing an off-topic question returns one of the funny responses; the panel closes cleanly with ×; the guide page scrolls normally with the panel open.
+
+---
+
+### Step 20.4 — Route + nav link
+
+**Goal:** `/guide` is reachable from the nav bar by all authenticated users, and the route is registered in the React router.
+
+**Context to load:** `frontend/src/App.tsx`.
+
+**Build:**
+
+1. **Route** — add to `AppRoutes()`:
+   ```tsx
+   import GuidePage from "./pages/GuidePage";
+   ...
+   <Route
+     path="/guide"
+     element={
+       <RequireAuth>
+         <PortalLayout>
+           <GuidePage />
+         </PortalLayout>
+       </RequireAuth>
+     }
+   />
+   ```
+
+2. **NavLink** — add to `NavBar()`, for ALL authenticated users (both practitioners and admins):
+   ```tsx
+   <NavLink to="/guide" style={navLinkStyle}>
+     Guide
+   </NavLink>
+   ```
+   Place it as the last item before the "Hi, {name}" greeting, so it doesn't disrupt the main nav flow.
+
+**Scenario tests:**
+- *Route exists* — `GET /guide` renders without a 404 or redirect for both practitioner and admin sessions.
+- *Nav link appears for practitioners* — a practitioner session sees "Guide" in the nav bar.
+- *Nav link appears for admins* — an admin session sees "Guide" in the nav bar.
+
+**Definition of done:** all three scenario tests pass (manual verification sufficient for this step — no Playwright needed).
+
 ---
 
 # Phase 18 — Byte-Sized Learning & Always-Available Mock Exam

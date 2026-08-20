@@ -656,6 +656,55 @@ Practitioner sees "1 unread" badge on Adoption Trends tab
 
 ---
 
+## Interactive User Guide (Phase 20)
+
+### What it is
+
+A fully static, client-side documentation page reachable at `/guide` from the nav bar. All authenticated users (practitioners and admins) see the "Guide" nav link. The page is a two-column layout — fixed left sidebar with section navigation, scrollable right pane with content — modelled after the clarity of Anthropic and AWS documentation sites but with original design.
+
+**No backend, no API calls.** The guide is entirely static React. Its content is hardcoded in the component. No routes, no migrations, no LLM calls — it costs nothing at runtime and is never affected by provider outages.
+
+### Content structure
+
+Each section opens with a **Quick Read card** (2-minute summary with ⚡ icon) followed by full detailed content. Sections are anchor-linked from the sidebar.
+
+| # | Section | Visible to |
+|---|---|---|
+| 1 | Getting Started | All users |
+| 2 | Your Skill Radar | All users |
+| 3 | Quizzes | All users |
+| 4 | Byte-Sized Learning | All users |
+| 5 | Mock Exams | All users |
+| 6 | Adoption Trends & Nudges | All users |
+| 7 | Managing Practitioners | Admin only |
+| 8 | Nudge Campaigns | Admin only |
+| 9 | Cert Domain Management | Admin only |
+| 10 | Observability | Admin only |
+| 11 | Admin Users | Admin only |
+
+Admin-only sections (7–11) are rendered only when `session.identity_type === "admin"`, driven entirely by the existing `useSession()` hook. No API call is made; the check is client-side only.
+
+### "Ask Ayan" chat widget
+
+A floating action button (`fixed; bottom: 2rem; right: 2rem`) opens a compact chat panel. Questions are answered by a synchronous `respondToQuestion(text)` function — a keyword-match lookup over ~10 topic clusters. Off-topic queries receive one of ~8 rotating funny responses. Zero API calls, zero LLM involvement.
+
+The widget lives at `frontend/src/components/Guide/AskAyanChat.tsx` and is imported only by `GuidePage`.
+
+### Files introduced by Phase 20
+
+```
+frontend/src/
+├── pages/
+│   └── GuidePage.tsx          # main page — sidebar + content
+└── components/
+    └── Guide/
+        └── AskAyanChat.tsx    # floating chat widget (static keyword matching)
+```
+
+`frontend/src/App.tsx` gains one new route (`/guide`) and one new `NavLink` in `NavBar`.
+
+---
+
 ## Folder structure
 
 ```
