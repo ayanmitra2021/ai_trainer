@@ -250,6 +250,100 @@ Every agent invocation, full stop.
 ### `workflow_runs`
 - `id`, `workflow_name` (`recommend_certification` | `generate_learning_path` | `nightly_pulse` | `nudge_campaign`), `triggered_by`, `status` (`running` | `completed` | `failed`), `started_at`, `completed_at`
 
+---
+
+## Phase 22 tables — Multi-Tenant SaaS
+
+These tables are added in migration `024_multi_tenant_schema.py`. They introduce the organization/plan layer that sits above the existing practitioner model.
+
+### `subscription_plans`
+Plan templates managed by the product admin. Each plan defines the resource limits that apply to all practitioners in organizations on that plan.
+
+- `id` (UUID PK)
+- `name` (text NOT NULL — e.g. "Free", "Paid", "Enterprise-100")
+- `tier` (text NOT NULL — enum: `free | paid | enterprise`; immutable after creation)
+- `max_profiles_per_practitioner` (integer NOT NULL — maximum concurrent active profiles per practitioner; -1 = unlimited)
+- `max_learning_paths` (integer NOT NULL — maximum total learning-path generations per practitioner; -1 = unlimited)
+- `max_mock_exams_per_profile` (integer NOT NULL — maximum mock exam sessions per profile; -1 = unlimited)
+- `max_practitioners_per_org` (integer NOT NULL — maximum practitioners that can enroll in one org; -1 = unlimited)
+- `allow_cert_recycling` (boolean NOT NULL, default false — if false, Free plan blocks recreating a profile for a certification that was previously used, even after deletion)
+- `nudges_enabled` (boolean NOT NULL, default false — whether the nudge messages section is shown to practitioners in this org)
+- `teams_notifications_enabled` (boolean NOT NULL, default false — whether the Teams/Outlook Configure tab is shown to org admins; only meaningful for enterprise plans)
+- `is_active` (boolean NOT NULL, default true — inactive plans cannot be assigned to new orgs)
+- `created_at`, `updated_at`
+
+**Seed rows (Step 22.1):**
+| Name | Tier | Profiles | Paths | Mock Exams | Practitioners/org | Recycle | Nudges |
+|---|---|---|---|---|---|---|---|
+| Free | free | 2 | 2 | 2 | -1 | false | false |
+| Paid | paid | 10 | -1 | 5 | -1 | true | false |
+| Enterprise-100 | enterprise | -1 | -1 | -1 | 100 | true | true |
+| Enterprise-1000 | enterprise | -1 | -1 | -1 | 1000 | true | true |
+| Enterprise-Unlimited | enterprise | -1 | -1 | -1 | -1 | true | true |
+
+### `organizations`
+Each subscribing entity — a company, team, or individual — is represented as an organization. The organization is the unit of subscription: its plan determines what every practitioner in it can do.
+
+- `id` (UUID PK)
+- `name` (text NOT NULL)
+- `plan_id` (FK → subscription_plans)
+- `billing_email` (text, nullable — for future invoice-based billing; not used until payment integration)
+- `is_active` (boolean NOT NULL, default true — if false, all practitioners in the org are blocked from login with `org_suspended` 403)
+- `created_at`, `updated_at`
+
+**Seed rows:** one "Free Tier" org linked to the Free plan — all practitioners who log in without a code land here.
+
+### `org_enrollment_codes`
+16-character alphanumeric codes that practitioners enter at registration to join an organization. A code can be used by many practitioners (it identifies the org, not the individual). Only one code per org may be active at a time.
+
+- `id` (UUID PK)
+- `organization_id` (FK → organizations)
+- `code` (char(16) UNIQUE NOT NULL — uppercase alphanumeric; DB CHECK constraint enforces `char_length(code) = 16`)
+- `is_active` (boolean NOT NULL, default true)
+- `created_at`
+
+**Partial unique index:** `UNIQUE (organization_id) WHERE is_active = true` — enforces exactly one active code per org.
+
+**Seed rows:** one code `FREE0000MASTERY00` for the Free Tier org.
+
+**Code format:** `secrets.token_hex(8).upper()` — produces 16 hex characters (0–9, A–F). Case-insensitive validation at enrollment.
+
+### `product_admin_users`
+Product-level super-admins who manage plans and organizations. Completely separate from `admin_users` (org-level admins). Product admins can see aggregate usage data but cannot view individual practitioner learning progress.
+
+- `id` (UUID PK)
+- `email` (text UNIQUE NOT NULL)
+- `password_hash` (text NOT NULL)
+- `first_name` (text NOT NULL)
+- `must_change_password` (boolean NOT NULL, default true — set to false after first password change)
+- `last_login_at` (timestamptz, nullable)
+- `created_at`
+
+**Seed rows:** one default product admin with a temporary password; `must_change_password = true`.
+
+### `org_notification_settings`
+Enterprise-only channel configuration for nudge delivery. One row per org; auto-created as empty when first requested.
+
+- `organization_id` (FK → organizations, PK — one row per org)
+- `teams_webhook_url` (text, nullable — incoming webhook URL from Microsoft Teams)
+- `teams_channel_name` (text, nullable — display name for the connected Teams channel; shown in admin UI)
+- `email_enabled` (boolean NOT NULL, default false — enable email delivery for nudge campaigns in this org)
+- `updated_at`
+
+**Constraint:** only organizations on a plan with `teams_notifications_enabled = true` may write a non-null `teams_webhook_url`.
+
+---
+
+### Changes to existing tables (Phase 22)
+
+**`practitioners`** — add `organization_id` (FK → organizations, nullable — null only during the login request's DB transaction before the code validation completes; set to Free Tier org by default if no code supplied; never updated after first login).
+
+**`admin_users`** — add `organization_id` (FK → organizations NOT NULL — every org admin is scoped to exactly one org; set via migration for pre-Phase-22 admin users, linked to a "Legacy Org" seed row).
+
+**`practitioner_profiles`** — add `deleted_at` (timestamptz, nullable, default null — enables soft-delete for the cert-recycling guard. All normal queries filter `WHERE deleted_at IS NULL`. The cert-recycling check for Free plan queries `WHERE practitioner_id = ? AND certification_id = ?` regardless of `deleted_at`).
+
+---
+
 ## Relationships at a glance
 
 ```
@@ -258,10 +352,19 @@ certification_providers ─< certifications ─< certification_skills >─ skill
                                           └─< certification_domain_versions ─< certification_domains
                                           └─< certification_domain_proposals (pending admin review)
 
+-- Phase 22: multi-tenant layer --
+subscription_plans ─< organizations ─< org_enrollment_codes
+                                     └─ org_notification_settings (1:1, enterprise only)
+product_admin_users (standalone — product portal auth only)
+
+organizations ─< practitioners (organization_id FK — set at first login)
+organizations ─< admin_users   (organization_id FK — org admins are scoped)
+
+-- Practitioner graph (unchanged from Phase 21) --
 practitioners ─┬─< certification_advisor_responses
                ├─< practitioner_certification_goals >─ certifications
                ├─< practitioner_profiles ─┬─ certification_id → certifications (NOT NULL, Phase 10.1)
-               │                          ├─ domain_version_id → certification_domain_versions (set at lock time, Phase 10.5)
+               │   (soft-delete Phase 22) ├─ domain_version_id → certification_domain_versions (set at lock time, Phase 10.5)
                │                          └─ domain_scoring_status: 'pending'|'lm_scored'|'degraded' (Phase 14.4)
                ├─< profile_skill_assessments >─ skills (per-profile ratings, preserved but not used for radar)
                ├─< skill_profile_events >─ skills
@@ -283,6 +386,7 @@ admin_users ─< nudges (created_by_admin_id, nullable)
 admin_users ─< certification_domain_versions (created_by_admin_id, nullable)
 admin_users ─< certification_domain_proposals (reviewed_by_admin_id, nullable)
 practitioners ─< sessions   (sessions is polymorphic via identity_type)
+product_admin_users ─< sessions (identity_type = "product_admin")
 
 workflow_runs ─< agent_runs
 agent_runs ─< certification_domain_versions (agent_run_id, nullable — set for agent-driven refreshes)

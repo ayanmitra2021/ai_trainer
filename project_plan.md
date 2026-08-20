@@ -184,12 +184,484 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 20.4 Route + nav link — `/guide` route wired in `App.tsx`; "Guide" NavLink visible to all authenticated users
 
 **Phase 21 — Admin Practitioner Activity View & Account Deactivation**
-- [ ] 21.1 DB — add `is_active` boolean to `practitioners` table; Alembic migration
-- [ ] 21.2 Backend — deactivation / reactivation API endpoints + login guard
-- [ ] 21.3 Backend — `GET /admin/practitioners/{id}/activity-summary` endpoint (quiz rounds, skill gaps, lesson time, mock exams)
-- [ ] 21.4 Frontend — Activity tab in `AdminPractitionerPage` (summary cards + per-skill table + mock exam history)
-- [ ] 21.5 Frontend — Deactivate / Reactivate button with confirmation dialog in admin practitioner header
+- [x] 21.1 DB — add `is_active` boolean to `practitioners` table; Alembic migration
+- [x] 21.2 Backend — deactivation / reactivation API endpoints + login guard
+- [x] 21.3 Backend — `GET /practitioners/{id}/activity-summary` endpoint (quiz rounds, skill gaps, lesson time, mock exams)
+- [x] 21.4 Frontend — Activity tab in `AdminPractitionerPage` (summary cards + per-skill table + mock exam history)
+- [x] 21.5 Frontend — Deactivate / Reactivate button with inline confirmation in admin practitioner header
 - [ ] 21.6 Guide update — update "Managing Practitioners" section in `GuidePage.tsx` with new features
+
+**Phase 22 — Multi-Tenant SaaS Productization**
+- [ ] 22.1 DB — multi-tenant schema: `subscription_plans`, `organizations`, `org_enrollment_codes`, `product_admin_users`; soft-delete on profiles; `organization_id` on practitioners + admin users; Alembic migration
+- [ ] 22.2 Product Admin auth — `POST /product-admin/login` + session handling; separate from org-admin
+- [ ] 22.3 Subscription plan management API — CRUD for plans + parameters (profile limit, quiz-path limit, mock-exam limit, nudges flag, practitioner-cap)
+- [ ] 22.4 Organization management API — CRUD for orgs; enrollment code generation; plan assignment; enterprise sub-tier
+- [ ] 22.5 Enrollment + registration flow — code validation at practitioner login; auto-enroll in free plan; soft-delete cert recycling guard
+- [ ] 22.6 Plan enforcement middleware — API-layer checks for profile count, learning-path count, mock-exam count, cert recycling; plan-aware HTTP 402 errors with clear client messages
+- [ ] 22.7 Product Admin Portal UI — login page, dashboard, Plans tab (CRUD), Organizations tab, code management, Usage Analytics tab, Earnings placeholder tab
+- [ ] 22.8 Product Admin analytics backend — usage by plan tier, agent-run stats (count / latency / failures), org enrollment trends
+- [ ] 22.9 Adoption tab plan gating — Free/Paid: hide nudge messages section; Enterprise: full access including nudge tab
+- [ ] 22.10 Enterprise notification config — `org_notification_settings` table; Teams webhook + email config; admin "Configure" tab (enterprise orgs only)
+- [ ] 22.11 Enterprise nudge delivery — Teams webhook send path in `nudge_campaign` workflow; Teams section in admin nudge tab; email for all enterprise nudges
+- [ ] 22.12 Guide update — Phase 22 sections in `GuidePage.tsx` (Plans, Enrollment, Product Admin, Enterprise features)
+
+---
+
+# Phase 22 — Multi-Tenant SaaS Productization
+
+**Why this phase exists.** Mastery Pulse has proven its value as an internal organizational tool. This phase turns it into a product that any organization can subscribe to — from individual practitioners on a free tier to enterprises with hundreds of users. The core change is introducing a **subscription-plan layer** that sits above the existing practitioner/admin model: each user belongs to an organization, each organization subscribes to a plan, and every significant API action is checked against that plan's limits before proceeding.
+
+This phase deliberately does not integrate a payment processor — monetization mechanics (Stripe, invoice-based, reseller contracts) will be decided separately once pricing is finalized. What this phase does build is the complete plan-enforcement infrastructure, the product admin portal, the enrollment code mechanism, and the enterprise-only features (Teams/Outlook notifications, nudge delivery beyond email). When payment integration arrives, it drops onto this scaffold rather than requiring another structural change.
+
+**Three plan tiers:**
+
+| | Free | Paid | Enterprise |
+|---|---|---|---|
+| Cert profiles (concurrent) | 2 | 10 | Unlimited |
+| Learning-path generations | 2 | Unlimited | Unlimited |
+| Mock exams per profile | 2 | 5 | Unlimited |
+| Cert recycling (delete + recreate same cert) | Blocked | Allowed (starts at zero) | Allowed |
+| Nudge messages | Hidden | Hidden | Full access |
+| Teams / Outlook notifications | No | No | Configurable |
+| Practitioners per org | 1 (self-serve) | 1–10 (self-serve) | ≤ 100 / ≤ 1 000 / Unlimited (sub-tier) |
+| Enrollment code | Fixed shared code | Unique org code | Unique org code |
+
+**Preconditions:** Phase 21 Definition of Done is met.
+
+---
+
+### Step 22.1 — DB: multi-tenant schema foundation
+
+**Goal:** add the tables and columns needed to represent organizations, subscription plans, enrollment codes, and product admins, and to link existing practitioners and org-admins to an organization.
+
+**Context to load:** `backend/alembic/versions/` (latest revision), `backend/app/db/models.py`, `docs/data-model.md`.
+
+**Build — new tables:**
+
+1. **`subscription_plans`** — plan templates managed by the product admin.
+   - `id` (UUID PK), `name` (text, e.g. "Free", "Paid", "Enterprise-100"), `tier` (enum: `free | paid | enterprise`), `max_profiles_per_practitioner` (int, -1 = unlimited), `max_learning_paths` (int, -1 = unlimited), `max_mock_exams_per_profile` (int, -1 = unlimited), `max_practitioners_per_org` (int, -1 = unlimited), `allow_cert_recycling` (bool, default false), `nudges_enabled` (bool, default false), `teams_notifications_enabled` (bool, default false), `is_active` (bool, default true), `created_at`, `updated_at`
+   - Seed: one Free row, one Paid row, three Enterprise rows (≤100, ≤1000, unlimited).
+
+2. **`organizations`** — each subscribing org.
+   - `id` (UUID PK), `name` (text NOT NULL), `plan_id` (FK → subscription_plans), `billing_email` (text, nullable — for future invoicing), `is_active` (bool, default true), `created_at`, `updated_at`
+   - Seed: one "Free Tier" org linked to the Free plan — all unaffiliated practitioners land here.
+
+3. **`org_enrollment_codes`** — codes practitioners enter at registration.
+   - `id` (UUID PK), `organization_id` (FK → organizations), `code` (char(16), UNIQUE, NOT NULL — all uppercase alphanumeric), `is_active` (bool, default true), `created_at`
+   - Seed: one code `FREE0000MASTERY00` for the Free Tier org.
+   - Uniqueness enforced at the DB level (`UNIQUE` index on `code`).
+   - A code belongs to exactly one org; an org may have one active code at a time (enforce via partial unique index `WHERE is_active = true`).
+
+4. **`product_admin_users`** — the product-level super-admin(s) who manage plans and orgs.
+   - `id` (UUID PK), `email` (text UNIQUE), `password_hash` (text NOT NULL), `first_name` (text NOT NULL), `must_change_password` (bool, default true), `last_login_at` (nullable timestamp), `created_at`
+   - Seed: one default product admin (`product@mastery-pulse.io`, temporary password).
+
+5. **`org_notification_settings`** — enterprise channel config (one row per org; nullable = not configured).
+   - `organization_id` (FK → organizations, PK), `teams_webhook_url` (text, nullable), `teams_channel_name` (text, nullable), `email_enabled` (bool, default false), `updated_at`
+
+**Columns added to existing tables:**
+
+6. **`practitioners`** — add `organization_id` (FK → organizations, nullable — null only during the brief window between sign-up and code entry; set immediately on first login, defaulting to the Free Tier org if no code is provided).
+
+7. **`admin_users`** — add `organization_id` (FK → organizations, NOT NULL — org admins are always scoped to one org). Set via migration for existing admin users: link them to a seeded "Legacy Org" or the product's first real org.
+
+8. **`practitioner_profiles`** — add `deleted_at` (timestamp, nullable, default null) to enable soft-delete. The cert-recycling guard for the Free plan requires knowing whether a practitioner has ever had a profile for a given certification, even after deletion. Filter `WHERE deleted_at IS NULL` in all normal queries. Hard-delete is no longer used for profiles.
+
+**Migration:** `024_multi_tenant_schema.py`
+- Run `alembic upgrade head` immediately after writing the migration.
+- Backfill: set all existing practitioners' `organization_id` to the "Legacy Org" seed row.
+
+**Scenario tests:**
+- A new organization row referencing a valid plan can be created and fetched.
+- `org_enrollment_codes.code` length is validated at the DB constraint level (CHECK `char_length(code) = 16`).
+- Two active codes for the same org are rejected (partial unique index).
+- A profile with `deleted_at IS NOT NULL` is excluded from `GET /practitioners/{id}/profiles` normal responses.
+
+**Definition of done:** migration applied; all four scenario tests pass; all existing tests still green.
+
+---
+
+### Step 22.2 — Product Admin auth
+
+**Goal:** a product-level super-admin can log in with a separate route and receive a session that is unambiguously distinct from org-admin sessions. This admin can then call all `/product-admin/*` routes.
+
+**Context to load:** `backend/app/api/routes/auth.py`, `backend/app/api/deps/session.py`.
+
+**Build:**
+
+1. **`POST /product-admin/login`** — accepts `{email, password}`. Verifies against `product_admin_users`. Creates a `sessions` row with `identity_type = "product_admin"`. Sets the same HTTP-only cookie pattern as org admin login. Returns `{identity_type: "product_admin", first_name, must_change_password}`.
+
+2. **`POST /product-admin/logout`** — deletes session, clears cookie.
+
+3. **`POST /product-admin/change-password`** — same pattern as org admin change-password.
+
+4. **`GET /product-admin/me`** — returns `{identity_type, first_name, must_change_password}` for the product admin session.
+
+5. **`require_product_admin` dependency** — new dep in `session.py`. Raises 403 if the session's `identity_type != "product_admin"`. Used to guard all `/product-admin/*` routes.
+
+6. **`GET /auth/me`** — extend the existing response to include `identity_type: "product_admin"` as a valid value, so the frontend can route the product admin to the correct portal on page load.
+
+**Scenario tests:**
+- Valid credentials → session cookie set, `identity_type = "product_admin"` in response.
+- Invalid credentials → 401.
+- `require_product_admin` rejects org-admin sessions with 403.
+- `require_product_admin` rejects practitioner sessions with 403.
+
+**Definition of done:** all four scenario tests pass; product admin login does not touch `admin_users` table.
+
+---
+
+### Step 22.3 — Subscription plan management API
+
+**Goal:** product admins can create, read, update, and deactivate subscription plans via API. Org admins and practitioners cannot call these routes.
+
+**Context to load:** `backend/app/api/routes/`, `backend/app/schemas/`, `backend/app/db/models.py`.
+
+**Build:**
+
+New router: `backend/app/api/routes/product_admin.py` (or extend into separate files under `backend/app/api/routes/product_admin/`).
+
+**Endpoints:**
+
+- `POST /product-admin/plans` — create a new plan. Body: all `subscription_plans` fields except `id`/`created_at`/`updated_at`. Returns the new plan.
+- `GET /product-admin/plans` — list all plans (including inactive). Returns list with current org-count per plan.
+- `GET /product-admin/plans/{id}` — plan detail.
+- `PATCH /product-admin/plans/{id}` — partial update of plan parameters (name, limits, flags). Cannot change `tier` after creation (immutable — affects billing semantics).
+- `DELETE /product-admin/plans/{id}` — soft-deactivate: sets `is_active = false`. Cannot deactivate a plan with active orgs on it (returns 409 with a count of affected orgs).
+
+**Validation rules (enforced in schema layer):**
+- `max_profiles_per_practitioner`, `max_learning_paths`, `max_mock_exams_per_profile`, `max_practitioners_per_org`: must be ≥ 1 or exactly -1 (unlimited sentinel).
+- `tier = "free"` plans must have `allow_cert_recycling = false` and `nudges_enabled = false` (Free tier policy is fixed).
+- `tier = "enterprise"` plans must have `nudges_enabled = true`.
+
+**Scenario tests:**
+- Create a valid Paid plan → returned plan matches input.
+- Attempt to set `max_profiles_per_practitioner = 0` → 422.
+- Deactivate a plan with no active orgs → 200.
+- Deactivate a plan with 3 active orgs → 409 with `{"active_org_count": 3}`.
+
+**Definition of done:** all four scenario tests pass.
+
+---
+
+### Step 22.4 — Organization management API
+
+**Goal:** product admins can create and manage organizations, generate enrollment codes, and assign or change plans. Each organization is the unit of subscription — its plan determines what every practitioner in it can do.
+
+**Context to load:** `backend/app/api/routes/product_admin.py`, `backend/app/db/models.py`.
+
+**Build:**
+
+**Endpoints:**
+
+- `POST /product-admin/organizations` — create an org. Body: `{name, plan_id, billing_email?}`. Auto-generates one 16-char enrollment code (uppercase alphanumeric, cryptographically random). Returns org + code.
+- `GET /product-admin/organizations` — list all orgs with plan name, practitioner count, enrollment code(s), `is_active`.
+- `GET /product-admin/organizations/{id}` — org detail including full plan parameters and practitioner count.
+- `PATCH /product-admin/organizations/{id}` — update org name, billing email, plan. Plan changes take effect immediately (enforcement uses the plan at request time, not at enrollment time).
+- `POST /product-admin/organizations/{id}/regenerate-code` — invalidate the current active code (set `is_active = false`) and generate a new 16-char code. Returns the new code. Old code stops working immediately.
+- `PATCH /product-admin/organizations/{id}/deactivate` — set `organization.is_active = false`. Practitioners in the org can no longer log in (enforced at login guard). Data preserved.
+- `PATCH /product-admin/organizations/{id}/reactivate` — restore `is_active = true`.
+
+**Code generation logic:** `secrets.token_hex(8).upper()` produces 16 hex characters (0-9, A-F). Store as-is; validate at enrollment: case-insensitive compare.
+
+**Scenario tests:**
+- Creating an org generates exactly one 16-char uppercase alphanumeric code.
+- Regenerating a code deactivates the old code and returns a new one that is different.
+- Deactivating an org → practitioners in it get 403 at login.
+- Changing an org's plan from Free to Paid → plan limits update immediately (confirmed via plan-enforcement endpoint check).
+
+**Definition of done:** all four scenario tests pass.
+
+---
+
+### Step 22.5 — Enrollment and registration flow
+
+**Goal:** when a practitioner logs in for the first time (or completes registration), they supply an enrollment code. The code is validated, and the practitioner is linked to the correct organization. If no code is supplied, the practitioner is auto-enrolled in the global Free Tier org.
+
+**Context to load:** `backend/app/api/routes/auth.py`, `backend/app/db/models.py` (`Practitioner`, `Organization`, `OrgEnrollmentCode`).
+
+**Build:**
+
+1. **Updated `POST /auth/practitioner-login`:**
+   - Accept an optional `enrollment_code` field in the request body.
+   - **On first login (new practitioner row):**
+     - If `enrollment_code` is provided: validate code (exists, active, org is active, org is not at practitioner capacity). If valid: set `practitioner.organization_id` to the org. If invalid: return 400 with a specific error code (`invalid_code`, `org_full`, `org_inactive`).
+     - If no code: set `organization_id` to the hardcoded Free Tier org ID.
+   - **On subsequent login (existing practitioner):** ignore `enrollment_code` — org membership is fixed at first enrollment. Do not allow re-enrollment after the first login.
+   - Deactivated-org guard: if the practitioner's org has `is_active = false`, return 403 `{"error": "org_suspended"}`.
+
+2. **`GET /auth/enrollment-info`** — public endpoint (no auth). Accepts `?code=XXXX`. Returns `{valid: bool, org_name: str | null, plan_name: str | null, plan_tier: str | null}`. Used by the frontend to show a preview of what plan the code gives access to before the practitioner submits the form.
+
+3. **Cert recycling guard (Free plan):**
+   - On `POST /profiles` (create profile), check the practitioner's org plan.
+   - If `allow_cert_recycling = false`: query `practitioner_profiles WHERE practitioner_id = ? AND certification_id = ?` including `deleted_at IS NOT NULL` rows. If any exist → return 409 `{"error": "cert_recycling_blocked", "message": "Free plan does not allow recreating a profile for a certification you have previously used. Upgrade your plan to start over."}`.
+
+4. **Profile soft-delete:** update the existing `DELETE /profiles/{id}` endpoint to set `deleted_at = now()` instead of a hard `db.delete()`. All `SELECT` queries on `practitioner_profiles` must add `WHERE deleted_at IS NULL`.
+
+**Scenario tests:**
+- New practitioner + valid code → linked to the code's org.
+- New practitioner + no code → linked to Free Tier org.
+- New practitioner + invalid code → 400 `invalid_code`.
+- Existing practitioner + different code on second login → code is ignored; org unchanged.
+- Free plan practitioner deletes a CCAO-F profile then tries to create a new CCAO-F profile → 409 `cert_recycling_blocked`.
+- Paid plan practitioner deletes a CCAO-F profile then creates a new CCAO-F profile → 201 (allowed).
+
+**Definition of done:** all six scenario tests pass; no hard deletes remain on the profiles route.
+
+---
+
+### Step 22.6 — Plan enforcement middleware
+
+**Goal:** every API action that consumes a plan resource checks the practitioner's current plan limits before proceeding and returns a standardised 402 response with a clear human-readable message when the limit is reached.
+
+**Context to load:** `backend/app/api/routes/` (profiles, learning_paths, mock exam routes), `backend/app/db/models.py`.
+
+**Build:**
+
+1. **`PlanEnforcer` helper class** — `backend/app/api/deps/plan.py`. Instantiated per-request with the practitioner's org plan. Exposes:
+   - `check_profile_count(practitioner_id)` — counts active (non-soft-deleted) profiles; raises 402 if at limit.
+   - `check_learning_path_count(practitioner_id)` — counts all learning paths ever generated; raises 402 if at limit.
+   - `check_mock_exam_count(practitioner_id, profile_id)` — counts mock exam sessions for the profile; raises 402 if at limit.
+   - `-1` sentinel = unlimited; skip the count query.
+
+2. **Standard 402 response body:**
+   ```json
+   {
+     "error": "plan_limit_reached",
+     "limit_type": "profiles | learning_paths | mock_exams",
+     "current_count": 2,
+     "plan_limit": 2,
+     "plan_name": "Free",
+     "upgrade_message": "You have reached the Free plan limit for certification profiles. Delete an existing profile or upgrade your plan to create a new one."
+   }
+   ```
+
+3. **Injection points:**
+   - `POST /profiles` → `check_profile_count` before creating.
+   - `POST /learning-paths/generate` → `check_learning_path_count` before generating.
+   - `POST /practitioners/{id}/mock-exams` → `check_mock_exam_count` before creating.
+
+4. **Cap at org level too:** if the org's practitioner cap is reached, the practitioner-login endpoint (Step 22.5) already blocks new enrollment — no additional middleware needed.
+
+**Scenario tests:**
+- Free plan practitioner with 2 profiles tries to create a 3rd → 402 `profiles` limit.
+- Free plan practitioner with 2 learning paths tries to generate a 3rd → 402 `learning_paths` limit.
+- Free plan practitioner with 2 mock exams for a profile tries a 3rd → 402 `mock_exams` limit.
+- Enterprise plan practitioner with 10 profiles can create an 11th → 201 (unlimited = -1).
+- Paid plan practitioner with 5 mock exams tries a 6th → 402 `mock_exams` limit.
+
+**Definition of done:** all five scenario tests pass; `PlanEnforcer` has its own unit tests for each check method.
+
+---
+
+### Step 22.7 — Product Admin Portal (frontend)
+
+**Goal:** a purpose-built web portal at `/product-admin/*` for the product super-admin. It is visually distinct from the org-admin portal (different primary colour: slate/grey palette) and inaccessible to org admins and practitioners.
+
+**Context to load:** `frontend/src/App.tsx`, `frontend/src/pages/`, `frontend/src/api/`.
+
+**Build:**
+
+1. **Auth & routing** — `GET /auth/me` returns `identity_type: "product_admin"` → `App.tsx` routes to `<ProductAdminPortal />` instead of the regular app. A `RequireProductAdmin` guard wraps all product-admin routes.
+
+2. **`ProductAdminLoginPage`** — identical form to `AdminLoginPage` but calls `POST /product-admin/login`. Styled with slate palette. Available at `/product-admin/login`.
+
+3. **`ProductAdminPortal`** — shell with a left nav and these tabs:
+
+   - **Dashboard** — summary tiles: Total Organizations, Total Practitioners, Active Plans, Monthly Agent Runs. Each tile clickable to the relevant tab.
+   - **Plans** — table of all plans with their limits and org count. "New Plan" button opens a slide-over form. Each row has Edit and Deactivate. Edit opens the same form pre-populated. Deactivate shows a confirmation with the affected org count.
+   - **Organizations** — table of all orgs with columns: Name, Plan, Practitioners, Code, Status, Actions. "New Organization" button. Actions: Edit (name/plan/billing email), View Code (copy button), Regenerate Code (confirmation required), Deactivate/Reactivate.
+   - **Usage Analytics** — see Step 22.8.
+   - **Earnings** — placeholder tab with a message: "Payment integration is coming in a future release. Earnings data will appear here once billing is configured."
+
+4. **Plan form** — slide-over panel with fields for all `subscription_plans` columns. Live validation (e.g. limits must be ≥ 1 or "Unlimited" toggle). Tier field is a read-only badge after creation.
+
+5. **Org form** — slide-over with Name, Plan (dropdown), Billing Email. On create: shows the generated code with a copy button and a note: "Share this code with your users. It can only be shown once — if lost, regenerate it."
+
+6. **TypeScript build** — clean with zero new `any` types.
+
+**Definition of done:** TypeScript build clean; product admin can log in, create a plan, create an org, view the generated code, and edit an org's plan — all end-to-end in the browser without any 4xx/5xx errors.
+
+---
+
+### Step 22.8 — Product Admin analytics backend
+
+**Goal:** the Usage Analytics tab shows the product admin aggregate engagement metrics broken down by plan tier — no individual practitioner data is ever exposed.
+
+**Context to load:** `backend/app/api/routes/product_admin.py`, `backend/app/db/models.py`.
+
+**Build:**
+
+**Endpoints (all guarded by `require_product_admin`):**
+
+- **`GET /product-admin/analytics/usage`** — practitioner-level aggregates by plan tier:
+  ```json
+  {
+    "by_plan_tier": [
+      {
+        "tier": "free",
+        "plan_name": "Free",
+        "org_count": 1,
+        "practitioner_count": 142,
+        "active_practitioner_count": 118,
+        "total_quiz_attempts": 8412,
+        "total_lesson_reads": 2210,
+        "total_mock_exams_completed": 347
+      }
+    ]
+  }
+  ```
+  Queries are aggregated at the org level — no rows expose individual practitioner IDs.
+
+- **`GET /product-admin/analytics/agents`** — agent run utilization:
+  ```json
+  {
+    "period_days": 30,
+    "by_agent": [
+      {
+        "agent_name": "QuizBatchGeneratorAgent",
+        "run_count": 1842,
+        "success_count": 1795,
+        "failure_count": 47,
+        "avg_latency_ms": 8120,
+        "p95_latency_ms": 24300
+      }
+    ]
+  }
+  ```
+  Sourced from `agent_runs` table (already populated from Step 0.4 onward).
+
+- **`GET /product-admin/analytics/plans`** — plan distribution snapshot:
+  ```json
+  {
+    "plan_distribution": [
+      {"tier": "free", "plan_name": "Free", "org_count": 1, "practitioner_count": 142},
+      {"tier": "paid", "plan_name": "Paid", "org_count": 3, "practitioner_count": 28},
+      {"tier": "enterprise", "plan_name": "Enterprise-100", "org_count": 1, "practitioner_count": 67}
+    ],
+    "new_enrollments_last_30d": 31
+  }
+  ```
+
+**Scenario tests:**
+- With 2 orgs on Free and 1 on Paid → `GET /analytics/usage` returns 2 rows (Free, Paid) with correct org and practitioner counts.
+- With 50 agent runs (45 success, 5 failure) for one agent → `GET /analytics/agents` returns correct run_count, success_count, failure_count.
+
+**Definition of done:** both scenario tests pass; no query returns a row with a `practitioner_id` column.
+
+---
+
+### Step 22.9 — Adoption tab plan gating (frontend)
+
+**Goal:** the nudge messages section of the Adoption Trends tab is hidden for Free and Paid plan practitioners and visible for Enterprise plan practitioners. The layout of all other sections is unchanged.
+
+**Context to load:** `frontend/src/pages/AdoptionTrendPage.tsx` (or equivalent), `frontend/src/context/SessionContext.tsx`.
+
+**Build:**
+
+1. **Expose plan tier in session context.** The `GET /auth/me` response is extended with `plan_tier: "free" | "paid" | "enterprise" | null` (null for admin and product-admin sessions). Backend: join `practitioners.organization_id → organizations.plan_id → subscription_plans.tier` when building the `/auth/me` response for practitioner sessions.
+
+2. **Practitioner session context** — `SessionContext` already exposes the `MeResponse`; the new `plan_tier` field is available via `session.plan_tier`.
+
+3. **Nudge messages section** — in `AdoptionTrendPage` (or wherever the nudge inbox renders for practitioners), wrap the nudge section in:
+   ```tsx
+   {session?.plan_tier === "enterprise" && <NudgeSection />}
+   ```
+   When hidden, show a soft upgrade prompt card: "🔒 Nudge messages are available on the Enterprise plan. Contact your administrator to upgrade."
+
+4. **No backend change needed** — the nudge API endpoints already exist; gating is purely a UI decision based on plan tier.
+
+**Scenario tests (manual QA):**
+- Free plan practitioner: nudge section hidden; upgrade prompt visible.
+- Paid plan practitioner: same as Free.
+- Enterprise plan practitioner: nudge section visible; no upgrade prompt.
+
+**Definition of done:** all three manual checks pass; TypeScript build clean; `session.plan_tier` is typed as `"free" | "paid" | "enterprise" | null`.
+
+---
+
+### Step 22.10 — Enterprise: notification channel configuration
+
+**Goal:** an enterprise org's admin can configure Teams webhook and email notification channels from a new "Configure" tab in the admin portal. This configuration is org-scoped and only visible to orgs on an enterprise plan.
+
+**Context to load:** `backend/app/api/routes/`, `frontend/src/pages/` (admin panel), `backend/app/db/models.py` (`OrgNotificationSettings`).
+
+**Build:**
+
+**Backend:**
+- `GET /admin/notification-settings` — returns the org's current `org_notification_settings` row (auto-creates empty row if not yet set). Guarded by `require_admin`.
+- `PUT /admin/notification-settings` — upsert the entire settings record. Accepts `{teams_webhook_url, teams_channel_name, email_enabled}`. Guarded by `require_admin`.
+- `POST /admin/notification-settings/test-teams` — sends a test message to the configured Teams webhook (`{"text": "✅ Mastery Pulse — Teams integration test from [Org Name]"}`). Returns `{success: bool, error?: string}`. Uses `httpx` (no new dependency) with a 10 s timeout. Guarded by `require_admin`.
+- **Plan guard:** all three endpoints return 403 `{"error": "enterprise_only"}` if the org's plan `teams_notifications_enabled = false`.
+
+**Frontend:**
+- **"Configure" tab** — new tab in the admin nav, visible only when the org's plan tier is `enterprise`. Tab contains:
+  - **Teams Integration** section: Teams webhook URL input, channel name input, "Test Connection" button (calls `/test-teams`, shows green ✅ or red ✗ inline). Save button.
+  - **Email Notifications** section: toggle to enable/disable email nudges for this org. Save button.
+- Org admins on Free or Paid plans do not see the Configure tab.
+
+**Scenario tests:**
+- Enterprise admin saves a valid Teams webhook URL → 200; row created in `org_notification_settings`.
+- `POST /test-teams` with a valid webhook → Teams message delivered (integration test — mock `httpx` in unit tests).
+- Free plan admin calls `PUT /admin/notification-settings` → 403 `enterprise_only`.
+
+**Definition of done:** all three scenario tests pass; Configure tab visible in enterprise admin sessions; invisible in free/paid sessions.
+
+---
+
+### Step 22.11 — Enterprise: Teams nudge delivery
+
+**Goal:** when an enterprise org has a Teams webhook configured, nudges sent via the admin campaign system are also delivered to the Teams channel (in addition to email). A dedicated "Send to Teams" section in the admin nudge tab lets admins compose and push a message to Teams independently.
+
+**Context to load:** `backend/app/workflows/nudge_campaign.py`, `backend/app/api/routes/pulse.py` (or nudges route), `frontend/src/pages/` (admin nudge management UI).
+
+**Build:**
+
+**Backend:**
+1. **Extend `nudge_campaign` workflow** — after the `NudgeComposerAgent` writes the nudge rows, check if the org has a Teams webhook configured. If yes, post a summary message to Teams:
+   ```
+   📣 New nudge campaign: "[Campaign Subject]"
+   Sent to [N] practitioners — [date]
+   [brief summary from the campaign message]
+   ```
+   Use `httpx.AsyncClient` with a 10 s timeout. Failure is non-fatal (log Warning, don't fail the campaign).
+
+2. **`POST /admin/nudges/send-teams`** — compose and send an ad-hoc Teams message from the admin UI. Body: `{message: text (max 1000 chars)}`. Validates that the org has Teams configured (403 `teams_not_configured` otherwise). Posts to the webhook; returns `{success: bool}`.
+
+3. **Email for enterprise nudges** — all enterprise nudges already go through the existing email delivery path (Step 7.6). No change needed — ensure the email send is not accidentally gated on any old "org admin email" config that would block enterprise accounts.
+
+**Frontend (admin nudge tab):**
+1. **Teams section** — shown only when `plan_tier === "enterprise"` and Teams is configured. Contains a text area (max 1000 chars) and a "Send to Teams" button. On success: amber confirmation banner ("Message sent to Teams channel [name]"). On failure: error inline.
+2. **"Email + Teams" badge** — when an enterprise org has both email and Teams configured, the campaign compose screen shows a small badge: "Will deliver via 📧 Email + 💬 Teams". Free/Paid campaigns show only "📧 Email".
+
+**Scenario tests:**
+- Enterprise org with Teams configured: `nudge_campaign` workflow → Teams message posted to webhook.
+- `POST /admin/nudges/send-teams` with no webhook configured → 403 `teams_not_configured`.
+- Free plan org calls `POST /admin/nudges/send-teams` → 403 `enterprise_only`.
+
+**Definition of done:** all three scenario tests pass; Teams delivery failure does not prevent campaign from completing; TypeScript build clean.
+
+---
+
+### Step 22.12 — Guide update: Phase 22 sections
+
+**Goal:** the interactive user guide gains three new sections explaining the plan tiers, the enrollment code system, and (for enterprise org admins) the notification configuration options.
+
+**Context to load:** `frontend/src/pages/GuidePage.tsx`, `frontend/src/components/Guide/AskAyanChat.tsx`.
+
+**Build:**
+
+1. **New practitioner section: "Your Plan"** — explains the three plan tiers in a comparison table; describes what the enrollment code is, where to find it, and why it matters; explains the upgrade prompt that appears when a plan limit is reached.
+
+2. **New admin section: "Plan Management & Enrollment"** — explains how org admins can view their org's current plan and limits (read-only in the admin panel; only product admins can change plans); describes the enrollment code display (where to see it in the admin panel); explains what happens when a practitioner hits a plan limit.
+
+3. **New admin section (enterprise only): "Notification Configuration"** — explains the Configure tab, how to set up Teams integration (where to get a webhook URL from Teams, what the test button does), and how email + Teams delivery works for nudge campaigns.
+
+4. **`AskAyanChat` keyword additions:**
+   - `["plan", "free plan", "paid plan", "enterprise", "limits", "enrollment code", "upgrade"]` → answer explaining the three tiers and how to enroll.
+   - `["teams", "teams integration", "webhook", "configure", "notification settings"]` → answer explaining the enterprise Configure tab (note: only relevant for enterprise).
+
+**Definition of done:** TypeScript build clean; all three new guide sections visible in their respective role contexts; new Ask Ayan keywords return relevant answers.
 
 ---
 

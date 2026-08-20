@@ -649,6 +649,148 @@ The Activity tab sits alongside the existing Skill Radar in the admin practition
 
 All data is read-only. No actions are available from this tab (except the deactivation button in the page header, which is a separate control).
 
+---
+
+## Multi-Tenant SaaS Architecture (Phase 22)
+
+### Overview
+
+Phase 22 introduces an **organization/plan layer** on top of the existing practitioner model. The key principle is that the plan enforces limits at the API level, not just in the UI — a client that bypasses the frontend receives the same 402 response as any other caller.
+
+### Three auth identities
+
+After Phase 22, sessions can carry three distinct identity types, all using the same HTTP-only cookie mechanism:
+
+| `identity_type` | Who | Login route | Can access |
+|---|---|---|---|
+| `practitioner` | End user doing certification prep | `POST /auth/practitioner-login` | Their own data |
+| `admin` | Org admin or leadership | `POST /auth/admin-login` | All practitioners in their org |
+| `product_admin` | Mastery Pulse product super-admin | `POST /product-admin/login` | Plans, orgs, aggregate analytics — never individual practitioner data |
+
+The `require_product_admin` dependency (new in Phase 22) guards all `/product-admin/*` routes. Org-admin sessions receive 403 from these endpoints, not just "not found."
+
+### Organization and plan hierarchy
+
+```
+subscription_plans (product admin manages these)
+    └─ organizations (one plan per org; product admin creates orgs)
+           ├─ org_enrollment_codes (one active code per org)
+           ├─ admin_users (org admins scoped to one org)
+           ├─ org_notification_settings (enterprise: Teams + email config)
+           └─ practitioners (enrolled via code at first login)
+```
+
+A practitioner's plan limits come from `practitioners.organization_id → organizations.plan_id → subscription_plans.*`. This join happens at request time — if the product admin upgrades an org's plan, the new limits take effect on the next API call, with no data migration required.
+
+### Enrollment flow
+
+```
+User visits the app (GitHub Pages → Render backend)
+    │
+    ├─ First login: POST /auth/practitioner-login {email, name, enrollment_code?}
+    │       │
+    │       ├─ enrollment_code provided:
+    │       │       validate code → active? org active? org not full?
+    │       │       set practitioner.organization_id = org from code
+    │       │
+    │       └─ no code:
+    │               set practitioner.organization_id = "Free Tier" org (hardcoded seed ID)
+    │
+    └─ Subsequent logins: enrollment_code ignored; org membership is fixed
+```
+
+The Free Tier org's code (`FREE0000MASTERY00`) is baked into seed data. Practitioners who enter any code landing on the Free Tier org get Free-plan limits; there is no special "no code" treatment beyond routing them to the same org.
+
+### Plan enforcement — `PlanEnforcer`
+
+`backend/app/api/deps/plan.py` is the single authority for all limit checks. It is a helper class instantiated per-request with the practitioner's resolved plan. Its three check methods:
+
+| Method | Checked before | Raises |
+|---|---|---|
+| `check_profile_count(pid)` | `POST /profiles` | 402 `plan_limit_reached` → `limit_type: "profiles"` |
+| `check_learning_path_count(pid)` | `POST /learning-paths/generate` | 402 `plan_limit_reached` → `limit_type: "learning_paths"` |
+| `check_mock_exam_count(pid, profile_id)` | `POST /mock-exams` | 402 `plan_limit_reached` → `limit_type: "mock_exams"` |
+
+The -1 sentinel for unlimited limits short-circuits the DB count query entirely (the check is O(1) — a Python `if plan.max_X == -1: return`).
+
+A fourth guard — **cert recycling** — is checked inside the `POST /profiles` route rather than in `PlanEnforcer`, because it requires querying the soft-deleted profile history. See Step 22.5 for implementation.
+
+### Plan enforcement — 402 response contract
+
+All plan-limit rejections return **HTTP 402** (not 403 or 422) so the frontend can distinguish "authentication/authorization failure" from "plan upgrade needed." Response body:
+
+```json
+{
+  "error": "plan_limit_reached",
+  "limit_type": "profiles",
+  "current_count": 2,
+  "plan_limit": 2,
+  "plan_name": "Free",
+  "upgrade_message": "You have reached the Free plan limit for certification profiles. Delete an existing profile or upgrade your plan to create a new one."
+}
+```
+
+The frontend intercepts 402 responses (in the API client's `onError` handler) and shows an upgrade prompt card appropriate to the `limit_type`.
+
+### Soft-delete on `practitioner_profiles`
+
+The cert-recycling guard requires knowing whether a practitioner has ever had a profile for a given certification — even after the profile was deleted. This is why `practitioner_profiles` gains a `deleted_at` column in Phase 22. All normal queries filter `WHERE deleted_at IS NULL`. The cert-recycling check queries without that filter. There are no hard deletes on profiles from Phase 22 onward.
+
+The API continues to expose `DELETE /profiles/{id}` for compatibility; internally it sets `deleted_at = now()` instead of a `db.delete()`. The response is 204 (same as before).
+
+### Product Admin Portal
+
+The product admin portal runs at `/product-admin/*` in the same React app. It is visually distinct (slate/grey palette, separate nav) and completely isolated from the org-admin experience.
+
+**Access control:** `RequireProductAdmin` is a React component that wraps all product-admin routes. It checks `session.identity_type === "product_admin"` from the `SessionContext`; any other identity_type renders a 403 page rather than the portal.
+
+**What the product admin can see:**
+- Plans: full CRUD, current org count per plan
+- Organizations: full CRUD, enrollment codes, plan assignment, activation/deactivation
+- Usage Analytics: aggregate counts by plan tier; agent run stats (count, latency, failure rate by agent name); enrollment trends
+- Earnings: placeholder tab (payment integration is a separate future phase)
+
+**What the product admin cannot see:**
+- Individual practitioner names, emails, or learning progress
+- Org-admin accounts or their actions
+- Individual nudge message content
+
+All analytics queries aggregate at the `organization` level or by `plan tier` — no query returns a row with `practitioner_id` as a selected column.
+
+### Enterprise features
+
+Enterprise orgs get two capabilities unavailable to Free and Paid orgs:
+
+1. **Nudge messages for practitioners** — `subscription_plans.nudges_enabled = true` gates the nudge inbox in the Adoption Trend tab. Free/Paid practitioners see an upgrade prompt card instead.
+
+2. **Teams + email notification delivery** — `subscription_plans.teams_notifications_enabled = true` gates the "Configure" tab in the org admin panel. The configure tab allows setting a Teams incoming webhook URL and enabling email nudge delivery. When a nudge campaign is sent, the `nudge_campaign` workflow checks for a configured Teams webhook and posts a campaign summary to Teams (non-fatal on failure). All enterprise nudge emails use the same `sendgrid`/email path already in use from Phase 7.6.
+
+### Route summary (new routes added in Phase 22)
+
+| Method | Route | Auth | Purpose |
+|---|---|---|---|
+| POST | `/product-admin/login` | public | Product admin login |
+| POST | `/product-admin/logout` | product_admin | Logout |
+| GET | `/product-admin/me` | product_admin | Session identity |
+| POST | `/product-admin/change-password` | product_admin | Password update |
+| GET/POST | `/product-admin/plans` | product_admin | List / create plans |
+| GET/PATCH/DELETE | `/product-admin/plans/{id}` | product_admin | Read / update / deactivate plan |
+| GET/POST | `/product-admin/organizations` | product_admin | List / create orgs |
+| GET/PATCH | `/product-admin/organizations/{id}` | product_admin | Read / update org |
+| POST | `/product-admin/organizations/{id}/regenerate-code` | product_admin | New enrollment code |
+| PATCH | `/product-admin/organizations/{id}/deactivate` | product_admin | Block all org users |
+| PATCH | `/product-admin/organizations/{id}/reactivate` | product_admin | Re-enable org |
+| GET | `/product-admin/analytics/usage` | product_admin | Practitioner counts by plan |
+| GET | `/product-admin/analytics/agents` | product_admin | Agent run stats |
+| GET | `/product-admin/analytics/plans` | product_admin | Plan distribution |
+| GET | `/auth/enrollment-info` | public | Code preview before login |
+| GET | `/admin/notification-settings` | admin | Enterprise channel config |
+| PUT | `/admin/notification-settings` | admin | Save channel config |
+| POST | `/admin/notification-settings/test-teams` | admin | Test Teams webhook |
+| POST | `/admin/nudges/send-teams` | admin | Ad-hoc Teams message |
+
+---
+
 ## Smart Nudge System (Phase 7)
 
 The nightly `nudge_composer` agent continues to draft automated nudges from Correlation Agent output — that path is unchanged. Phase 7 layers on a second, admin-driven path:
