@@ -48,7 +48,12 @@ const TOPICS: Topic[] = [
   {
     keywords: ["admin", "observability", "agent run", "campaign", "nudge campaign", "cert domain", "practitioner list"],
     answer:
-      "Admins have extra tools: **Observability** shows every LLM agent call (model used, latency, token count, status) — great for diagnosing stuck quizzes. **Cert Domains** lets you trigger the AI-powered domain-refresh agent and approve or reject its proposals. **Nudges** is the campaign tool — generate categories, preview who qualifies, compose a message, and send it. The LLM in the Nudge flow *never* sees individual practitioner names or scores — only aggregated counts.",
+      "Admins have extra tools: **Observability** shows every LLM agent call (model used, latency, token count, status) — great for diagnosing stuck quizzes. **Cert Domains** lets you trigger the AI-powered domain-refresh agent and approve or reject its proposals. **Nudges** is the campaign tool — generate categories, preview who qualifies, compose a message, and send it. The LLM in the Nudge flow *never* sees individual practitioner names or scores — only aggregated counts. Admins can also view the **Activity tab** on any practitioner's profile, and **deactivate accounts** if needed.",
+  },
+  {
+    keywords: ["activity", "activity tab", "quiz history", "quiz rounds", "deactivate", "reactivate", "deactivation", "block login", "is_active", "account blocked"],
+    answer:
+      "The **Activity tab** in the admin practitioner view shows all engagement signals in one screen: 4 summary cards (Quiz Rounds, Correct Rate, Lesson Time, Mock Exams), a **per-skill table** (mastery %, gap %, quiz rounds, correct/wrong counts, lesson time), and a **Mock Exam History table**. Everything is read-only. To **deactivate** a practitioner (block their login), click the *Deactivate Account* button at the top of their admin profile view. Their data is fully preserved; you can *Reactivate* at any time. Only full admins (not leadership-role) can deactivate accounts.",
   },
   {
     keywords: ["login", "log in", "password", "account", "session", "email"],
@@ -107,7 +112,7 @@ const SUGGESTIONS = [
   "Tell me about mock exams",
   "What is byte-sized learning?",
   "How do quizzes work?",
-  "How do I create a profile?",
+  "What is the Activity tab?",
 ];
 
 // ---------------------------------------------------------------------------

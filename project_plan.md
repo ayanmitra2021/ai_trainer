@@ -183,6 +183,292 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 20.3 "Ask Ayan" floating chat widget — client-side pattern-matching Q&A; funny off-topic responses; zero API calls
 - [x] 20.4 Route + nav link — `/guide` route wired in `App.tsx`; "Guide" NavLink visible to all authenticated users
 
+**Phase 21 — Admin Practitioner Activity View & Account Deactivation**
+- [ ] 21.1 DB — add `is_active` boolean to `practitioners` table; Alembic migration
+- [ ] 21.2 Backend — deactivation / reactivation API endpoints + login guard
+- [ ] 21.3 Backend — `GET /admin/practitioners/{id}/activity-summary` endpoint (quiz rounds, skill gaps, lesson time, mock exams)
+- [ ] 21.4 Frontend — Activity tab in `AdminPractitionerPage` (summary cards + per-skill table + mock exam history)
+- [ ] 21.5 Frontend — Deactivate / Reactivate button with confirmation dialog in admin practitioner header
+- [ ] 21.6 Guide update — update "Managing Practitioners" section in `GuidePage.tsx` with new features
+
+---
+
+# Phase 21 — Admin Practitioner Activity View & Account Deactivation
+
+**Why this phase exists.** The current admin practitioner view (Step 9.2) shows the Skill Radar — a snapshot of current mastery — but tells an admin nothing about how the practitioner has been engaging over time: how many quiz rounds they've done, how many they got right, how much time they've spent on byte-sized lessons, or how they've performed on mock exams. Without this, an admin trying to send a targeted nudge or make sense of a stalling mastery score has to piece together the picture from multiple places. Phase 21 adds a single-screen Activity tab to the admin practitioner view that surfaces all observable engagement signals at a glance.
+
+Phase 21 also adds practitioner account deactivation — the ability to block a practitioner's login without deleting their data. This is a common administration need (leavers, parental leave, role changes) and is deliberately the simplest possible implementation: one boolean column, one API call, one UI button.
+
+**Preconditions:** Phase 20 Definition of Done is met.
+
+---
+
+### Step 21.1 — DB: add `is_active` to `practitioners` + migration
+
+**Goal:** add a single boolean column to `practitioners` that controls whether a practitioner can log in. `true` = active (default). `false` = deactivated (login blocked, data preserved).
+
+**Context to load:** `backend/alembic/versions/` (latest migration number), `backend/app/db/models.py`.
+
+**Build:**
+
+1. **Migration** (`0XX_practitioners_is_active.py`) — one change:
+   ```sql
+   ALTER TABLE practitioners ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE;
+   ```
+   Run `alembic upgrade head` immediately.
+
+2. **`Practitioner` ORM model** — add:
+   ```python
+   is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true", default=True)
+   ```
+
+3. **Practitioner Pydantic response schema** — add `is_active: bool` to the response model returned by `GET /practitioners/{id}` and the practitioners list. This lets the frontend know whether a practitioner is active without a separate API call.
+
+4. **Seed data** — existing seed practitioners all default to `is_active = true`; the migration's column default handles this without explicit backfill.
+
+**Scenario tests:**
+- *Migration is idempotent* — `alembic upgrade head` twice; second run makes no changes.
+- *Default is `true`* — a newly inserted practitioner row has `is_active = true` without explicitly setting the field.
+- *Column visible in API response* — `GET /practitioners/{id}` returns `is_active: true` for an active practitioner.
+
+**Definition of done:** migration applied locally; all three scenario tests pass; API response includes `is_active`.
+
+---
+
+### Step 21.2 — Backend: deactivation / reactivation API + login guard
+
+**Goal:** admins can deactivate and reactivate practitioner accounts via API; a deactivated practitioner receives a clear 403 on login attempt rather than a confusing 401 or being logged in silently.
+
+**Context to load:** `backend/app/api/routes/auth.py` (practitioner login logic), `backend/app/api/routes/practitioners.py` (or equivalent admin route), `backend/app/api/deps/session.py`.
+
+**Build:**
+
+1. **Login guard** — in `POST /auth/practitioner-login`, after the practitioner record is found, add:
+   ```python
+   if not practitioner.is_active:
+       raise HTTPException(status_code=403, detail={
+           "error": "account_deactivated",
+           "message": "Your account has been deactivated — please contact your administrator."
+       })
+   ```
+   This check runs *before* session creation; no session is created for a deactivated account.
+
+2. **`PATCH /admin/practitioners/{id}/deactivate`** — guarded by `require_admin` (role = `"admin"` only; leadership role is blocked):
+   - Sets `practitioner.is_active = False`.
+   - Does **not** delete or invalidate existing sessions (the practitioner is already using the app; their current session continues until it times out or they log out. Future logins are blocked).
+   - Returns the updated practitioner object (including `is_active: false`).
+
+3. **`PATCH /admin/practitioners/{id}/reactivate`** — guarded by `require_admin`:
+   - Sets `practitioner.is_active = True`.
+   - Returns the updated practitioner object.
+
+4. **`require_admin` guard note** — the existing `require_admin` dependency allows both `admin` and `leadership` roles in some routes. For deactivation/reactivation, add an explicit check: `if session.admin_role != "admin": raise HTTPException(403)`. This matches the design principle that leadership can view but not act.
+
+**Scenario tests:**
+- *Deactivated practitioner cannot log in* — Given `is_active = false`, when `POST /auth/practitioner-login` is called, then HTTP 403 with `error: "account_deactivated"`.
+- *Active practitioner can log in normally* — Given `is_active = true`, login returns session cookie as normal.
+- *`PATCH .../deactivate` sets `is_active = false`* — Given an active practitioner, when the admin calls deactivate, then `is_active = false` and the response reflects this.
+- *`PATCH .../reactivate` sets `is_active = true`* — Given a deactivated practitioner, when the admin calls reactivate, then `is_active = true`.
+- *Leadership role cannot deactivate* — Given `admin_role = "leadership"`, when `PATCH .../deactivate` is called, then HTTP 403.
+
+**Definition of done:** all five scenario tests pass.
+
+---
+
+### Step 21.3 — Backend: `GET /admin/practitioners/{id}/activity-summary`
+
+**Goal:** a single endpoint that returns all observable practitioner engagement signals in one structured response — no N+1 queries, no client-side aggregation required.
+
+**Context to load:** `docs/data-model.md` (tables: `attempts`, `items`, `skill_profile_snapshots`, `lesson_reads`, `byte_sized_lessons`, `mock_exam_sessions`), `backend/app/api/routes/`.
+
+**Build:**
+
+**`GET /admin/practitioners/{id}/activity-summary`** — guarded by `require_admin_or_leadership`.
+
+*Response shape:*
+
+```json
+{
+  "summary_stats": {
+    "total_quiz_rounds": 12,
+    "total_attempts": 47,
+    "overall_correct_pct": 0.68,
+    "total_lesson_seconds": 1842,
+    "mock_exams_completed": 2,
+    "latest_mock_score_pct": 0.74
+  },
+  "skill_activity": [
+    {
+      "skill_id": "...",
+      "skill_name": "Prompt Engineering",
+      "mastery_score": 0.72,
+      "gap_pct": 28,
+      "quiz_rounds": 3,
+      "correct_count": 8,
+      "wrong_count": 4,
+      "correct_pct": 67,
+      "total_lesson_seconds": 420,
+      "lesson_count": 2,
+      "last_lesson_read_at": "2026-08-10T14:32:00Z"
+    }
+  ],
+  "mock_exams": [
+    {
+      "session_id": "...",
+      "certification_code": "CCAR-P",
+      "status": "completed",
+      "score_pct": 74,
+      "questions_answered": 40,
+      "total_questions": 40,
+      "time_spent_seconds": 2847,
+      "started_at": "2026-08-12T09:00:00Z",
+      "completed_at": "2026-08-12T09:47:27Z",
+      "abandoned_reason": null
+    }
+  ]
+}
+```
+
+*Computation rules:*
+- **`quiz_rounds`** — count of distinct calendar days (in UTC) on which the practitioner answered at least one quiz question for that skill. Uses `DATE(attempts.attempted_at)` grouped by skill.
+- **`correct_count` / `wrong_count`** — from `attempts.score`: `1.0` = correct, `0.0` = wrong. Other values (partial scores) are rounded to the nearest integer for this display.
+- **`gap_pct`** — `round((1 - mastery_score) * 100)` from `skill_profile_snapshots`. Skills not yet in the snapshot (no quiz answers yet) show `gap_pct = 100`, `mastery_score = 0`.
+- **`total_lesson_seconds`** — `SUM(lesson_reads.duration_seconds)` for all closed read sessions for lessons belonging to this skill, across all path generations.
+- **`time_spent_seconds`** (mock exam) — `time_elapsed_seconds` from the session, plus live elapsed if `status = 'in_progress'` (not exposed here since admin views are read-only snapshots).
+- Skill rows are ordered by `gap_pct DESC` (largest gaps first — most actionable for the admin).
+- Mock exam rows are ordered `started_at DESC` (newest first).
+
+*Implementation notes:*
+- Use a single DB session with 3 targeted queries (one for attempts + snapshots joined, one for lesson reads, one for mock exam sessions) rather than N queries per skill. The response is computed server-side and returned as a flat payload.
+- If the practitioner has no active profile, `skill_activity` may be empty but `mock_exams` and `summary_stats` still reflect any sessions taken.
+
+**Scenario tests:**
+- *Practitioner with no quiz activity returns zero counts* — `correct_count = 0`, `wrong_count = 0`, `quiz_rounds = 0` for all skills.
+- *`quiz_rounds` counts distinct days, not attempts* — Given 3 attempts on day 1 and 2 attempts on day 2 for skill A, `quiz_rounds = 2`.
+- *`gap_pct` reflects current mastery snapshot* — Given `mastery_score = 0.72`, `gap_pct = 28`.
+- *`total_lesson_seconds` sums across all path generations* — Given two lessons for the same skill across two path generations with total read time 420 s + 300 s, `total_lesson_seconds = 720`.
+- *Leadership role can access the endpoint* — Given an admin session with `admin_role = "leadership"`, `GET .../activity-summary` returns 200.
+
+**Definition of done:** all five scenario tests pass; response latency < 500 ms against a seeded dataset of 20 practitioners.
+
+---
+
+### Step 21.4 — Frontend: Activity tab in `AdminPractitionerPage`
+
+**Goal:** add an "Activity" tab alongside the existing Skill Radar in the admin practitioner view. The tab shows a summary-cards row, a per-skill table, and a mock exam history table — all read-only.
+
+**Context to load:** `frontend/src/pages/AdminPractitionerPage.tsx`, `frontend/src/api/` (typed client), `frontend/src/api/types.ts`.
+
+**Build:**
+
+1. **Typed client additions** — add `ActivitySummary` TypeScript type (matching the API response shape from Step 21.3) and a `useActivitySummary(practitionerId)` React Query hook that calls `GET /admin/practitioners/{id}/activity-summary`.
+
+2. **Tab strip** — add a two-tab strip to `AdminPractitionerPage` above the content area:
+   - **Skill Radar** (existing content — rendered at tab index 0)
+   - **Activity** (new content — rendered at tab index 1)
+
+   Tab strip uses the same CSS custom properties as the rest of the app. Active tab underlined with `var(--primary)`.
+
+3. **Activity tab layout** (3 sections, stacked vertically):
+
+   **Section A — Summary cards** (one row, 4 cards):
+   | Card | Value | Icon |
+   |---|---|---|
+   | Quiz Rounds | `summary_stats.total_quiz_rounds` | 📝 |
+   | Correct Rate | `summary_stats.overall_correct_pct` as "68%" | ✅ |
+   | Lesson Time | `summary_stats.total_lesson_seconds` formatted as "30 min 42 sec" | 📖 |
+   | Mock Exams | `summary_stats.mock_exams_completed` | 🏆 |
+
+   Cards are styled as small info tiles (border, subtle background, metric bold, label in muted color below).
+
+   **Section B — Skill Activity table** (`skill_activity` array):
+   | Column | Source | Format |
+   |---|---|---|
+   | Skill | `skill_name` | Plain text |
+   | Mastery | `mastery_score * 100` | "72%" with coloured dot (green ≥ 70%, amber 40–69%, red < 40%) |
+   | Gap | `gap_pct` | "28%" |
+   | Quiz Rounds | `quiz_rounds` | Integer |
+   | Correct | `correct_count` | Integer, green text |
+   | Wrong | `wrong_count` | Integer, amber text |
+   | Correct % | `correct_pct` | "67%" |
+   | Lesson Time | `total_lesson_seconds` | "7 min" or "—" if 0 |
+
+   Rows sorted by gap descending (largest gap first). Empty state: "No quiz activity recorded yet."
+
+   **Section C — Mock Exam History table** (`mock_exams` array):
+   | Column | Source | Format |
+   |---|---|---|
+   | Date | `started_at` | `dd MMM yyyy` |
+   | Cert | `certification_code` | Badge pill |
+   | Status | `status` | Colour-coded pill (green=completed, amber=paused/generating, red=abandoned/failed) |
+   | Score | `score_pct` | "74%" or "—" if null |
+   | Questions | `questions_answered / total_questions` | "40 / 40" |
+   | Time Spent | `time_spent_seconds` | "47 min 27 sec" |
+   | Abandon Reason | `abandoned_reason` | Plain text or "—" |
+
+   Rows newest first. Empty state: "No mock exams taken yet."
+
+4. **Loading state** — while `useActivitySummary` is fetching, show a spinner in the tab content area.
+
+5. **Error state** — if the fetch fails, show an amber card: "Activity data could not be loaded — try refreshing."
+
+**Scenario tests (manual QA):**
+- Admin opens the practitioner view and sees two tabs: "Skill Radar" and "Activity".
+- Switching to Activity shows summary cards with non-zero values for a practitioner with history.
+- A practitioner with no quiz activity shows "No quiz activity recorded yet" in the skill table.
+- A practitioner with completed mock exams shows those sessions in the Mock Exam History table.
+
+**Definition of done:** all four manual checks pass; TypeScript build is clean.
+
+---
+
+### Step 21.5 — Frontend: Deactivate / Reactivate button in admin practitioner header
+
+**Goal:** a clearly labelled action button in the admin practitioner page header lets an admin deactivate or reactivate an account in one click, with a required confirmation step.
+
+**Context to load:** `frontend/src/pages/AdminPractitionerPage.tsx`.
+
+**Build:**
+
+1. **Button placement** — in the page header area (right side of the header row, next to the "← All practitioners" back link area). When `practitioner.is_active = true`, show a "Deactivate Account" button (outline, amber border). When `false`, show "Reactivate Account" (outline, green border).
+
+2. **Confirmation dialog** — clicking either button opens a small inline confirmation panel (not a browser `confirm()` dialog) with:
+   - **Deactivate:** "Deactivate [Name]? They will not be able to log in until reactivated. All data is preserved. This action can be undone." → [Cancel] [Deactivate]
+   - **Reactivate:** "Reactivate [Name]? They will be able to log in immediately." → [Cancel] [Reactivate]
+
+3. **API call** — on confirmation, call `PATCH /admin/practitioners/{id}/deactivate` or `.../reactivate` (Step 21.2). Invalidate the `usePractitioner(id)` query on success so the button state reflects the new `is_active` value immediately.
+
+4. **Status badge** — in the profile panel, add a small badge when the account is deactivated: "⛔ Deactivated" (red pill). The badge disappears when reactivated. This makes the account status visible at a glance without opening any dialog.
+
+5. **Leadership accounts** — leadership-role admin sessions do not see the Deactivate/Reactivate button at all (client-side hide; the backend also enforces this with a 403).
+
+**Scenario tests (manual QA):**
+- Admin sees "Deactivate Account" button for an active practitioner.
+- Clicking the button shows the confirmation panel; clicking Cancel dismisses it with no API call.
+- Confirming deactivation triggers the API; the button changes to "Reactivate Account" and the "⛔ Deactivated" badge appears.
+- Confirming reactivation triggers the API; the button reverts and the badge disappears.
+- A leadership-role admin session does not see the deactivation button.
+
+**Definition of done:** all five manual checks pass; TypeScript build clean.
+
+---
+
+### Step 21.6 — Guide update: "Managing Practitioners" section
+
+**Goal:** update `GuidePage.tsx` so the admin "Managing Practitioners" section accurately describes both the Activity tab and the Deactivate feature introduced in this phase.
+
+**Context to load:** `frontend/src/pages/GuidePage.tsx`.
+
+**Build:**
+
+Update the `managingPractitionersContent` JSX in `GuidePage.tsx` to add:
+- A **"Practitioner Activity tab"** sub-section explaining the Summary cards, Per-skill table, and Mock Exam History table.
+- A **"Deactivating an account"** sub-section explaining what deactivation does (login blocked, data preserved), how to reactivate, the "⛔ Deactivated" badge, and that leadership-role admins cannot deactivate accounts.
+
+Also add the two new topics ("activity summary" and "deactivate" / "reactivate") to the `AskAyanChat` keyword map so "Ask Ayan" can answer questions about them from the chat widget.
+
+**Definition of done:** `GuidePage.tsx` TypeScript build is clean; the Activity and Deactivation sub-sections are visible in the admin guide view; the new Ask Ayan keywords return relevant answers.
+
 ---
 
 # Phase 20 — Interactive User Guide

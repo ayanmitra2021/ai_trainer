@@ -14,7 +14,7 @@ Single Postgres database, `pgvector` extension enabled (used by the Item-Writer 
 
 ### `practitioners`
 Who the system is about.
-- `id`, `name`, `email`, `role` (e.g. "Senior Consultant"), `practice` (e.g. "HCI", "AI&E"), `seniority_level`, `created_at`
+- `id`, `name`, `email`, `role` (e.g. "Senior Consultant"), `practice` (e.g. "HCI", "AI&E"), `seniority_level`, `is_active` (boolean NOT NULL, default `true` — when an admin sets this to `false` the practitioner's login is blocked with HTTP 403; all data is preserved and the account can be reactivated at any time), `created_at`
 
 ### `skills`
 The skill graph both halves of the product share. Mastery Mesh measures against it; Adoption Pulse measures usage against it.

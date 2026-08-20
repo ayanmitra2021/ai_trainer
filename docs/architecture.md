@@ -603,12 +603,51 @@ Every new `admin_users` row is seeded with password `"welcome"` and `must_change
 | Own skill radar, quiz, adoption trends | ✓ | — | — |
 | Own nudge inbox (unread/read messages) | ✓ | — | — |
 | Own mastery progress trend chart | ✓ | — | — |
-| Other practitioners' individual data | — | — | ✓ (read-only) |
+| Other practitioners' skill radar (read-only) | — | — | ✓ |
+| Practitioner activity summary — quiz rounds, skill gaps, lesson time, mock exam scores (read-only) | — | — | ✓ |
 | Nudges menu — generate categories, send campaigns | — | — | ✓ |
 | Nudges menu — view sent campaign history | — | ✓ | ✓ |
 | Observability dashboard (agent_runs) | — | — | ✓ |
+| Deactivate / reactivate a practitioner account | — | — | ✓ |
 
 > **Phase 9.1:** Leadership rollup reports (the "Rollups" row) have been removed from the product. Leadership users can navigate to `/nudges` to see sent campaign history.
+
+### Practitioner deactivation (Phase 21)
+
+An admin can deactivate any practitioner account from the admin practitioner view (`/admin/practitioners/:id`). Deactivation flips `practitioners.is_active` to `false`. On the next login attempt the `/auth/practitioner-login` endpoint checks `is_active` and, if `false`, returns HTTP 403 with body `{"error": "account_deactivated", "message": "Your account has been deactivated — please contact your administrator."}`. All data (profiles, quiz history, lessons, exam sessions) is fully preserved; the account can be reactivated at any time by any admin.
+
+Leadership-role admins cannot deactivate accounts — the endpoint is guarded by `require_admin` (role = `"admin"` only).
+
+---
+
+## Admin Practitioner Activity Summary (Phase 21)
+
+### Purpose
+
+When an admin opens a practitioner's profile, the default view (Skill Radar) shows current state but not how the practitioner has been engaging over time. Phase 21 adds an **Activity** tab to the admin practitioner view that surfaces all observable engagement signals in one read-only table — quiz performance per skill, current skill gaps, byte-sized learning time, and mock exam history.
+
+### API endpoint
+
+**`GET /admin/practitioners/{id}/activity-summary`** — returns a single JSON payload with four sections:
+
+| Section | Source tables | Key fields |
+|---|---|---|
+| `skill_activity` | `attempts`, `items`, `skill_profile_snapshots` | Per-skill: quiz rounds, correct count, wrong count, correct %, current mastery %, current gap % |
+| `lesson_time` | `lesson_reads`, `byte_sized_lessons` | Per-skill: total read seconds, lesson count, last read at |
+| `mock_exams` | `mock_exam_sessions` | All sessions: date, status, score %, questions answered/total, time spent (seconds), abandon reason |
+| `summary_stats` | Derived | Total quiz rounds, total correct %, total lesson minutes, mock exams taken, latest mock score |
+
+A "quiz round" is defined as a distinct day on which the practitioner answered at least one quiz question for a given skill. This gives a more intuitive "engagement over time" signal than raw attempt counts.
+
+### Frontend layout
+
+The Activity tab sits alongside the existing Skill Radar in the admin practitioner view. It contains:
+
+1. **Summary cards row** (4 cards, full-width) — Total Quiz Rounds · Overall Correct Rate · Total Lesson Time · Mock Exams Taken
+2. **Per-skill activity table** — one row per skill in the practitioner's learning path; columns: Skill, Mastery %, Gap %, Quiz Rounds, Correct, Wrong, Correct %, Time on Lessons
+3. **Mock Exam History table** — same as the practitioner's own view but read-only: date, cert, status, score %, Q answered/total, time spent, abandon reason
+
+All data is read-only. No actions are available from this tab (except the deactivation button in the page header, which is a separate control).
 
 ## Smart Nudge System (Phase 7)
 

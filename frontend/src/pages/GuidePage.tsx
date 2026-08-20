@@ -613,13 +613,13 @@ const managingPractitionersContent = (
     <SubHeading>The practitioners list</SubHeading>
     <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
       The home page (/) shows all registered practitioners. Click any name to open their{" "}
-      <strong>read-only profile</strong> — their Skill Radar, domain gap chart, and learning path. You cannot
+      <strong>read-only profile</strong> — their Skill Radar, Activity summary, and profile details. You cannot
       edit their data or act on their behalf.
     </p>
     <BulletList
       items={[
         "Each row shows the practitioner's role, practice, and active certification code.",
-        "The Skill Radar you see is identical to what they see — read-only, no extra admin detail.",
+        "A <strong>⛔ Deactivated</strong> badge appears next to the name if the account has been deactivated.",
       ]}
     />
     <Tip>
@@ -629,12 +629,61 @@ const managingPractitionersContent = (
       re-trigger generation.
     </Tip>
 
-    <SubHeading>Admin practitioner view</SubHeading>
+    <SubHeading>Admin practitioner view — two tabs</SubHeading>
     <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
-      Navigate to <code>/admin/practitioners/&lt;id&gt;</code> (or click the practitioner's name from the home
-      list) for the read-only Skill Radar view. Leadership-role admins see the same view but cannot access
-      individual quiz attempts or observability data.
+      Clicking a practitioner's name opens their profile at <code>/admin/practitioners/&lt;id&gt;</code>. There
+      are two tabs:
     </p>
+    <BulletList
+      items={[
+        "<strong>Skill Radar</strong> — the same radar and domain gap chart the practitioner sees. Read-only; no Regenerate or Edit controls visible.",
+        "<strong>Activity</strong> — a summary of all observable engagement signals over time (see below).",
+      ]}
+    />
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      Leadership-role admins see both tabs but cannot deactivate accounts or access individual Observability data.
+    </p>
+
+    <SubHeading>Activity tab</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      The Activity tab shows all observable practitioner engagement in one screen — no need to cross-reference
+      multiple pages. It has three sections:
+    </p>
+    <BulletList
+      items={[
+        "<strong>Summary cards</strong> (top row): Quiz Rounds · Overall Correct Rate · Total Lesson Time · Mock Exams Completed. One stat per card, bold and at a glance.",
+        "<strong>Per-skill activity table</strong>: one row per skill in the practitioner's path. Columns: Skill · Mastery % (colour-coded green/amber/red) · Gap % · Quiz Rounds · Correct · Wrong · Correct % · Lesson Time. Sorted by gap descending — largest gaps first. Shows which skills need the most attention.",
+        "<strong>Mock Exam History</strong>: all exam sessions newest-first. Shows date, cert, status, score %, questions answered / total, time spent, and abandon reason if applicable.",
+      ]}
+    />
+    <SimpleTable
+      rows={[
+        { label: "Quiz Rounds", value: "Count of distinct days on which the practitioner answered at least one question for a given skill. More intuitive than raw attempt count." },
+        { label: "Correct %", value: "Score 1.0 = correct. Score 0.0 = wrong. Partial scores rounded to nearest whole for display." },
+        { label: "Lesson Time", value: "Sum of all closed read-session durations (lesson_reads.duration_seconds) across all path generations." },
+        { label: "Gap %", value: "100 − Mastery %. Skills not yet answered show Gap = 100%." },
+      ]}
+    />
+
+    <SubHeading>Deactivating an account</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      At the top of a practitioner's admin view, an <strong>"Deactivate Account"</strong> button (amber, outline)
+      lets you block a practitioner's login. When clicked:
+    </p>
+    <StepList
+      steps={[
+        'A small inline confirmation appears: <em>&ldquo;Deactivate [Name]? They will not be able to log in until reactivated. All data is preserved. This action can be undone.&rdquo;</em>',
+        "Click <strong>Deactivate</strong> to confirm. The button changes to <strong>Reactivate Account</strong> and a <strong>⛔ Deactivated</strong> badge appears in the profile panel.",
+        "The practitioner's current session (if they are logged in) continues until it expires or they log out. Future login attempts are blocked with a clear message: <em>&ldquo;Your account has been deactivated — please contact your administrator.&rdquo;</em>",
+        "To restore access, click <strong>Reactivate Account</strong> and confirm. Login is restored immediately.",
+      ]}
+    />
+    <Warning>
+      Deactivation is designed for leavers, role changes, or administrative holds — not discipline. All data
+      (profiles, quiz history, lessons, exam sessions) is fully preserved. The practitioner can pick up exactly
+      where they left off after reactivation. Only full admins (role = admin) can deactivate accounts;
+      leadership-role admins do not see the button.
+    </Warning>
   </>
 );
 
@@ -850,7 +899,7 @@ function buildSections(isAdmin: boolean): Section[] {
             title: "Managing Practitioners",
             adminOnly: true,
             quickRead:
-              "The home page (/) lists all practitioners. Click any name to open their read-only Skill Radar, domain gap chart, and learning path. You cannot edit practitioner data. Use Observability to diagnose stuck quiz generation (agent_runs for 'quiz_batch_generator').",
+              "The home page (/) lists all practitioners. Click any name to open their admin view — two tabs: Skill Radar (read-only radar and domain gap chart) and Activity (summary cards + per-skill quiz/lesson stats + mock exam history). Full admins can Deactivate an account (login blocked, data preserved) or Reactivate it at any time.",
             content: managingPractitionersContent,
           },
           {
