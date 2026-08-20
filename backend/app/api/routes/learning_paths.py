@@ -427,24 +427,43 @@ async def generate_learning_path(
     )
 
     # ── Phase 17.7: progressive background quiz generation ────────────────────
+    # Read the new path's items and their quiz_status directly.
+    #
+    # We deliberately do NOT use _check_quiz_exhaustion here.  That function
+    # looks at the global `items` table — if ANY unanswered item exists for
+    # a skill (even from an OLDER path) it returns (False, False) and blocks
+    # generation.  That caused new paths to get stuck as 'pending' forever
+    # whenever the practitioner had previously generated-but-unanswered items
+    # for the same skills.
+    #
+    # Instead: generate for every path item whose quiz_status is 'pending'.
+    # Items that are already 'ready' are skipped inside _generate_quizzes_progressively.
     new_path_items_result = await db.execute(
         select(LearningPathItem)
         .where(LearningPathItem.learning_path_id == response.learning_path_id)
         .order_by(LearningPathItem.sequence_order)
     )
-    new_skill_ids = [pi.skill_id for pi in new_path_items_result.scalars().all()]
+    new_path_items = new_path_items_result.scalars().all()
+    all_skill_ids = [pi.skill_id for pi in new_path_items]
 
     practitioner_id = body.practitioner_id
-    should_gen, is_first = await _check_quiz_exhaustion(
-        practitioner_id, new_skill_ids, db
-    )
-    if should_gen:
+
+    pending_skill_ids = [
+        pi.skill_id for pi in new_path_items if pi.quiz_status == "pending"
+    ]
+    is_fresh_path = len(pending_skill_ids) == len(all_skill_ids)
+
+    if pending_skill_ids:
+        # Difficulty adjustment only applies to exhausted-item regeneration
+        # (some items already ready from a previous round).  For a fresh path
+        # (all items pending) there is no prior attempt data to adjust from.
         avg_scores = (
-            None if is_first
-            else await _compute_skill_avg_scores(practitioner_id, new_skill_ids, db)
+            None
+            if is_fresh_path
+            else await _compute_skill_avg_scores(practitioner_id, all_skill_ids, db)
         )
         skill_specs, cert_code, cert_name, cert_domains = await _build_quiz_spec_list(
-            practitioner_id, new_skill_ids, db, avg_score_by_skill=avg_scores
+            practitioner_id, pending_skill_ids, db, avg_score_by_skill=avg_scores
         )
         if skill_specs:
             _assign_question_counts(skill_specs)
@@ -459,7 +478,7 @@ async def generate_learning_path(
             )
             response.quiz_generating = True
     else:
-        response.quiz_skipped_reason = "unanswered_items"
+        response.quiz_skipped_reason = "already_generated"
 
     # ── Phase 18.3: byte-sized lesson generation (always runs on new path) ─────
     from app.api.routes.byte_sized_lessons import _generate_byte_sized_lessons
