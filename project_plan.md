@@ -178,10 +178,10 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [x] 19.5 Exam confidence score on Adoption Trend tab — recency-weighted average of all completed exam scores vs. the cert's `exam_passing_score_pct`; displayed as a visual gauge (circular progress) with a trend arrow (↑ improving / ↓ declining / → stable); "Exam Ready" badge shown when weighted average ≥ passing threshold across ≥ 2 exams
 
 **Phase 20 — Interactive User Guide**
-- [ ] 20.1 `GuidePage` React component — sidebar-nav docs layout with 2-min quick-read summaries + full detail
-- [ ] 20.2 Role-gated sections — general practitioners see 6 sections; admin users see 5 additional admin sections
-- [ ] 20.3 "Ask Ayan" floating chat widget — client-side pattern-matching Q&A; funny off-topic responses; zero API calls
-- [ ] 20.4 Route + nav link — `/guide` route wired in `App.tsx`; "Guide" NavLink visible to all authenticated users
+- [x] 20.1 `GuidePage` React component — sidebar-nav docs layout with 2-min quick-read summaries + full detail
+- [x] 20.2 Role-gated sections — general practitioners see 6 sections; admin users see 5 additional admin sections
+- [x] 20.3 "Ask Ayan" floating chat widget — client-side pattern-matching Q&A; funny off-topic responses; zero API calls
+- [x] 20.4 Route + nav link — `/guide` route wired in `App.tsx`; "Guide" NavLink visible to all authenticated users
 
 ---
 
