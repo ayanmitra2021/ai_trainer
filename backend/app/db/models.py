@@ -77,6 +77,9 @@ class Practitioner(Base):
     role: Mapped[str | None] = mapped_column(sa.String(255))
     practice: Mapped[str | None] = mapped_column(sa.String(255))
     seniority_level: Mapped[str | None] = mapped_column(sa.String(100))
+    is_active: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("true"), default=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         server_default=sa.text("now()"),

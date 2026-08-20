@@ -20,9 +20,54 @@ class PractitionerRead(BaseModel):
     role: str | None
     practice: str | None
     seniority_level: str | None
+    is_active: bool = True
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ActivitySkillRow(BaseModel):
+    """Per-skill engagement summary for the admin Activity tab."""
+    skill_id: str
+    skill_name: str
+    mastery_score: float
+    gap_pct: int
+    quiz_rounds: int
+    correct_count: int
+    wrong_count: int
+    correct_pct: int
+    total_lesson_seconds: int
+    lesson_count: int
+    last_lesson_read_at: datetime | None = None
+
+
+class ActivityMockExamRow(BaseModel):
+    """One mock exam session summary for the admin Activity tab."""
+    session_id: str
+    certification_code: str
+    status: str
+    score_pct: int | None = None
+    questions_answered: int
+    total_questions: int
+    time_spent_seconds: int
+    started_at: datetime
+    completed_at: datetime | None = None
+    abandoned_reason: str | None = None
+
+
+class ActivitySummaryStats(BaseModel):
+    total_quiz_rounds: int
+    total_attempts: int
+    overall_correct_pct: int
+    total_lesson_seconds: int
+    mock_exams_completed: int
+    latest_mock_score_pct: int | None = None
+
+
+class ActivitySummaryResponse(BaseModel):
+    summary_stats: ActivitySummaryStats
+    skill_activity: list[ActivitySkillRow]
+    mock_exams: list[ActivityMockExamRow]
 
 
 class PractitionerUpdate(BaseModel):

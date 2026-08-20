@@ -9,7 +9,51 @@ export interface Practitioner {
   role?: string;
   practice?: string;
   seniority_level?: string;
+  is_active: boolean;
   created_at: string;
+}
+
+// Phase 21: Activity summary types
+export interface ActivitySkillRow {
+  skill_id: string;
+  skill_name: string;
+  mastery_score: number;
+  gap_pct: number;
+  quiz_rounds: number;
+  correct_count: number;
+  wrong_count: number;
+  correct_pct: number;
+  total_lesson_seconds: number;
+  lesson_count: number;
+  last_lesson_read_at?: string;
+}
+
+export interface ActivityMockExamRow {
+  session_id: string;
+  certification_code: string;
+  status: string;
+  score_pct?: number;
+  questions_answered: number;
+  total_questions: number;
+  time_spent_seconds: number;
+  started_at: string;
+  completed_at?: string;
+  abandoned_reason?: string;
+}
+
+export interface ActivitySummaryStats {
+  total_quiz_rounds: number;
+  total_attempts: number;
+  overall_correct_pct: number;
+  total_lesson_seconds: number;
+  mock_exams_completed: number;
+  latest_mock_score_pct?: number;
+}
+
+export interface ActivitySummaryResponse {
+  summary_stats: ActivitySummaryStats;
+  skill_activity: ActivitySkillRow[];
+  mock_exams: ActivityMockExamRow[];
 }
 
 export interface PractitionerCreate {

@@ -128,6 +128,15 @@ async def practitioner_login(
         db.add(practitioner)
         await db.flush()
     else:
+        # Phase 21: block deactivated accounts before any data is touched
+        if not practitioner.is_active:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "account_deactivated",
+                    "message": "Your account has been deactivated — please contact your administrator.",
+                },
+            )
         # Overwrite all editable fields — form values always win
         practitioner.name = body.name
         practitioner.role = body.role or None

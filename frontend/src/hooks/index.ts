@@ -50,6 +50,36 @@ export const useSkillProfile = (id: string) =>
     enabled: !!id,
   });
 
+// Phase 21: activity summary + deactivate/reactivate
+export const useActivitySummary = (id: string) =>
+  useQuery({
+    queryKey: ["practitioners", id, "activity-summary"],
+    queryFn: () => practitioners.activitySummary(id),
+    enabled: !!id,
+  });
+
+export const useDeactivatePractitioner = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => practitioners.deactivate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["practitioners", id] });
+      qc.invalidateQueries({ queryKey: ["practitioners"] });
+    },
+  });
+};
+
+export const useReactivatePractitioner = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => practitioners.reactivate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["practitioners", id] });
+      qc.invalidateQueries({ queryKey: ["practitioners"] });
+    },
+  });
+};
+
 export const useSubmitSelfAssessment = (practitioner_id: string) => {
   const qc = useQueryClient();
   return useMutation({

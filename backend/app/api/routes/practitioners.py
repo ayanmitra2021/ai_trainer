@@ -10,24 +10,50 @@ Step 5.2 — Auth applied:
   - GET  /practitioners/{id}          → require_any_authenticated + self-enforcement
   - PATCH /practitioners/{id}         → require_any_authenticated + self-enforcement
   - GET  /practitioners/{id}/skill-profile → require_any_authenticated + self-enforcement
+
+Phase 21 additions:
+  - PATCH /admin/practitioners/{id}/deactivate   → require_admin only
+  - PATCH /admin/practitioners/{id}/reactivate   → require_admin only
+  - GET   /admin/practitioners/{id}/activity-summary → require_admin_or_leadership
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, date
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
     require_admin,
+    require_admin_or_leadership,
     require_any_authenticated,
 )
-from app.db.models import Practitioner, Skill, SkillProfileEvent, SkillProfileSnapshot, PractitionerProfile, CertificationSkill, CertificationDomain
+from app.db.models import (
+    Attempt,
+    ByteSizedLesson,
+    Certification,
+    CertificationDomain,
+    CertificationSkill,
+    Item,
+    LearningPath,
+    LearningPathItem,
+    LessonRead,
+    MockExamSession,
+    Practitioner,
+    PractitionerProfile,
+    Skill,
+    SkillProfileEvent,
+    SkillProfileSnapshot,
+)
 from app.db.session import get_db
 from app.schemas.practitioners import (
+    ActivityMockExamRow,
+    ActivitySkillRow,
+    ActivitySummaryResponse,
+    ActivitySummaryStats,
     PractitionerCreate,
     PractitionerRead,
     PractitionerUpdate,
@@ -238,3 +264,213 @@ async def get_skill_profile(
         ))
 
     return out
+
+
+# ── Phase 21: deactivate / reactivate (admin-only) ───────────────────────────
+
+@router.patch("/{practitioner_id}/deactivate", status_code=204)
+async def deactivate_practitioner(
+    practitioner_id: str,
+    db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin),
+) -> None:
+    """Block a practitioner from logging in. Data is fully preserved. Admin only."""
+    practitioner = await db.get(Practitioner, practitioner_id)
+    if practitioner is None:
+        raise HTTPException(status_code=404, detail="Practitioner not found")
+    if not practitioner.is_active:
+        return  # already deactivated — idempotent
+    practitioner.is_active = False
+    await db.commit()
+
+
+@router.patch("/{practitioner_id}/reactivate", status_code=204)
+async def reactivate_practitioner(
+    practitioner_id: str,
+    db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin),
+) -> None:
+    """Re-enable a previously deactivated practitioner. Admin only."""
+    practitioner = await db.get(Practitioner, practitioner_id)
+    if practitioner is None:
+        raise HTTPException(status_code=404, detail="Practitioner not found")
+    if practitioner.is_active:
+        return  # already active — idempotent
+    practitioner.is_active = True
+    await db.commit()
+
+
+# ── Phase 21: activity summary (admin + leadership) ──────────────────────────
+
+@router.get(
+    "/{practitioner_id}/activity-summary",
+    response_model=ActivitySummaryResponse,
+)
+async def get_activity_summary(
+    practitioner_id: str,
+    db: AsyncSession = Depends(get_db),
+    _session: SessionInfo = Depends(require_admin_or_leadership),
+) -> ActivitySummaryResponse:
+    """Return full engagement history for the admin Activity tab.
+
+    Aggregates:
+      - Quiz attempts per skill (rounds = distinct calendar days, correct/wrong counts)
+      - Skill mastery snapshots with gap %
+      - Lesson reads per byte-sized lesson, joined to skills
+      - Mock exam sessions with certification code
+    """
+    practitioner = await db.get(Practitioner, practitioner_id)
+    if practitioner is None:
+        raise HTTPException(status_code=404, detail="Practitioner not found")
+
+    # ── 1. All skill snapshots (mastery + gap) ────────────────────────────────
+    snap_result = await db.execute(
+        select(SkillProfileSnapshot, Skill)
+        .join(Skill, Skill.id == SkillProfileSnapshot.skill_id)
+        .where(SkillProfileSnapshot.practitioner_id == practitioner_id)
+        .order_by(SkillProfileSnapshot.mastery_score.desc())
+    )
+    snapshot_rows = snap_result.all()
+    # skill_id → (mastery_score, skill_name, gap_pct)
+    skill_meta: dict[str, tuple[float, str, int]] = {}
+    for snap, skill in snapshot_rows:
+        mastery = float(snap.mastery_score)
+        skill_meta[snap.skill_id] = (mastery, skill.name, round((1.0 - mastery) * 100))
+
+    # ── 2. Quiz attempt aggregates per skill ──────────────────────────────────
+    # Per-skill: distinct-day count (rounds), correct (score=1.0), wrong (score=0.0)
+    attempt_result = await db.execute(
+        select(
+            Item.skill_id,
+            func.count(func.distinct(func.date(Attempt.attempted_at))).label("quiz_rounds"),
+            func.sum(case((Attempt.score >= 0.99, 1), else_=0)).label("correct_count"),
+            func.sum(case((Attempt.score < 0.01, 1), else_=0)).label("wrong_count"),
+            func.count(Attempt.id).label("total_count"),
+        )
+        .join(Item, Item.id == Attempt.item_id)
+        .where(Attempt.practitioner_id == practitioner_id)
+        .group_by(Item.skill_id)
+    )
+    attempt_by_skill: dict[str, dict] = {}
+    for row in attempt_result.all():
+        attempt_by_skill[row.skill_id] = {
+            "quiz_rounds": int(row.quiz_rounds or 0),
+            "correct_count": int(row.correct_count or 0),
+            "wrong_count": int(row.wrong_count or 0),
+            "total_count": int(row.total_count or 0),
+        }
+
+    # Global attempt totals (for summary cards)
+    global_total = sum(v["total_count"] for v in attempt_by_skill.values())
+    global_correct = sum(v["correct_count"] for v in attempt_by_skill.values())
+    global_rounds = sum(v["quiz_rounds"] for v in attempt_by_skill.values())
+    overall_correct_pct = round(global_correct / global_total * 100) if global_total else 0
+
+    # ── 3. Lesson-read aggregates per skill ────────────────────────────────────
+    lesson_result = await db.execute(
+        select(
+            ByteSizedLesson.skill_id,
+            func.sum(LessonRead.duration_seconds).label("total_seconds"),
+            func.count(LessonRead.id).label("lesson_count"),
+            func.max(LessonRead.started_at).label("last_read_at"),
+        )
+        .join(ByteSizedLesson, ByteSizedLesson.id == LessonRead.lesson_id)
+        .where(LessonRead.practitioner_id == practitioner_id)
+        .group_by(ByteSizedLesson.skill_id)
+    )
+    lesson_by_skill: dict[str, dict] = {}
+    for row in lesson_result.all():
+        lesson_by_skill[row.skill_id] = {
+            "total_seconds": int(row.total_seconds or 0),
+            "lesson_count": int(row.lesson_count or 0),
+            "last_read_at": row.last_read_at,
+        }
+
+    total_lesson_seconds = sum(v["total_seconds"] for v in lesson_by_skill.values())
+
+    # ── 4. Build per-skill activity rows ──────────────────────────────────────
+    # Union: skills from snapshots + skills from attempts (some may lack snapshots)
+    all_skill_ids: set[str] = set(skill_meta.keys()) | set(attempt_by_skill.keys())
+
+    # For skills without snapshots, fetch name from Skill table
+    missing_skill_ids = all_skill_ids - set(skill_meta.keys())
+    if missing_skill_ids:
+        extra_skills_result = await db.execute(
+            select(Skill).where(Skill.id.in_(missing_skill_ids))
+        )
+        for extra_skill in extra_skills_result.scalars().all():
+            skill_meta[extra_skill.id] = (0.0, extra_skill.name, 100)
+
+    skill_activity: list[ActivitySkillRow] = []
+    for sid in sorted(all_skill_ids):
+        mastery, skill_name, gap_pct = skill_meta.get(sid, (0.0, sid, 100))
+        att = attempt_by_skill.get(sid, {"quiz_rounds": 0, "correct_count": 0, "wrong_count": 0, "total_count": 0})
+        les = lesson_by_skill.get(sid, {"total_seconds": 0, "lesson_count": 0, "last_read_at": None})
+        total = att["total_count"]
+        correct_pct = round(att["correct_count"] / total * 100) if total else 0
+        skill_activity.append(ActivitySkillRow(
+            skill_id=sid,
+            skill_name=skill_name,
+            mastery_score=mastery,
+            gap_pct=gap_pct,
+            quiz_rounds=att["quiz_rounds"],
+            correct_count=att["correct_count"],
+            wrong_count=att["wrong_count"],
+            correct_pct=correct_pct,
+            total_lesson_seconds=les["total_seconds"],
+            lesson_count=les["lesson_count"],
+            last_lesson_read_at=les["last_read_at"],
+        ))
+
+    # Sort: highest gap first (most urgent)
+    skill_activity.sort(key=lambda r: r.gap_pct, reverse=True)
+
+    # ── 5. Mock exam sessions ──────────────────────────────────────────────────
+    mock_result = await db.execute(
+        select(MockExamSession, Certification)
+        .join(Certification, Certification.id == MockExamSession.certification_id)
+        .where(MockExamSession.practitioner_id == practitioner_id)
+        .order_by(MockExamSession.started_at.desc())
+    )
+    mock_rows = mock_result.all()
+
+    mock_exams: list[ActivityMockExamRow] = []
+    mock_completed_count = 0
+    latest_mock_score_pct: int | None = None
+
+    for mock, cert in mock_rows:
+        score_pct: int | None = None
+        if mock.score is not None:
+            score_pct = round(float(mock.score) * 100)
+        if mock.status == "completed":
+            mock_completed_count += 1
+            if latest_mock_score_pct is None and score_pct is not None:
+                latest_mock_score_pct = score_pct  # most recent completed score
+
+        answered = mock.correct_count if mock.correct_count is not None else 0
+        mock_exams.append(ActivityMockExamRow(
+            session_id=mock.id,
+            certification_code=cert.code,
+            status=mock.status,
+            score_pct=score_pct,
+            questions_answered=answered,
+            total_questions=mock.total_count,
+            time_spent_seconds=mock.time_elapsed_seconds,
+            started_at=mock.started_at,
+            completed_at=mock.completed_at,
+            abandoned_reason=mock.abandoned_reason,
+        ))
+
+    # ── 6. Assemble response ──────────────────────────────────────────────────
+    return ActivitySummaryResponse(
+        summary_stats=ActivitySummaryStats(
+            total_quiz_rounds=global_rounds,
+            total_attempts=global_total,
+            overall_correct_pct=overall_correct_pct,
+            total_lesson_seconds=total_lesson_seconds,
+            mock_exams_completed=mock_completed_count,
+            latest_mock_score_pct=latest_mock_score_pct,
+        ),
+        skill_activity=skill_activity,
+        mock_exams=mock_exams,
+    )

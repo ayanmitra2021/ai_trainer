@@ -31,6 +31,7 @@ import type {
   NudgeExtended,
   NudgeMarkReadResponse,
   ObservabilityReport,
+  ActivitySummaryResponse,
   Practitioner,
   PractitionerCreate,
   PractitionerLoginRequest,
@@ -70,6 +71,13 @@ export const practitioners = {
     api.get<CertificationDomainScore[]>(
       `/practitioners/${practitionerId}/certification-domain-scores?certification_id=${encodeURIComponent(certificationId)}`
     ),
+  // Phase 21: admin account management + activity summary
+  deactivate: (id: string) =>
+    api.patch<void>(`/practitioners/${id}/deactivate`, {}),
+  reactivate: (id: string) =>
+    api.patch<void>(`/practitioners/${id}/reactivate`, {}),
+  activitySummary: (id: string) =>
+    api.get<ActivitySummaryResponse>(`/practitioners/${id}/activity-summary`),
   mockExams: {
     start: (practitionerId: string) =>
       api.post<MockExamSession>(`/practitioners/${practitionerId}/mock-exams`, {}),
