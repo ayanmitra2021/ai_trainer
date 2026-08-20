@@ -263,13 +263,19 @@ This phase deliberately does not integrate a payment processor — monetization 
 
 6. **`practitioners`** — add `organization_id` (FK → organizations, nullable — null only during the brief window between sign-up and code entry; set immediately on first login, defaulting to the Free Tier org if no code is provided).
 
-7. **`admin_users`** — add `organization_id` (FK → organizations, NOT NULL — org admins are always scoped to one org). Set via migration for existing admin users: link them to a seeded "Legacy Org" or the product's first real org.
+7. **`admin_users`** — add `organization_id` (FK → organizations, NOT NULL — org admins are always scoped to one org). Set via migration for existing admin users: link them to the "Deloitte Consulting" seed org (see below).
 
 8. **`practitioner_profiles`** — add `deleted_at` (timestamp, nullable, default null) to enable soft-delete. The cert-recycling guard for the Free plan requires knowing whether a practitioner has ever had a profile for a given certification, even after deletion. Filter `WHERE deleted_at IS NULL` in all normal queries. Hard-delete is no longer used for profiles.
 
 **Migration:** `024_multi_tenant_schema.py`
 - Run `alembic upgrade head` immediately after writing the migration.
-- Backfill: set all existing practitioners' `organization_id` to the "Legacy Org" seed row.
+- **Backfill — Deloitte Consulting enterprise org:** all practitioners currently in the database are automatically migrated into a seeded "Deloitte Consulting" organization on the Enterprise-Unlimited plan. This means Deloitte users carry over with no disruption and no enrollment code required — their `organization_id` is set in the migration itself, not at next login. Existing admin users are linked to the same org. The migration steps are:
+  1. Insert the `Enterprise-Unlimited` plan row (or use its seeded ID).
+  2. Insert the "Deloitte Consulting" `organizations` row linked to that plan; generate one 16-char enrollment code for it (e.g. `DLTE0000CNSLTN00`).
+  3. `UPDATE practitioners SET organization_id = <deloitte_org_id>` — covers every existing row.
+  4. `UPDATE admin_users SET organization_id = <deloitte_org_id>` — covers every existing org-admin row.
+  5. Insert the "Free Tier" org and its fixed code `FREE0000MASTERY00` for new unaffiliated sign-ups.
+- **New enrollments:** any practitioner who logs in for the first time after Phase 22 is deployed must supply an enrollment code to join an org. Without a code they land in the Free Tier org (Free plan limits apply). To join Deloitte Consulting, they must use the Deloitte enrollment code — the product admin can regenerate this code at any time from the Product Admin Portal if it needs to be rotated.
 
 **Scenario tests:**
 - A new organization row referencing a valid plan can be created and fetched.

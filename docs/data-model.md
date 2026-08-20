@@ -291,7 +291,9 @@ Each subscribing entity — a company, team, or individual — is represented as
 - `is_active` (boolean NOT NULL, default true — if false, all practitioners in the org are blocked from login with `org_suspended` 403)
 - `created_at`, `updated_at`
 
-**Seed rows:** one "Free Tier" org linked to the Free plan — all practitioners who log in without a code land here.
+**Seed rows (migration 024):**
+- **"Deloitte Consulting"** — linked to the Enterprise-Unlimited plan. All practitioners and admin users already in the database at migration time are backfilled into this org (`UPDATE practitioners / admin_users SET organization_id = <deloitte_id>`). Enrollment code: `DLTE0000CNSLTN00` (rotatable by product admin).
+- **"Free Tier"** — linked to the Free plan. New practitioners who log in without a valid org code land here automatically.
 
 ### `org_enrollment_codes`
 16-character alphanumeric codes that practitioners enter at registration to join an organization. A code can be used by many practitioners (it identifies the org, not the individual). Only one code per org may be active at a time.
