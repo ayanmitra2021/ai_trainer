@@ -368,13 +368,26 @@ New router: `backend/app/api/routes/product_admin.py` (or extend into separate f
 - `PATCH /product-admin/organizations/{id}/deactivate` — set `organization.is_active = false`. **Every practitioner in the org is immediately blocked from logging in.** On next login attempt they receive HTTP 403 with a plan-tier-aware message:
   - Enterprise org: `{"error": "org_suspended", "message": "Your organization's Mastery Pulse access has been suspended. Please contact your enterprise administrator."}`
   - Free / Paid org: `{"error": "org_suspended", "message": "Your Mastery Pulse account has been suspended. Please contact your plan administrator."}`
-  All data is fully preserved; the org can be reactivated at any time. Existing active sessions are not terminated — practitioners who are already logged in continue to browse until they next re-authenticate. New session creation is blocked.
+  All data is fully preserved; the org can be reactivated at any time. **All active sessions for every practitioner in the org are deleted atomically in the same DB transaction** (see "Force-logout via session deletion" below) — practitioners currently using the app are kicked out immediately on their next request.
 - `PATCH /product-admin/organizations/{id}/reactivate` — restore `is_active = true`. All practitioners in the org can log in immediately on next attempt.
 
 **Practitioner-level activation (product admin — all plan tiers):**
-- `PATCH /product-admin/practitioners/{practitioner_id}/deactivate` — product admin can deactivate any individual practitioner across all orgs (Free, Paid, or Enterprise). Sets `practitioner.is_active = false`. Login returns HTTP 403: `{"error": "account_deactivated", "message": "Your Mastery Pulse account has been deactivated. Please contact your administrator."}`. This complements the org-admin deactivation in Phase 21 (which is scoped to one org); the product admin's version is global — it can reach any practitioner regardless of org.
-- `PATCH /product-admin/practitioners/{practitioner_id}/reactivate` — restore `is_active = true`. Returns 204. Idempotent (noop if already active).
+- `PATCH /product-admin/practitioners/{practitioner_id}/deactivate` — product admin can deactivate any individual practitioner across all orgs (Free, Paid, or Enterprise). Sets `practitioner.is_active = false` **and** deletes that practitioner's session rows in the same transaction (force-logout). Login returns HTTP 403: `{"error": "account_deactivated", "message": "Your Mastery Pulse account has been deactivated. Please contact your administrator."}`. This complements the org-admin deactivation in Phase 21 (which is scoped to one org); the product admin's version is global — it can reach any practitioner regardless of org.
+- `PATCH /product-admin/practitioners/{practitioner_id}/reactivate` — restore `is_active = true`. Returns 204. Idempotent (noop if already active). Does NOT recreate sessions — the practitioner must log in again.
 - `GET /product-admin/practitioners` — list practitioners across all orgs with their `is_active` status, org name, and plan tier. Supports query params: `?org_id=`, `?is_active=`, `?plan_tier=`. **Returns only identity fields** (`id`, `name`, `email`, `org_name`, `plan_tier`, `is_active`, `created_at`) — no quiz scores, no skill data, no profiles. This is consistent with the product admin's aggregate-only data access policy.
+
+**Force-logout via session deletion (applies to all deactivation endpoints):**
+
+Rather than relying on heartbeat polling or per-endpoint active checks, deactivation works by deleting session rows from the `sessions` table at the moment the deactivate action is committed. The mechanism exploits the fact that `get_session()` — which already runs on every authenticated request — queries the `sessions` table to validate the cookie. If the row is gone, the next request returns 401 regardless of what the client does.
+
+| Deactivation scope | Session deletion SQL |
+|---|---|
+| Single practitioner | `DELETE FROM sessions WHERE identity_type = 'practitioner' AND practitioner_id = :id` |
+| Entire org | `DELETE FROM sessions WHERE identity_type = 'practitioner' AND practitioner_id IN (SELECT id FROM practitioners WHERE organization_id = :org_id)` |
+
+Both deletions run inside the same DB transaction as the `is_active` flag update — the flag flip and the session purge are atomic. A deactivated practitioner whose next request returns 401 will be redirected to the login page by the frontend's API client error handler, where the 403 deactivation message is then shown.
+
+**Frontend 401 handling requirement** — the API client's error interceptor (in `frontend/src/api/client.ts`) must treat a 401 on any non-login endpoint as "session expired": clear `SessionContext` and redirect to `/login`. This already happens on page load via `/auth/me`; it must also trigger mid-session so a forced-logout takes effect within one request cycle, not only on the next page reload.
 
 **Activation precedence rules** (enforced at login guard, checked in order):
 1. If `practitioner.is_active = false` → 403 `account_deactivated` (set by either org admin or product admin).
@@ -393,9 +406,12 @@ New router: `backend/app/api/routes/product_admin.py` (or extend into separate f
 - Product admin deactivates a Paid plan practitioner → login returns 403 `account_deactivated`.
 - `GET /product-admin/practitioners` response rows contain no skill or quiz data.
 - Activation precedence: practitioner `is_active = false` AND org `is_active = false` → error is `account_deactivated` (practitioner check takes priority).
+- **Force-logout — practitioner:** given a practitioner with an active session, when the product admin calls deactivate, then `SELECT COUNT(*) FROM sessions WHERE practitioner_id = ?` returns 0 immediately after the deactivate call completes.
+- **Force-logout — org:** given 3 practitioners in an org each with an active session, when the product admin deactivates the org, then all 3 session rows are deleted and the next API call from each returns 401.
+- **Mid-session 401 handling:** given a practitioner whose session was force-deleted, when they make any authenticated API request (e.g. `GET /practitioners/{id}/skill-profile`), then the response is 401 — not 200 or a stale cached response.
 - Changing an org's plan from Free to Paid → plan limits update immediately (confirmed via plan-enforcement endpoint check).
 
-**Definition of done:** all ten scenario tests pass; tier-aware org-suspended messages are verified for both enterprise and free/paid orgs.
+**Definition of done:** all thirteen scenario tests pass; tier-aware org-suspended messages are verified for both enterprise and free/paid orgs; session count is 0 immediately after any deactivation call.
 
 ---
 

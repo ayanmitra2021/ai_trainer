@@ -770,6 +770,46 @@ If both are false, the practitioner-level check (order 1) wins. The org-level de
 
 **Product admin practitioner controls** — unlike org admins (who can only touch practitioners in their own org), the product admin can deactivate or reactivate any practitioner across any org at any tier. `GET /product-admin/practitioners` exposes identity fields only (`id`, `name`, `email`, `org_name`, `plan_tier`, `is_active`, `created_at`) — no quiz scores, no skill data, no learning content — consistent with the product admin's aggregate-only access policy.
 
+### Force-logout via session deletion
+
+**The problem.** REST is stateless at the request level, so there is no server-push mechanism to terminate a live session. Three common approaches were considered and rejected:
+
+| Approach | Why rejected |
+|---|---|
+| Check `is_active` on every API endpoint | Would require touching every route; easy to miss one; adds a DB join to every request |
+| Frontend heartbeat / polling | Observable via DevTools; can be paused or blocked by the client; wasted traffic |
+| Short session TTL (e.g. 30 min) | Deactivated users still have up to 30 minutes of access; legitimate users are disrupted unnecessarily |
+
+**The solution: delete session rows atomically at deactivation time.**
+
+The system already stores session tokens as rows in the `sessions` table (Phase 5.2). The `get_session()` FastAPI dependency — which runs on every authenticated request — queries this table to validate the cookie. If the row is gone, the request returns 401. Deactivation exploits this existing mechanism:
+
+```
+Deactivate practitioner P
+  ├─ UPDATE practitioners SET is_active = false WHERE id = P   ─┐
+  └─ DELETE FROM sessions                                        │ single DB transaction
+       WHERE identity_type = 'practitioner'                      │ atomic — no partial state
+       AND practitioner_id = P                                  ─┘
+
+Deactivate org O
+  ├─ UPDATE organizations SET is_active = false WHERE id = O   ─┐
+  └─ DELETE FROM sessions                                        │ single DB transaction
+       WHERE identity_type = 'practitioner'                      │
+       AND practitioner_id IN                                    │
+         (SELECT id FROM practitioners                           │
+          WHERE organization_id = O)                            ─┘
+```
+
+After the transaction commits:
+1. The practitioner's browser still holds the cookie, but the server-side row it references is gone.
+2. On their next request — whatever endpoint they call — `get_session()` finds no row and returns **401**.
+3. The frontend API client's error interceptor detects the 401, clears `SessionContext`, and redirects to `/login`.
+4. At `/login`, if the practitioner tries to re-authenticate, the `is_active` / `organization.is_active` check fires and they see the appropriate 403 message.
+
+**Why this cannot be circumvented.** The cookie is a lookup key, not a self-contained credential (unlike a JWT). Deleting the DB row makes the key permanently worthless. The client has no way to reconstruct a valid session without going through the login endpoint, which is where the deactivation check lives.
+
+**Frontend 401 handling** — the API client (`frontend/src/api/client.ts`) must treat a 401 on any non-login endpoint as "session expired": clear `SessionContext` state and redirect to `/login`. This already happens on page load via `/auth/me`; it must also trigger mid-session so a force-logout takes effect within one request cycle rather than only on the next full page reload. This is a one-line addition to the response error interceptor.
+
 ### Enterprise features
 
 Enterprise orgs get two capabilities unavailable to Free and Paid orgs:
