@@ -60,6 +60,16 @@ const TOPICS: Topic[] = [
     answer:
       "Practitioners log in with just their **email + name** — no password needed. If you've logged in before, the system recognises your email and restores your existing profile, quiz history, and progress automatically. Admins log in with an email + password (first-time password is *welcome*, and you'll be forced to change it on first login). Sessions are server-side cookies — nothing is stored in your browser.",
   },
+  {
+    keywords: ["plan", "free plan", "paid plan", "enterprise", "limits", "enrollment code", "upgrade"],
+    answer:
+      "Mastery Pulse has **three plan tiers**: Free (1 profile, 2 exams), Paid (3 profiles, 10 exams), and Enterprise (unlimited + Nudge Inbox + Teams). Your plan is set by your organisation — you can't change it yourself. If you hit a limit, an upgrade prompt appears explaining what to do. Your **enrollment code** is what places you in your org when you first sign in — it's embedded in the invite link your admin shares.",
+  },
+  {
+    keywords: ["teams", "teams integration", "webhook", "configure", "notification settings", "configure tab"],
+    answer:
+      "Enterprise orgs can route nudge messages to a **Microsoft Teams channel** in addition to in-app delivery. The **Configure** tab (admin nav, Enterprise only) has a webhook URL field and a Test Connection button. Steps: get an Incoming Webhook URL from your Teams channel settings, paste it in, click Save, then Test. Once configured, every nudge campaign shows a 'Will deliver via 📧 Email + 💬 Teams' badge on the compose screen. You can also send standalone Teams messages from the bottom of the Nudges page.",
+  },
 ];
 
 const OFF_TOPIC_RESPONSES = [

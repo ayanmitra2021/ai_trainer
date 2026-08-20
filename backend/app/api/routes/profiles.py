@@ -24,6 +24,7 @@ from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
+from app.api.deps.plan import get_plan_enforcer
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
@@ -201,6 +202,47 @@ async def create_profile(
 ) -> ProfileRead:
     enforce_self_or_admin(session, practitioner_id)
 
+    # Phase 22: enforce plan profile limit
+    enforcer = await get_plan_enforcer(practitioner_id, db)
+    await enforcer.check_profile_count(db, practitioner_id)
+
+    # Phase 22: cert recycling guard — block re-creation of a soft-deleted cert profile
+    if body.certification_id is not None:
+        from app.db.models import Organization, SubscriptionPlan as SubPlan
+        from sqlalchemy import and_
+
+        # Determine allow_cert_recycling for this practitioner's plan
+        from app.db.models import Practitioner as _Practitioner
+        prac = await db.get(_Practitioner, practitioner_id)
+        allow_recycling = True  # default permissive
+        if prac and prac.organization_id:
+            org = await db.get(Organization, prac.organization_id)
+            if org:
+                plan_row = await db.get(SubPlan, org.plan_id)
+                if plan_row:
+                    allow_recycling = plan_row.allow_cert_recycling
+
+        if not allow_recycling:
+            deleted_result = await db.execute(
+                select(PractitionerProfile).where(
+                    PractitionerProfile.practitioner_id == practitioner_id,
+                    PractitionerProfile.certification_id == body.certification_id,
+                    PractitionerProfile.deleted_at.is_not(None),
+                )
+            )
+            deleted_profile = deleted_result.scalar_one_or_none()
+            if deleted_profile is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "error": "cert_recycling_blocked",
+                        "message": (
+                            "Your plan does not allow recreating a deleted certification profile. "
+                            "Upgrade your plan to enable cert recycling."
+                        ),
+                    },
+                )
+
     profile = PractitionerProfile(
         id=str(uuid.uuid4()),
         practitioner_id=practitioner_id,
@@ -237,7 +279,10 @@ async def list_profiles(
 
     result = await db.execute(
         select(PractitionerProfile)
-        .where(PractitionerProfile.practitioner_id == practitioner_id)
+        .where(
+            PractitionerProfile.practitioner_id == practitioner_id,
+            PractitionerProfile.deleted_at.is_(None),
+        )
         .order_by(PractitionerProfile.created_at.desc())
     )
     profiles = result.scalars().all()
@@ -272,6 +317,7 @@ async def get_profile(
         .where(
             PractitionerProfile.id == profile_id,
             PractitionerProfile.practitioner_id == practitioner_id,
+            PractitionerProfile.deleted_at.is_(None),
         )
     )
     profile = result.scalar_one_or_none()
@@ -703,19 +749,24 @@ async def delete_profile(
     enforce_self_or_admin(session, practitioner_id)
 
     profile = await db.get(PractitionerProfile, profile_id)
-    if profile is None or profile.practitioner_id != practitioner_id:
+    if profile is None or profile.practitioner_id != practitioner_id or profile.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Profile not found")
 
     was_active = profile.is_active
 
-    await db.delete(profile)
-    await db.flush()  # remove the row before we query for a replacement
+    # Phase 22: soft-delete — set deleted_at instead of deleting the row
+    profile.deleted_at = datetime.now(UTC)
+    profile.is_active = False
+    await db.flush()
 
     # If the deleted profile was active, auto-promote the most recent other profile.
     if was_active:
         result = await db.execute(
             select(PractitionerProfile)
-            .where(PractitionerProfile.practitioner_id == practitioner_id)
+            .where(
+                PractitionerProfile.practitioner_id == practitioner_id,
+                PractitionerProfile.deleted_at.is_(None),
+            )
             .order_by(PractitionerProfile.created_at.desc())
             .limit(1)
         )

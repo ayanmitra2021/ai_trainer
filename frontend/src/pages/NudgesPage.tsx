@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "../context/SessionContext";
 import {
   useGenerateNudgeCategories,
@@ -6,8 +6,8 @@ import {
   useSendNudges,
   useSentCampaigns,
 } from "../hooks";
-import type { ComposePreviewResponse, NudgeCategory, RecipientPreview, SentCampaignSummary } from "../api/types";
-import { pulse } from "../api";
+import type { ComposePreviewResponse, NudgeCategory, OrgNotificationSettings, RecipientPreview, SentCampaignSummary } from "../api/types";
+import { notificationSettings, pulse } from "../api";
 
 // ── Section 1 & 2: Category selection ────────────────────────────────────────
 
@@ -194,6 +194,37 @@ export default function NudgesPage() {
 
   const sendNudges = useSendNudges();
   const { data: sentCampaigns } = useSentCampaigns();
+
+  // Phase 22.11: Teams section state
+  const isEnterprise = session?.plan_tier === "enterprise";
+  const [orgNotifSettings, setOrgNotifSettings] = useState<OrgNotificationSettings | null>(null);
+  const [teamsMsg, setTeamsMsg] = useState("");
+  const [teamsSending, setTeamsSending] = useState(false);
+  const [teamsSuccess, setTeamsSuccess] = useState(false);
+  const [teamsError, setTeamsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isEnterprise) return;
+    notificationSettings.get().then(setOrgNotifSettings).catch(() => {});
+  }, [isEnterprise]);
+
+  const hasTeams = !!orgNotifSettings?.teams_webhook_url;
+
+  const handleSendTeams = async () => {
+    if (!teamsMsg.trim()) return;
+    setTeamsSending(true);
+    setTeamsSuccess(false);
+    setTeamsError(null);
+    try {
+      await pulse.sendTeamsMessage(teamsMsg);
+      setTeamsSuccess(true);
+      setTeamsMsg("");
+    } catch (err: unknown) {
+      setTeamsError((err as Error).message ?? "Failed to send Teams message");
+    } finally {
+      setTeamsSending(false);
+    }
+  };
 
   // Display categories: generated + saved
   const displayCategories = generateCategories.data || savedCategories || [];
@@ -397,6 +428,24 @@ export default function NudgesPage() {
               <p style={{ fontSize: "0.8125rem", fontStyle: "italic", color: "var(--text-muted)", margin: 0 }}>
                 Tone check: {compose.tone_check}
               </p>
+              {isEnterprise && hasTeams && (
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    padding: "0.3rem 0.7rem",
+                    borderRadius: 999,
+                    background: "rgba(34,197,94,0.1)",
+                    border: "1px solid rgba(34,197,94,0.3)",
+                    fontSize: "0.78rem",
+                    fontWeight: 600,
+                    color: "#15803d",
+                  }}
+                >
+                  Will deliver via 📧 Email + 💬 Teams
+                </div>
+              )}
               <button className="btn btn-outline" style={{ alignSelf: "flex-start" }} onClick={handleCompose}>
                 Regenerate message
               </button>
@@ -421,6 +470,65 @@ export default function NudgesPage() {
 
       {/* Sent history */}
       {sentCampaigns && <SentHistoryPanel campaigns={sentCampaigns} />}
+
+      {/* Phase 22.11: Teams direct message — enterprise + Teams configured only */}
+      {isEnterprise && hasTeams && (
+        <section style={{ marginTop: "2.5rem", paddingTop: "2rem", borderTop: "1px solid var(--border)" }}>
+          <h2 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>📤 Send message directly to Teams</h2>
+          <p style={{ fontSize: "0.875rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>
+            Post a standalone message to your organisation's Teams channel (outside a nudge campaign).
+          </p>
+          <div>
+            <textarea
+              className="input"
+              style={{ width: "100%", minHeight: 100, resize: "vertical", boxSizing: "border-box" }}
+              maxLength={1000}
+              placeholder="Type your Teams message here…"
+              value={teamsMsg}
+              onChange={(e) => { setTeamsMsg(e.target.value); setTeamsSuccess(false); setTeamsError(null); }}
+            />
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textAlign: "right", marginBottom: "0.5rem" }}>
+              {teamsMsg.length}/1000
+            </div>
+            <button
+              className="btn btn-primary"
+              disabled={teamsSending || !teamsMsg.trim()}
+              onClick={handleSendTeams}
+            >
+              {teamsSending ? <><span className="spinner" /> Sending…</> : "Send to Teams"}
+            </button>
+            {teamsSuccess && (
+              <div
+                style={{
+                  marginTop: "0.75rem",
+                  padding: "0.6rem 0.9rem",
+                  borderRadius: 8,
+                  background: "#d1fae5",
+                  color: "#065f46",
+                  fontSize: "0.875rem",
+                  fontWeight: 600,
+                }}
+              >
+                ✅ Message sent to Teams channel
+              </div>
+            )}
+            {teamsError && (
+              <div
+                style={{
+                  marginTop: "0.75rem",
+                  padding: "0.6rem 0.9rem",
+                  borderRadius: 8,
+                  background: "#fef2f2",
+                  color: "#dc2626",
+                  fontSize: "0.875rem",
+                }}
+              >
+                {teamsError}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

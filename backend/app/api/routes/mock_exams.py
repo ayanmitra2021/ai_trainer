@@ -31,6 +31,7 @@ from app.agents.mock_exam_generator import (
     MockExamQuestionSpec,
 )
 from app.agents.model_client import create_model_client
+from app.api.deps.plan import get_plan_enforcer
 from app.api.deps.session import SessionInfo, enforce_self_or_admin, require_any_authenticated
 from app.db.models import (
     CertificationDomain,
@@ -551,6 +552,10 @@ async def start_mock_exam(
             status_code=400,
             detail="Active profile has no associated certification.",
         )
+
+    # Phase 22: enforce plan mock exam limit
+    enforcer = await get_plan_enforcer(practitioner_id, db)
+    await enforcer.check_mock_exam_count(db, practitioner_id, profile.id)
 
     # Load certification
     from app.db.models import Certification

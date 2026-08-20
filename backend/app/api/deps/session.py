@@ -14,6 +14,9 @@ Admin-only routes (observability, pulse trigger):
 
 Admin + leadership routes (rollups, nudge view):
     session: SessionInfo = Depends(require_admin_or_leadership)
+
+Product-admin-only routes (platform management — Phase 22):
+    session: SessionInfo = Depends(require_product_admin)
 """
 
 from __future__ import annotations
@@ -27,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.models import AdminUser
+from app.db.models import ProductAdminUser
 from app.db.models import Session as SessionModel
 from app.db.session import get_db
 
@@ -36,12 +40,13 @@ class SessionInfo:
     """Resolved identity attached to a validated request session."""
 
     session_id: str
-    identity_type: Literal["practitioner", "admin"]
+    identity_type: Literal["practitioner", "admin", "product_admin"]
     practitioner_id: str | None
     admin_user_id: str | None
     admin_role: str | None  # "admin" | "leadership" | None
     first_name: str
     must_change_password: bool = field(default=False)
+    product_admin_user_id: str | None = field(default=None)
 
 
 async def get_session(
@@ -51,7 +56,7 @@ async def get_session(
     """Read the session cookie, validate against the DB, return a SessionInfo.
 
     Raises 401 if the cookie is absent or the session row is not found.
-    Raises 401 if an admin session has passed its expiry time.
+    Raises 401 if an admin or product_admin session has passed its expiry time.
     Updates last_seen_at on every valid request.
     """
     token = request.cookies.get(settings.session_cookie_name)
@@ -64,14 +69,19 @@ async def get_session(
 
     now = datetime.now(UTC)
 
-    # Check expiry for admin sessions
-    if session.expires_at is not None and now > session.expires_at:
+    # Check expiry for admin and product_admin sessions.
+    # SQLite returns DateTime columns without tzinfo (offset-naive); normalise to
+    # UTC before comparing so the check is correct in both Postgres and SQLite.
+    expires_at = session.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at is not None and now > expires_at:
         await db.delete(session)
         await db.commit()
         raise HTTPException(status_code=401, detail="Session expired — please log in again")
 
-    # Refresh the admin session expiry window on activity
-    if session.identity_type == "admin" and session.expires_at is not None:
+    # Refresh the admin / product_admin session expiry window on activity
+    if session.identity_type in ("admin", "product_admin") and session.expires_at is not None:
         session.expires_at = now + timedelta(hours=settings.admin_session_timeout_hours)
 
     session.last_seen_at = now
@@ -90,19 +100,35 @@ async def get_session(
             first_name=admin.first_name,
             must_change_password=admin.must_change_password,
         )
-    else:
-        from app.db.models import Practitioner
 
-        practitioner = await db.get(Practitioner, session.practitioner_id)
-        first_name = practitioner.name.split()[0] if practitioner else "Practitioner"
+    if session.identity_type == "product_admin":
+        product_admin = await db.get(ProductAdminUser, session.product_admin_user_id)
+        if product_admin is None:
+            raise HTTPException(status_code=401, detail="Product admin account not found")
         return SessionInfo(
             session_id=session.id,
-            identity_type="practitioner",
-            practitioner_id=session.practitioner_id,
+            identity_type="product_admin",
+            practitioner_id=None,
             admin_user_id=None,
             admin_role=None,
-            first_name=first_name,
+            first_name=product_admin.first_name,
+            must_change_password=product_admin.must_change_password,
+            product_admin_user_id=product_admin.id,
         )
+
+    # Default: practitioner
+    from app.db.models import Practitioner
+
+    practitioner = await db.get(Practitioner, session.practitioner_id)
+    first_name = practitioner.name.split()[0] if practitioner else "Practitioner"
+    return SessionInfo(
+        session_id=session.id,
+        identity_type="practitioner",
+        practitioner_id=session.practitioner_id,
+        admin_user_id=None,
+        admin_role=None,
+        first_name=first_name,
+    )
 
 
 async def require_any_authenticated(
@@ -151,6 +177,15 @@ async def require_admin_or_leadership(
             status_code=403,
             detail="Password change required before accessing data",
         )
+    return session
+
+
+async def require_product_admin(
+    session: SessionInfo = Depends(get_session),
+) -> SessionInfo:
+    """Product admin sessions only (platform-level management — Phase 22)."""
+    if session.identity_type != "product_admin":
+        raise HTTPException(status_code=403, detail="Product admin access required")
     return session
 
 

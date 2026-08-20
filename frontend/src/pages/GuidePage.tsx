@@ -837,6 +837,164 @@ const adminUsersContent = (
   </>
 );
 
+// ── Phase 22 sections ─────────────────────────────────────────────────────────
+
+const yourPlanContent = (
+  <>
+    <SubHeading>Three plan tiers</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      Mastery Pulse has three subscription tiers. Your plan is set by your organisation — you cannot change it
+      yourself. If you reach a limit, you'll see an upgrade prompt explaining what to do next.
+    </p>
+    <div style={{ overflowX: "auto", margin: "0.5rem 0 1rem" }}>
+      <table
+        style={{
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "0.85rem",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          overflow: "hidden",
+        }}
+      >
+        <thead>
+          <tr style={{ background: "rgba(79,70,229,0.08)" }}>
+            <th style={{ padding: "0.5rem 0.75rem", textAlign: "left", fontWeight: 700, borderBottom: "1px solid var(--border)" }}>Feature</th>
+            <th style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--border)" }}>Free</th>
+            <th style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--border)" }}>Paid</th>
+            <th style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--border)", color: "var(--primary)" }}>Enterprise</th>
+          </tr>
+        </thead>
+        <tbody>
+          {[
+            ["Profiles per practitioner", "1", "3", "Unlimited"],
+            ["Learning paths", "1", "5", "Unlimited"],
+            ["Mock exams per profile", "2", "10", "Unlimited"],
+            ["Practitioners per org", "5", "50", "Unlimited"],
+            ["Nudge inbox", "—", "—", "✅"],
+            ["Teams notifications", "—", "—", "✅"],
+          ].map(([feature, free, paid, enterprise], i) => (
+            <tr key={i} style={{ borderTop: i > 0 ? "1px solid var(--border)" : undefined }}>
+              <td style={{ padding: "0.4rem 0.75rem", fontWeight: 600, color: "var(--text)" }}>{feature}</td>
+              <td style={{ padding: "0.4rem 0.75rem", textAlign: "center", color: "var(--text-muted)" }}>{free}</td>
+              <td style={{ padding: "0.4rem 0.75rem", textAlign: "center", color: "var(--text-muted)" }}>{paid}</td>
+              <td style={{ padding: "0.4rem 0.75rem", textAlign: "center", color: "var(--primary)", fontWeight: 600 }}>{enterprise}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <SubHeading>Enrollment codes</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      Your organisation has a unique <strong>enrollment code</strong>. When you sign in for the first time, the
+      system uses this code to place you in the correct org and apply your plan automatically. You don't need to
+      enter it manually — it's embedded in the invite link your admin shares.
+    </p>
+
+    <SubHeading>When you hit a limit</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      If you try an action that exceeds your plan (e.g. creating a fourth profile on the Free tier), the app
+      shows an upgrade prompt. This is a soft block — your existing data is never deleted. Contact your
+      administrator to request a plan upgrade.
+    </p>
+    <BulletList
+      items={[
+        "Nudge Inbox cards are <strong>hidden</strong> on Free and Paid plans — shown only on Enterprise.",
+        "Creating profiles, paths, or exams beyond your limit shows an inline prompt, not an error page.",
+        "All data created before a downgrade is preserved and visible again if the plan is upgraded.",
+      ]}
+    />
+  </>
+);
+
+const planManagementContent = (
+  <>
+    <SubHeading>Viewing your org's plan</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      As an org admin, you can view your current plan limits but <strong>cannot change them</strong>. Plan
+      changes must be requested through the product administrator (Mastery Pulse operations team). To upgrade or
+      downgrade, email the product admin or use the upgrade prompt shown when a limit is reached.
+    </p>
+
+    <SubHeading>Enrollment code</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      Your org's enrollment code is displayed in the admin panel. Share it with practitioners so they can join
+      your org when they first log in.
+    </p>
+    <BulletList
+      items={[
+        "The code is auto-generated when your org is created. It never expires unless regenerated.",
+        "To regenerate the code (e.g. after a security event), contact the product admin — this invalidates the old code immediately.",
+        "Practitioners already enrolled are unaffected by a code regeneration — only new sign-ups use the code.",
+      ]}
+    />
+    <Tip>
+      Share the enrollment link (not just the code) — it embeds the code so practitioners don't have to type
+      it manually. The product admin can provide the canonical invite URL format.
+    </Tip>
+
+    <SubHeading>What practitioners see when they hit a limit</SubHeading>
+    <SimpleTable
+      rows={[
+        { label: "Extra profile", value: "Inline upgrade prompt: 'You've reached your plan's profile limit. Contact your administrator to upgrade.'" },
+        { label: "Extra learning path", value: "Same inline upgrade prompt, path creation blocked." },
+        { label: "Extra mock exam", value: "Soft block on the Start Exam button with the upgrade message." },
+        { label: "Nudge inbox (non-enterprise)", value: "🔒 card shown in the Adoption Trends tab explaining the feature requires Enterprise." },
+      ]}
+    />
+  </>
+);
+
+const notificationConfigContent = (
+  <>
+    <SubHeading>The Configure tab</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      Enterprise orgs can route nudge messages to a Microsoft Teams channel in addition to (or instead of) email.
+      The <strong>Configure</strong> tab in the admin nav bar reveals two settings sections: Teams Integration
+      and Email Notifications.
+    </p>
+    <Warning>
+      The Configure tab is only visible when your org is on the Enterprise plan. If you don't see it, your org
+      is on a lower tier.
+    </Warning>
+
+    <SubHeading>Setting up Teams integration</SubHeading>
+    <StepList
+      steps={[
+        "In Microsoft Teams, open the channel you want nudges delivered to.",
+        "Click <strong>⋯ (More options)</strong> next to the channel name → <strong>Connectors</strong> → <strong>Incoming Webhook</strong> → <strong>Configure</strong>.",
+        "Give the webhook a name (e.g. 'Mastery Pulse Nudges'), optionally upload an icon, then click <strong>Create</strong>.",
+        "Copy the webhook URL shown.",
+        "In Mastery Pulse, go to <strong>Configure</strong> → paste the URL into the <em>Webhook URL</em> field → enter the channel name → click <strong>Save</strong>.",
+        "Click <strong>Test Connection</strong> to confirm delivery. A test card appears in your Teams channel.",
+      ]}
+    />
+
+    <SubHeading>How nudges reach Teams</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      Once configured, every nudge campaign sent from the Nudges page is delivered to the Teams channel in
+      addition to practitioners' in-app inboxes. A green badge on the compose screen reads "Will deliver via
+      📧 Email + 💬 Teams" when both channels are active.
+    </p>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      You can also send a standalone Teams message from the bottom of the Nudges page — useful for quick
+      announcements that don't need to go through the full nudge campaign workflow.
+    </p>
+
+    <SubHeading>Email toggle</SubHeading>
+    <p style={{ fontSize: "0.9rem", lineHeight: 1.7, color: "var(--text)" }}>
+      The <strong>Email Notifications</strong> section has a single toggle. When disabled, practitioners no
+      longer receive nudges by email — only in-app (and Teams if configured). Use this if your org prefers
+      Teams-only delivery.
+    </p>
+    <Tip>
+      Changes to the webhook URL or email toggle take effect on the <em>next</em> campaign send. In-flight sends
+      are not affected.
+    </Tip>
+  </>
+);
+
 // ---------------------------------------------------------------------------
 // Section registry
 // ---------------------------------------------------------------------------
@@ -891,6 +1049,14 @@ function buildSections(isAdmin: boolean): Section[] {
         "The Adoption Trends tab shows your mastery history over time and your Nudge Inbox. Nudges are personalised messages from your admin — targeted when they spot a gap between training and real-world adoption. Unread nudges show a count on the tab label. The AI that drafts nudge messages never sees your name or individual scores.",
       content: adoptionContent,
     },
+    {
+      id: "your-plan",
+      emoji: "📋",
+      title: "Your Plan",
+      quickRead:
+        "Mastery Pulse has three plan tiers — Free, Paid, and Enterprise. Your plan is set by your organization. If you hit a limit, you'll see an upgrade prompt explaining what to do.",
+      content: yourPlanContent,
+    },
     ...(isAdmin
       ? [
           {
@@ -937,6 +1103,24 @@ function buildSections(isAdmin: boolean): Section[] {
             quickRead:
               "Create admin accounts from Admin Users (full admins only). New accounts use password 'welcome' with a forced change on first login. Two roles: admin (full access) and leadership (campaign history + practitioner list only). Role enforcement lives in API middleware, not just the UI.",
             content: adminUsersContent,
+          },
+          {
+            id: "plan-management",
+            emoji: "🏢",
+            title: "Plan Management & Enrollment",
+            adminOnly: true,
+            quickRead:
+              "Your org's plan determines what practitioners can do. View your current plan limits in the org admin panel. To change plans, contact the product admin.",
+            content: planManagementContent,
+          },
+          {
+            id: "notification-config",
+            emoji: "🔔",
+            title: "Notification Configuration",
+            adminOnly: true,
+            quickRead:
+              "Enterprise orgs can deliver nudges to Microsoft Teams in addition to email. Configure your webhook in the Configure tab.",
+            content: notificationConfigContent,
           },
         ]
       : []),

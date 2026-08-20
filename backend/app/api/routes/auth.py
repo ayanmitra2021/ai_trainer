@@ -6,6 +6,7 @@ Routes:
   POST /auth/logout               delete session, clear cookie
   POST /auth/change-password      admin-only; verifies current pw, sets new pw
   GET  /auth/me                   returns current session identity
+  GET  /auth/enrollment-info      public; info about an enrollment code (Phase 22)
 """
 
 from __future__ import annotations
@@ -15,9 +16,10 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt as _bcrypt_lib
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import Response as FastAPIResponse
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.session import (
@@ -28,12 +30,18 @@ from app.api.deps.session import (
 from app.config import settings
 from app.db.models import AdminUser
 from app.db.models import Certification
+from app.db.models import Organization
+from app.db.models import OrgEnrollmentCode
 from app.db.models import PractitionerProfile
 from app.db.models import Session as SessionModel
 from app.db.models import Practitioner
+from app.db.models import SubscriptionPlan
 from app.db.session import get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# ── Fixed IDs from Phase 22 migration seed ────────────────────────────────────
+FREE_TIER_ORG_ID = "00000000-0000-0000-0000-000000000011"
 
 
 def _hash_pw(password: str) -> str:
@@ -44,6 +52,18 @@ def _verify_pw(plain: str, hashed: str) -> bool:
     return _bcrypt_lib.checkpw(plain.encode(), hashed.encode())
 
 
+def _org_suspended_message(plan_tier: str) -> str:
+    if plan_tier == "enterprise":
+        return (
+            "Your organization's Mastery Pulse access has been suspended. "
+            "Please contact your enterprise administrator."
+        )
+    return (
+        "Your Mastery Pulse account has been suspended. "
+        "Please contact your plan administrator."
+    )
+
+
 # ── Pydantic schemas ───────────────────────────────────────────────────────────
 
 class PractitionerLoginRequest(BaseModel):
@@ -52,6 +72,8 @@ class PractitionerLoginRequest(BaseModel):
     role: str = ""
     practice: str = ""
     seniority_level: str = ""
+    # Phase 22: optional enrollment code for new practitioners
+    enrollment_code: str | None = None
 
 
 class PractitionerLookupResponse(BaseModel):
@@ -95,6 +117,46 @@ class MeResponse(BaseModel):
     active_certification_code: str | None = None
     # Phase 9.3: exposed so the frontend can gate wizard access without an extra round-trip.
     active_profile_is_locked: bool | None = None
+    # Phase 22: plan tier for the practitioner's org
+    plan_tier: str | None = None
+
+
+class EnrollmentInfoResponse(BaseModel):
+    valid: bool
+    org_name: str | None = None
+    plan_name: str | None = None
+    plan_tier: str | None = None
+
+
+# ── Enrollment info (public) ───────────────────────────────────────────────────
+
+@router.get("/enrollment-info", response_model=EnrollmentInfoResponse)
+async def enrollment_info(
+    code: str = Query(..., description="16-character enrollment code"),
+    db: AsyncSession = Depends(get_db),
+) -> EnrollmentInfoResponse:
+    """Return info about an enrollment code — public, no auth required."""
+    result = await db.execute(
+        select(OrgEnrollmentCode).where(
+            OrgEnrollmentCode.code == code.strip().upper(),
+            OrgEnrollmentCode.is_active.is_(True),
+        )
+    )
+    enrollment_code = result.scalar_one_or_none()
+    if enrollment_code is None:
+        return EnrollmentInfoResponse(valid=False)
+
+    org = await db.get(Organization, enrollment_code.organization_id)
+    if org is None or not org.is_active:
+        return EnrollmentInfoResponse(valid=False)
+
+    plan = await db.get(SubscriptionPlan, org.plan_id)
+    return EnrollmentInfoResponse(
+        valid=True,
+        org_name=org.name,
+        plan_name=plan.name if plan else None,
+        plan_tier=plan.tier if plan else None,
+    )
 
 
 # ── Practitioner login ─────────────────────────────────────────────────────────
@@ -107,16 +169,67 @@ async def practitioner_login(
 ) -> PractitionerLoginResponse:
     """Upsert practitioner by email; create session; set HTTP-only cookie.
 
-    Name and org_level are always overwritten so re-entry reflects current org state.
+    Phase 22: enrollment_code on first login links the practitioner to an org.
+    On subsequent logins, enrollment_code is silently ignored (org is fixed).
+    Org-suspended check runs for all existing practitioners.
     """
-    from sqlalchemy import select
-
     result = await db.execute(
         select(Practitioner).where(Practitioner.email == body.email)
     )
     practitioner = result.scalar_one_or_none()
 
     if practitioner is None:
+        # ── New practitioner ──────────────────────────────────────────────────
+        org_id: str | None = None
+
+        if body.enrollment_code:
+            code_result = await db.execute(
+                select(OrgEnrollmentCode).where(
+                    OrgEnrollmentCode.code == body.enrollment_code.strip().upper(),
+                    OrgEnrollmentCode.is_active.is_(True),
+                )
+            )
+            enrollment_code = code_result.scalar_one_or_none()
+            if enrollment_code is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_code",
+                        "message": "The enrollment code is invalid or has already been used.",
+                    },
+                )
+            # Validate org is active and within capacity
+            org = await db.get(Organization, enrollment_code.organization_id)
+            if org is None or not org.is_active:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error": "invalid_code",
+                        "message": "The enrollment code is invalid or has already been used.",
+                    },
+                )
+            # Check capacity
+            plan = await db.get(SubscriptionPlan, org.plan_id)
+            if plan and plan.max_practitioners_per_org != -1:
+                count_result = await db.execute(
+                    select(func.count(Practitioner.id)).where(
+                        Practitioner.organization_id == org.id
+                    )
+                )
+                current_count = count_result.scalar_one()
+                if current_count >= plan.max_practitioners_per_org:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "error": "org_capacity_reached",
+                            "message": "This organization has reached its maximum practitioner count.",
+                        },
+                    )
+            org_id = org.id
+        else:
+            # Fall back to Free Tier org
+            org_id = FREE_TIER_ORG_ID
+
         practitioner = Practitioner(
             id=str(uuid.uuid4()),
             name=body.name,
@@ -124,10 +237,12 @@ async def practitioner_login(
             role=body.role or None,
             practice=body.practice or None,
             seniority_level=body.seniority_level or None,
+            organization_id=org_id,
         )
         db.add(practitioner)
         await db.flush()
     else:
+        # ── Existing practitioner ─────────────────────────────────────────────
         # Phase 21: block deactivated accounts before any data is touched
         if not practitioner.is_active:
             raise HTTPException(
@@ -137,12 +252,28 @@ async def practitioner_login(
                     "message": "Your account has been deactivated — please contact your administrator.",
                 },
             )
+
+        # Phase 22: check if the org is suspended
+        if practitioner.organization_id is not None:
+            org = await db.get(Organization, practitioner.organization_id)
+            if org is not None and not org.is_active:
+                plan = await db.get(SubscriptionPlan, org.plan_id)
+                tier = plan.tier if plan else "free"
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "org_suspended",
+                        "message": _org_suspended_message(tier),
+                    },
+                )
+
         # Overwrite all editable fields — form values always win
         practitioner.name = body.name
         practitioner.role = body.role or None
         practitioner.practice = body.practice or None
         if body.seniority_level:
             practitioner.seniority_level = body.seniority_level
+        # enrollment_code is ignored for existing practitioners
         await db.flush()
 
     # Create session
@@ -184,8 +315,6 @@ async def lookup_email(
     Returns found=False when the email is new — never a 404, so the frontend
     can treat any successful response uniformly.
     """
-    from sqlalchemy import select
-
     result = await db.execute(
         select(Practitioner).where(Practitioner.email == email.strip().lower())
     )
@@ -215,8 +344,6 @@ async def admin_login(
 
     Does NOT redirect on must_change_password — the frontend handles the redirect.
     """
-    from sqlalchemy import select
-
     result = await db.execute(
         select(AdminUser).where(AdminUser.email == body.email)
     )
@@ -313,17 +440,18 @@ async def me(
     db: AsyncSession = Depends(get_db),
 ) -> MeResponse:
     """Return current session identity — used by the frontend on page load."""
-    from sqlalchemy import select as sa_select
-
     active_profile_id: str | None = None
     active_certification_code: str | None = None
     active_profile_is_locked: bool | None = None
+    plan_tier: str | None = None
 
     if session.identity_type == "practitioner" and session.practitioner_id:
+        # Active profile
         result = await db.execute(
-            sa_select(PractitionerProfile).where(
+            select(PractitionerProfile).where(
                 PractitionerProfile.practitioner_id == session.practitioner_id,
                 PractitionerProfile.is_active.is_(True),
+                PractitionerProfile.deleted_at.is_(None),
             )
         )
         active_profile = result.scalar_one_or_none()
@@ -335,6 +463,15 @@ async def me(
                 if cert:
                     active_certification_code = cert.code
 
+        # Phase 22: resolve plan_tier via org
+        practitioner = await db.get(Practitioner, session.practitioner_id)
+        if practitioner and practitioner.organization_id:
+            org = await db.get(Organization, practitioner.organization_id)
+            if org:
+                plan = await db.get(SubscriptionPlan, org.plan_id)
+                if plan:
+                    plan_tier = plan.tier
+
     return MeResponse(
         identity_type=session.identity_type,
         first_name=session.first_name,
@@ -344,4 +481,5 @@ async def me(
         active_profile_id=active_profile_id,
         active_certification_code=active_certification_code,
         active_profile_is_locked=active_profile_is_locked,
+        plan_tier=plan_tier,
     )

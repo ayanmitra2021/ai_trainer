@@ -7,6 +7,7 @@ import type {
   AdminLoginResponse,
   AdminUserCreate,
   AdminUserResponse,
+  AgentAnalytics,
   AdvisorResponse,
   Attempt,
   AttemptCreate,
@@ -32,12 +33,18 @@ import type {
   NudgeMarkReadResponse,
   ObservabilityReport,
   ActivitySummaryResponse,
+  Organization,
+  OrgNotificationSettings,
+  PlanDistribution,
   Practitioner,
   PractitionerCreate,
   PractitionerLoginRequest,
   PractitionerLoginResponse,
   PractitionerLookupResponse,
   PreviewRecipientsResponse,
+  ProductAdminLoginRequest,
+  ProductAdminLoginResponse,
+  ProductAdminPractitioner,
   ProfileCreate,
   ProfileDetail,
   ProfileSkillUpsert,
@@ -53,7 +60,9 @@ import type {
   Skill,
   SkillSnapshot,
   SkillTreeNode,
+  SubscriptionPlan,
   UnreadCountResponse,
+  UsageAnalytics,
 } from "./types";
 
 // ── Practitioners ──────────────────────────────────────────────────────────────
@@ -223,6 +232,9 @@ export const pulse = {
       `/practitioners/${practitioner_id}/adoption-trends?days=${days}`
     ),
   // Phase 9.1: rollups() and getRollup() removed — rollups table dropped.
+  // Phase 22.11: send a message to the org's configured Teams channel
+  sendTeamsMessage: (message: string) =>
+    api.post<{ success: boolean }>("/admin/nudges/send-teams", { message }),
 };
 
 // ── Profiles ───────────────────────────────────────────────────────────────────
@@ -315,6 +327,68 @@ export const certDomains = {
     const qs = status ? `?status=${encodeURIComponent(status)}` : "";
     return api.get<CertificationDomainProposal[]>(`/admin/cert-domain-proposals${qs}`);
   },
+};
+
+// ── Product Admin (Phase 22.7) ─────────────────────────────────────────────────
+
+export const productAdmin = {
+  login: (body: ProductAdminLoginRequest) =>
+    api.post<ProductAdminLoginResponse>("/product-admin/login", body),
+  logout: () => api.post<void>("/product-admin/logout", {}),
+  me: () => api.get<MeResponse>("/product-admin/me"),
+  changePassword: (body: ChangePasswordRequest) =>
+    api.post<void>("/product-admin/change-password", body),
+
+  // Plans
+  listPlans: () => api.get<SubscriptionPlan[]>("/product-admin/plans"),
+  createPlan: (body: Partial<SubscriptionPlan>) =>
+    api.post<SubscriptionPlan>("/product-admin/plans", body),
+  updatePlan: (id: string, body: Partial<SubscriptionPlan>) =>
+    api.patch<SubscriptionPlan>(`/product-admin/plans/${id}`, body),
+  deactivatePlan: (id: string) =>
+    api.delete<void>(`/product-admin/plans/${id}`),
+
+  // Organizations
+  listOrgs: () => api.get<Organization[]>("/product-admin/organizations"),
+  createOrg: (body: { name: string; plan_id: string; billing_email?: string }) =>
+    api.post<Organization>("/product-admin/organizations", body),
+  updateOrg: (id: string, body: Partial<Organization>) =>
+    api.patch<Organization>(`/product-admin/organizations/${id}`, body),
+  regenerateCode: (id: string) =>
+    api.post<{ code: string }>(`/product-admin/organizations/${id}/regenerate-code`, {}),
+  deactivateOrg: (id: string) =>
+    api.patch<void>(`/product-admin/organizations/${id}/deactivate`, {}),
+  reactivateOrg: (id: string) =>
+    api.patch<void>(`/product-admin/organizations/${id}/reactivate`, {}),
+
+  // Practitioners
+  listPractitioners: (params?: { org_id?: string; is_active?: boolean; plan_tier?: string }) =>
+    api.get<ProductAdminPractitioner[]>(
+      `/product-admin/practitioners${params ? "?" + new URLSearchParams(
+        Object.entries(params)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => [k, String(v)])
+      ).toString() : ""}`
+    ),
+  deactivatePractitioner: (id: string) =>
+    api.patch<void>(`/product-admin/practitioners/${id}/deactivate`, {}),
+  reactivatePractitioner: (id: string) =>
+    api.patch<void>(`/product-admin/practitioners/${id}/reactivate`, {}),
+
+  // Analytics
+  getUsageAnalytics: () => api.get<UsageAnalytics>("/product-admin/analytics/usage"),
+  getAgentAnalytics: () => api.get<AgentAnalytics>("/product-admin/analytics/agents"),
+  getPlanDistribution: () => api.get<PlanDistribution>("/product-admin/analytics/plans"),
+};
+
+// ── Notification Settings (Phase 22.10) ───────────────────────────────────────
+
+export const notificationSettings = {
+  get: () => api.get<OrgNotificationSettings>("/admin/notification-settings"),
+  update: (body: Partial<OrgNotificationSettings>) =>
+    api.put<OrgNotificationSettings>("/admin/notification-settings", body),
+  testTeams: () =>
+    api.post<{ success: boolean; error?: string }>("/admin/notification-settings/test-teams", {}),
 };
 
 export type { ApiError } from "./client";

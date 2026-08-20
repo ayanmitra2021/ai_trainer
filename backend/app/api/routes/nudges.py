@@ -24,6 +24,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -644,3 +645,93 @@ async def get_adoption_trends(
         skills=skills,
         computed_at=computed_at,
     )
+
+
+# ── Phase 22.11 — Teams nudge delivery ────────────────────────────────────────
+
+class SendTeamsNudgeRequest(BaseModel):
+    message: str
+
+    @field_validator("message")
+    @classmethod
+    def validate_message_length(cls, v: str) -> str:
+        if len(v) > 1000:
+            raise ValueError("message must be at most 1000 characters")
+        return v
+
+
+@router.post("/admin/nudges/send-teams")
+async def send_teams_nudge(
+    body: SendTeamsNudgeRequest,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_admin),
+) -> dict[str, Any]:
+    """Post a message to the org's Teams webhook.
+
+    Guards: admin-only, enterprise plan with teams_notifications_enabled.
+    """
+    import httpx
+    import logging as _logging
+
+    _log = _logging.getLogger(__name__)
+
+    from app.db.models import (
+        AdminUser,
+        Organization,
+        OrgNotificationSettings,
+        SubscriptionPlan,
+    )
+    from sqlalchemy import select as _select
+
+    admin = await db.get(AdminUser, session.admin_user_id)
+    if admin is None or admin.organization_id is None:
+        raise HTTPException(status_code=403, detail="Admin has no associated organization")
+
+    org = await db.get(Organization, admin.organization_id)
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    plan = await db.get(SubscriptionPlan, org.plan_id)
+    if plan is None or not plan.teams_notifications_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "enterprise_only",
+                "message": "Teams notifications are only available on enterprise plans.",
+            },
+        )
+
+    result = await db.execute(
+        _select(OrgNotificationSettings).where(
+            OrgNotificationSettings.organization_id == org.id
+        )
+    )
+    settings_row = result.scalar_one_or_none()
+
+    if settings_row is None or not settings_row.teams_webhook_url:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "teams_not_configured",
+                "message": "No Teams webhook URL configured for this organization.",
+            },
+        )
+
+    payload = {
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "text": body.message,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(settings_row.teams_webhook_url, json=payload)
+            if resp.status_code >= 400:
+                return {"success": False, "error": f"Webhook returned HTTP {resp.status_code}"}
+    except httpx.TimeoutException:
+        return {"success": False, "error": "Request timed out after 10 seconds"}
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("Teams nudge delivery failed: %s", exc)
+        return {"success": False, "error": str(exc)}
+
+    return {"success": True}
+

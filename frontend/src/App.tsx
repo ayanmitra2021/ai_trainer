@@ -14,6 +14,10 @@ import ProfileSkillAssessmentPage from "./pages/ProfileSkillAssessmentPage";
 import CertDomainManagementPage from "./pages/CertDomainManagementPage";
 import MockExamPage from "./pages/MockExamPage";
 import GuidePage from "./pages/GuidePage";
+import NotificationConfigPage from "./pages/NotificationConfigPage";
+import ProductAdminLoginPage from "./pages/ProductAdminLoginPage";
+import ProductAdminPortal from "./pages/ProductAdminPortal";
+import ProductAdminChangePasswordPage from "./pages/ProductAdminChangePasswordPage";
 import { auth } from "./api";
 import { PortalLayout } from "./components/PortalLayout";
 import { ProviderUnavailableToast } from "./components/ProviderUnavailableToast/ProviderUnavailableToast";
@@ -58,7 +62,8 @@ function NavBar() {
     navigate("/login");
   };
 
-  if (!session) return null;
+  // Product admins have their own sidebar nav — no shared NavBar
+  if (!session || session.identity_type === "product_admin") return null;
 
   const isAdmin = session.identity_type === "admin";
 
@@ -88,6 +93,12 @@ function NavBar() {
                 Cert Domains
               </NavLink>
             </>
+          )}
+          {/* Configure tab — enterprise admins only */}
+          {session.plan_tier === "enterprise" && (
+            <NavLink to="/admin/configure" style={navLinkStyle}>
+              Configure
+            </NavLink>
           )}
         </>
       )}
@@ -166,6 +177,19 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Guard: only product_admin sessions pass through; others go to login. */
+function RequireProductAdmin({ children }: { children: React.ReactNode }) {
+  const { session, isLoading } = useSession();
+  if (isLoading) return null;
+  if (!session || session.identity_type !== "product_admin") {
+    return <Navigate to="/product-admin/login" replace />;
+  }
+  if (session.must_change_password) {
+    return <Navigate to="/product-admin/change-password" replace />;
+  }
+  return <>{children}</>;
+}
+
 /** Redirect practitioners to their profiles page (not the admin list). */
 function PractitionerHome() {
   const { session } = useSession();
@@ -173,6 +197,15 @@ function PractitionerHome() {
     return <Navigate to="/profile" replace />;
   }
   return <HomePage />;
+}
+
+/** Root handler: redirects product_admin to their portal; others see PractitionerHome. */
+function AppRoot() {
+  const { session } = useSession();
+  if (session?.identity_type === "product_admin") {
+    return <Navigate to="/product-admin" replace />;
+  }
+  return <PractitionerHome />;
 }
 
 function AppRoutes() {
@@ -186,13 +219,25 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/change-password" element={<ChangePasswordPage />} />
 
+        {/* Product Admin routes — completely separate from org-admin flow */}
+        <Route path="/product-admin/login" element={<ProductAdminLoginPage />} />
+        <Route path="/product-admin/change-password" element={<ProductAdminChangePasswordPage />} />
+        <Route
+          path="/product-admin/*"
+          element={
+            <RequireProductAdmin>
+              <ProductAdminPortal />
+            </RequireProductAdmin>
+          }
+        />
+
         {/* Authenticated routes with Portal Layout */}
         <Route
           path="/"
           element={
             <RequireAuth>
               <PortalLayout>
-                <PractitionerHome />
+                <AppRoot />
               </PortalLayout>
             </RequireAuth>
           }
@@ -276,6 +321,18 @@ function AppRoutes() {
             <RequireAdmin>
               <PortalLayout>
                 <CertDomainManagementPage />
+              </PortalLayout>
+            </RequireAdmin>
+          }
+        />
+
+        {/* Phase 22.10 — Enterprise notification configuration */}
+        <Route
+          path="/admin/configure"
+          element={
+            <RequireAdmin>
+              <PortalLayout>
+                <NotificationConfigPage />
               </PortalLayout>
             </RequireAdmin>
           }

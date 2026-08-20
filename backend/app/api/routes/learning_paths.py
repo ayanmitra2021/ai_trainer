@@ -31,6 +31,7 @@ from sqlalchemy.orm import selectinload
 
 from app.agents.base import ModelClient
 from app.agents.model_client import create_model_client
+from app.api.deps.plan import get_plan_enforcer
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
@@ -418,6 +419,10 @@ async def generate_learning_path(
     practitioner = await db.get(Practitioner, body.practitioner_id)
     if practitioner is None:
         raise HTTPException(status_code=404, detail="Practitioner not found")
+
+    # Phase 22: enforce plan learning path limit
+    enforcer = await get_plan_enforcer(body.practitioner_id, db)
+    await enforcer.check_learning_path_count(db, body.practitioner_id)
 
     model_client = create_model_client()
     response = await run_generate_learning_path(

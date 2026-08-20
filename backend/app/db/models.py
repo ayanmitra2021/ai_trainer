@@ -34,13 +34,22 @@ Phase 13.1: Altered: certification_skills (certification_domain_id, source).
 
 Phase 14.4: Altered: practitioner_profiles (domain_scoring_status).
             Altered: certification_domain_scores source constraint (added 'degraded_estimate').
+
+Phase 22 tables: subscription_plans, organizations, org_enrollment_codes,
+                 product_admin_users, org_notification_settings.
+             Altered: practitioners (organization_id FK).
+             Altered: admin_users (organization_id FK).
+             Altered: practitioner_profiles (deleted_at).
+             Altered: sessions (product_admin_user_id FK, identity_type constraint).
 """
 
 import uuid
 from datetime import UTC, date, datetime
 
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+# JSONB and UUID were previously imported here; sa.JSON is used instead for
+# cross-database compatibility (SQLite in tests, Postgres in production).
+# The migration DDL uses JSONB directly where performance matters.
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -85,6 +94,17 @@ class Practitioner(Base):
         server_default=sa.text("now()"),
         default=_now_utc,
         nullable=False,
+    )
+    # Phase 22: org membership — nullable FK to organizations
+    organization_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    organization: Mapped["Organization | None"] = relationship(
+        back_populates="practitioners",
+        foreign_keys="[Practitioner.organization_id]",
     )
 
     # Relationships (back-populated as later phases add tables)
@@ -1487,6 +1507,17 @@ class AdminUser(Base):
         default=_now_utc,
         nullable=False,
     )
+    # Phase 22: org membership — nullable FK to organizations
+    organization_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    organization: Mapped["Organization | None"] = relationship(
+        back_populates="admin_users",
+        foreign_keys="[AdminUser.organization_id]",
+    )
 
     sessions: Mapped[list["Session"]] = relationship(
         back_populates="admin_user", cascade="all, delete-orphan"
@@ -1545,16 +1576,23 @@ class Session(Base):
         default=_now_utc,
         nullable=False,
     )
-    # None for practitioners (no expiry); set to created_at + timeout for admins
+    # None for practitioners (no expiry); set to created_at + timeout for admins / product_admins
     expires_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
+    )
+    # Phase 22: product admin sessions
+    product_admin_user_id: Mapped[str | None] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("product_admin_users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
 
     admin_user: Mapped["AdminUser | None"] = relationship(back_populates="sessions")
 
     __table_args__ = (
         sa.CheckConstraint(
-            "identity_type IN ('practitioner','admin')",
+            "identity_type IN ('practitioner','admin','product_admin')",
             name="ck_sessions_identity_type",
         ),
     )
@@ -1633,6 +1671,10 @@ class PractitionerProfile(Base):
         server_default=sa.text("now()"),
         default=_now_utc,
         nullable=False,
+    )
+    # Phase 22: soft-delete — set to now() instead of deleting the row
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
     )
 
     practitioner: Mapped["Practitioner"] = relationship(back_populates="profiles")
@@ -1847,7 +1889,7 @@ class ByteSizedLesson(Base):
     target_pct: Mapped[float] = mapped_column(sa.Float, nullable=False, server_default="0.85", default=0.85)
     what_missing: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     content_md: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    external_links: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    external_links: Mapped[list | None] = mapped_column(sa.JSON, nullable=True)
     estimated_read_minutes: Mapped[int | None] = mapped_column(sa.SmallInteger, nullable=True)
     path_generation_seq: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     generation_status: Mapped[str] = mapped_column(
@@ -1880,3 +1922,161 @@ class LessonRead(Base):
     )
 
     lesson: Mapped["ByteSizedLesson"] = relationship(back_populates="reads")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Phase 22 — Multi-Tenant SaaS tables
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+class SubscriptionPlan(Base):
+    """Tiered subscription plan — one row per plan SKU."""
+
+    __tablename__ = "subscription_plans"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # free | paid | enterprise
+    tier: Mapped[str] = mapped_column(sa.String(20), nullable=False)
+    max_profiles_per_practitioner: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    max_learning_paths: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    max_mock_exams_per_profile: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    max_practitioners_per_org: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    allow_cert_recycling: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    nudges_enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    teams_notifications_enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+    )
+
+    organizations: Mapped[list["Organization"]] = relationship(back_populates="plan")
+
+    __table_args__ = (
+        sa.CheckConstraint("tier IN ('free','paid','enterprise')", name="ck_subscription_plans_tier"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<SubscriptionPlan id={self.id!r} name={self.name!r} tier={self.tier!r}>"
+
+
+class Organization(Base):
+    """A tenant org — maps practitioners and admins to a subscription plan."""
+
+    __tablename__ = "organizations"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    plan_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("subscription_plans.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    billing_email: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+    )
+
+    plan: Mapped["SubscriptionPlan"] = relationship(back_populates="organizations")
+    enrollment_codes: Mapped[list["OrgEnrollmentCode"]] = relationship(
+        back_populates="organization", cascade="all, delete-orphan"
+    )
+    notification_settings: Mapped["OrgNotificationSettings | None"] = relationship(
+        back_populates="organization", uselist=False, cascade="all, delete-orphan"
+    )
+    practitioners: Mapped[list["Practitioner"]] = relationship(
+        back_populates="organization", foreign_keys="[Practitioner.organization_id]"
+    )
+    admin_users: Mapped[list["AdminUser"]] = relationship(
+        back_populates="organization", foreign_keys="[AdminUser.organization_id]"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Organization id={self.id!r} name={self.name!r}>"
+
+
+class OrgEnrollmentCode(Base):
+    """One-time-use enrollment code for joining an organization."""
+
+    __tablename__ = "org_enrollment_codes"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    organization_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    code: Mapped[str] = mapped_column(sa.String(16), nullable=False, unique=True)
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+    )
+
+    organization: Mapped["Organization"] = relationship(back_populates="enrollment_codes")
+
+    __table_args__ = (
+        sa.CheckConstraint("length(code) = 16", name="ck_org_enrollment_codes_length"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<OrgEnrollmentCode id={self.id!r} org={self.organization_id!r}>"
+
+
+class ProductAdminUser(Base):
+    """Super-admin who manages the entire platform — separate from per-org AdminUser."""
+
+    __tablename__ = "product_admin_users"
+
+    id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(
+        sa.String(255), nullable=False, unique=True, index=True
+    )
+    password_hash: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    first_name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
+    must_change_password: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    # Phase 22 follow-up: 30-day rotation policy.  Set to now() on every
+    # successful change-password call.  NULL = never changed voluntarily
+    # (seeded or first-login flow not yet completed).
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<ProductAdminUser id={self.id!r} email={self.email!r}>"
+
+
+class OrgNotificationSettings(Base):
+    """Microsoft Teams / email notification settings per organization — Phase 22."""
+
+    __tablename__ = "org_notification_settings"
+
+    organization_id: Mapped[str] = mapped_column(
+        sa.String(36),
+        sa.ForeignKey("organizations.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    teams_webhook_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    teams_channel_name: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    email_enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+    )
+
+    organization: Mapped["Organization"] = relationship(back_populates="notification_settings")
+
+    def __repr__(self) -> str:
+        return f"<OrgNotificationSettings org={self.organization_id!r}>"

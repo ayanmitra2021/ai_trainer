@@ -23,6 +23,7 @@ from app.api.deps.session import (
     require_admin_or_leadership,
     require_any_authenticated,
     require_practitioner,
+    require_product_admin,
 )
 from app.db.models import Base
 from tests.fixtures.stub_claude_client import StubClaudeClient
@@ -181,6 +182,7 @@ def apply_admin_auth_overrides(app_instance, admin_info: SessionInfo) -> None:
     app_instance.dependency_overrides[require_admin] = lambda: admin_info
     app_instance.dependency_overrides[require_admin_or_leadership] = lambda: admin_info
     app_instance.dependency_overrides[require_practitioner] = lambda: admin_info
+    app_instance.dependency_overrides[require_product_admin] = lambda: admin_info
 
 
 def apply_leadership_auth_overrides(app_instance, leadership_info: SessionInfo) -> None:

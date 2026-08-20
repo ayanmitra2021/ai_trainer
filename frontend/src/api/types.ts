@@ -290,6 +290,8 @@ export interface PractitionerLoginRequest {
   role?: string;
   practice?: string;
   seniority_level?: string;
+  /** Phase 22: optional enrollment code to join a specific org at first login. */
+  enrollment_code?: string;
 }
 
 export interface PractitionerLookupResponse {
@@ -321,7 +323,7 @@ export interface AdminLoginResponse {
 export type LoginResponse = PractitionerLoginResponse | AdminLoginResponse;
 
 export interface MeResponse {
-  identity_type: "practitioner" | "admin";
+  identity_type: "practitioner" | "admin" | "product_admin";
   first_name: string;
   practitioner_id?: string;
   admin_role?: "admin" | "leadership";
@@ -330,6 +332,8 @@ export interface MeResponse {
   active_certification_code?: string;
   /** Phase 9.3: true when the active profile has been locked (skill-ratings saved). */
   active_profile_is_locked?: boolean;
+  /** Phase 22: subscription plan tier for the org this session belongs to. */
+  plan_tier?: "free" | "paid" | "enterprise" | null;
 }
 
 export interface ChangePasswordRequest {
@@ -719,4 +723,101 @@ export interface ByteSizedLesson {
 export interface LessonListResponse {
   current: ByteSizedLesson[];
   history: ByteSizedLesson[];
+}
+
+// ── Phase 22: Product Admin types ─────────────────────────────────────────────
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  tier: "free" | "paid" | "enterprise";
+  max_profiles_per_practitioner: number;
+  max_learning_paths: number;
+  max_mock_exams_per_profile: number;
+  max_practitioners_per_org: number;
+  allow_cert_recycling: boolean;
+  nudges_enabled: boolean;
+  teams_notifications_enabled: boolean;
+  is_active: boolean;
+  org_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  plan_id: string;
+  plan_name?: string;
+  plan_tier?: string;
+  billing_email?: string | null;
+  is_active: boolean;
+  practitioner_count?: number;
+  enrollment_code?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductAdminLoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface ProductAdminLoginResponse {
+  identity_type: "product_admin";
+  first_name: string;
+  must_change_password: boolean;
+}
+
+export interface ProductAdminPractitioner {
+  id: string;
+  name: string;
+  email: string;
+  org_name: string;
+  plan_tier: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface UsageAnalytics {
+  by_plan_tier: Array<{
+    tier: string;
+    plan_name: string;
+    org_count: number;
+    practitioner_count: number;
+    active_practitioner_count: number;
+    total_quiz_attempts: number;
+    total_lesson_reads: number;
+    total_mock_exams_completed: number;
+  }>;
+}
+
+export interface AgentAnalytics {
+  period_days: number;
+  by_agent: Array<{
+    agent_name: string;
+    run_count: number;
+    success_count: number;
+    failure_count: number;
+    avg_latency_ms: number;
+    p95_latency_ms: number;
+  }>;
+}
+
+export interface PlanDistribution {
+  plan_distribution: Array<{
+    tier: string;
+    plan_name: string;
+    org_count: number;
+    practitioner_count: number;
+  }>;
+  new_enrollments_last_30d: number;
+}
+
+export interface OrgNotificationSettings {
+  organization_id: string;
+  teams_webhook_url?: string | null;
+  teams_channel_name?: string | null;
+  email_enabled: boolean;
+  updated_at: string;
 }

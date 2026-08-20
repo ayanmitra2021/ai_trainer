@@ -62,6 +62,10 @@ export default function LoginPage() {
   const [prefilled, setPrefilled] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
 
+  // Enrollment code (Phase 22) — collapsible
+  const [showCodeField, setShowCodeField] = useState(false);
+  const [enrollmentCode, setEnrollmentCode] = useState("");
+
   // Admin fields
   const [adminEmail, setAdminEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -107,6 +111,7 @@ export default function LoginPage() {
         role,
         practice,
         seniority_level: seniorityLevel,
+        ...(enrollmentCode.trim() ? { enrollment_code: enrollmentCode.trim().toUpperCase() } : {}),
       });
       await refresh();
       navigate(`/practitioners/${res.practitioner_id}/skills`);
@@ -288,6 +293,47 @@ export default function LoginPage() {
               onChange={(e) => setSeniorityLevel(e.target.value)}
               placeholder="e.g. Senior, Manager, Director"
             />
+
+            {/* ── Enrollment code (collapsible) ── */}
+            <div style={{ marginTop: "0.25rem", marginBottom: "0.75rem" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCodeField((v) => !v);
+                  if (showCodeField) setEnrollmentCode("");
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  fontSize: "0.8125rem",
+                  color: "var(--primary)",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  fontFamily: "inherit",
+                }}
+              >
+                {showCodeField ? "▲ Hide enrollment code" : "▼ Have an enrollment code?"}
+              </button>
+              {showCodeField && (
+                <div style={{ marginTop: "0.5rem" }}>
+                  <label style={labelStyle}>Enrollment code</label>
+                  <input
+                    style={inputStyle}
+                    value={enrollmentCode}
+                    onChange={(e) => setEnrollmentCode(e.target.value)}
+                    placeholder="e.g. ABCD1234EFGH5678"
+                    maxLength={16}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "-0.5rem 0 0" }}>
+                    Enter the 16-character code from your organisation administrator to join their workspace.
+                    Leave blank to continue on the free plan.
+                  </p>
+                </div>
+              )}
+            </div>
 
             <button style={btnStyle} type="submit" disabled={loading}>
               {loading ? "Signing in…" : "Continue"}

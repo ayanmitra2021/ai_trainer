@@ -192,18 +192,18 @@ Testing philosophy lives in `docs/coding-guidelines.md` — short version: every
 - [ ] 21.6 Guide update — update "Managing Practitioners" section in `GuidePage.tsx` with new features
 
 **Phase 22 — Multi-Tenant SaaS Productization**
-- [ ] 22.1 DB — multi-tenant schema: `subscription_plans`, `organizations`, `org_enrollment_codes`, `product_admin_users`; soft-delete on profiles; `organization_id` on practitioners + admin users; Alembic migration
-- [ ] 22.2 Product Admin auth — `POST /product-admin/login` + session handling; separate from org-admin
-- [ ] 22.3 Subscription plan management API — CRUD for plans + parameters (profile limit, quiz-path limit, mock-exam limit, nudges flag, practitioner-cap)
-- [ ] 22.4 Organization management API — CRUD for orgs; enrollment code generation; plan assignment; enterprise sub-tier
-- [ ] 22.5 Enrollment + registration flow — code validation at practitioner login; auto-enroll in free plan; soft-delete cert recycling guard
-- [ ] 22.6 Plan enforcement middleware — API-layer checks for profile count, learning-path count, mock-exam count, cert recycling; plan-aware HTTP 402 errors with clear client messages
-- [ ] 22.7 Product Admin Portal UI — login page, dashboard, Plans tab (CRUD), Organizations tab, code management, Usage Analytics tab, Earnings placeholder tab
-- [ ] 22.8 Product Admin analytics backend — usage by plan tier, agent-run stats (count / latency / failures), org enrollment trends
-- [ ] 22.9 Adoption tab plan gating — Free/Paid: hide nudge messages section; Enterprise: full access including nudge tab
-- [ ] 22.10 Enterprise notification config — `org_notification_settings` table; Teams webhook + email config; admin "Configure" tab (enterprise orgs only)
-- [ ] 22.11 Enterprise nudge delivery — Teams webhook send path in `nudge_campaign` workflow; Teams section in admin nudge tab; email for all enterprise nudges
-- [ ] 22.12 Guide update — Phase 22 sections in `GuidePage.tsx` (Plans, Enrollment, Product Admin, Enterprise features)
+- [x] 22.1 DB — multi-tenant schema: `subscription_plans`, `organizations`, `org_enrollment_codes`, `product_admin_users`; soft-delete on profiles; `organization_id` on practitioners + admin users; Alembic migration
+- [x] 22.2 Product Admin auth — `POST /product-admin/login` + session handling; separate from org-admin
+- [x] 22.3 Subscription plan management API — CRUD for plans + parameters (profile limit, quiz-path limit, mock-exam limit, nudges flag, practitioner-cap)
+- [x] 22.4 Organization management API — CRUD for orgs; enrollment code generation; plan assignment; enterprise sub-tier
+- [x] 22.5 Enrollment + registration flow — code validation at practitioner login; auto-enroll in free plan; soft-delete cert recycling guard
+- [x] 22.6 Plan enforcement middleware — API-layer checks for profile count, learning-path count, mock-exam count, cert recycling; plan-aware HTTP 402 errors with clear client messages
+- [x] 22.7 Product Admin Portal UI — login page, dashboard, Plans tab (CRUD), Organizations tab, code management, Usage Analytics tab, Earnings placeholder tab
+- [x] 22.8 Product Admin analytics backend — usage by plan tier, agent-run stats (count / latency / failures), org enrollment trends
+- [x] 22.9 Adoption tab plan gating — Free/Paid: hide nudge messages section; Enterprise: full access including nudge tab
+- [x] 22.10 Enterprise notification config — `org_notification_settings` table; Teams webhook + email config; admin "Configure" tab (enterprise orgs only)
+- [x] 22.11 Enterprise nudge delivery — Teams webhook send path in `nudge_campaign` workflow; Teams section in admin nudge tab; email for all enterprise nudges
+- [x] 22.12 Guide update — Phase 22 sections in `GuidePage.tsx` (Plans, Enrollment, Product Admin, Enterprise features)
 
 ---
 

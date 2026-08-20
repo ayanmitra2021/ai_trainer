@@ -13,16 +13,36 @@ import AdoptionTrendChart from "../AdoptionTrendChart";
 import MockExamHistory from "../MockExamHistory/MockExamHistory";
 import NudgeInbox from "../NudgeInbox";
 import ProgressTrendChart from "../ProgressTrendChart";
+import { useSession } from "../../context/SessionContext";
 
 interface Props {
   practitionerId: string;
 }
 
 export default function TrendDashboard({ practitionerId }: Props) {
+  const { session } = useSession();
+  const isEnterprise = session?.plan_tier === "enterprise";
+
   return (
     <div>
       {/* ── 1. Messages ─────────────────────────────────────────────────── */}
-      <NudgeInbox practitionerId={practitionerId} />
+      {isEnterprise ? (
+        <NudgeInbox practitionerId={practitionerId} />
+      ) : (
+        <div
+          style={{
+            padding: "1.5rem",
+            background: "rgba(100,116,139,0.08)",
+            border: "1px solid var(--border)",
+            borderRadius: 10,
+            textAlign: "center",
+            color: "var(--text-muted)",
+            marginBottom: "1.5rem",
+          }}
+        >
+          🔒 Nudge messages are available on the Enterprise plan. Contact your administrator to upgrade.
+        </div>
+      )}
 
       {/* ── 2. Skill calibration (self-assessed vs. quiz performance) ───── */}
       <AdoptionTrendChart practitionerId={practitionerId} />

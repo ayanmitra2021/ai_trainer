@@ -159,3 +159,9 @@ app.include_router(cert_discovery.router, prefix="/api/v1")
 from app.api.routes import byte_sized_lessons
 
 app.include_router(byte_sized_lessons.router, prefix="/api/v1")
+
+# ── Phase 22 routes ────────────────────────────────────────────────────────────
+from app.api.routes import product_admin, notification_settings
+
+app.include_router(product_admin.router, prefix="/api/v1")
+app.include_router(notification_settings.router, prefix="/api/v1")
