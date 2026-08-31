@@ -1,0 +1,243 @@
+schema_version: '1.0'
+project: mastery-pulse-frontend-uiux-audit
+complexity: prod
+archetype: enterprise-internal-webapp
+domain_ids:
+- ux-accessibility
+- ux-design-consistency
+- ux-responsive
+- ux-performance
+- ux-information-architecture
+- ux-interaction-patterns
+- ux-component-system
+archetypes:
+- enterprise-internal-webapp
+started_at: '2026-08-31'
+pre_resolved:
+- slug_id: css-design-token-system
+  value: CSS custom properties with full light+dark mode — ALIGNED
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: frontend/src/index.css:17-99'
+- slug_id: no-browser-storage-policy
+  value: Zero localStorage/sessionStorage — ALIGNED
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: frontend/src/context/SessionContext.tsx'
+- slug_id: semantic-html-structure
+  value: nav/main/h1-h3/button/form semantic HTML in place — ALIGNED
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: frontend/src/App.tsx:71'
+- slug_id: tanstack-query-server-state
+  value: TanStack Query v5 for all server state, no raw fetch in components — ALIGNED
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: frontend/src/hooks/index.ts'
+- slug_id: loading-error-empty-states
+  value: Spinner, empty-state, error message patterns exist globally — ALIGNED (partial)
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: frontend/src/index.css:229-239'
+decisions:
+- slug_id: a11y-form-label-binding
+  area: ux-accessibility
+  question: LoginPage inputs lack id/htmlFor binding — not programmatically associated.
+    Fix?
+  options_presented: []
+  options_eliminated: []
+  response: Add id+htmlFor pairs; add aria-describedby linking inputs to error messages
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: LoginPage.tsx:213-295
+- slug_id: a11y-aria-expanded
+  area: ux-accessibility
+  question: Disclosure buttons lack aria-expanded/aria-controls (AnsweredAccordion,
+    enrollment toggle). Fix?
+  options_presented: []
+  options_eliminated: []
+  response: Add aria-expanded={isOpen} and aria-controls=panel-id to all disclosure
+    buttons
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: QuizRunner.tsx:226-242, LoginPage.tsx:298-317
+- slug_id: a11y-skip-to-main
+  area: ux-accessibility
+  question: No skip-to-main link — WCAG 2.4.1 violation. Add visually-hidden skip
+    link?
+  options_presented: []
+  options_eliminated: []
+  response: 'Add visually-hidden skip link before NavBar targeting #main-content anchor'
+  response_type: single-select
+  source: inferred
+  activates: []
+  notes: App.tsx:248
+- slug_id: a11y-live-regions
+  area: ux-accessibility
+  question: Error messages and loading states have no aria-live or role=status. Screen
+    readers can't announce them. Fix?
+  options_presented: []
+  options_eliminated: []
+  response: Wrap errors in role=alert; wrap loading spinners in role=status aria-live=polite
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: LoginPage.tsx:194-207, App.tsx:199
+- slug_id: a11y-nav-landmark
+  area: ux-accessibility
+  question: NavBar <nav> has no aria-label — ambiguous landmark if multiple navs exist.
+    Add aria-label=Main navigation?
+  options_presented: []
+  options_eliminated: []
+  response: Add aria-label=Main navigation to <nav> in App.tsx:71
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: App.tsx:71
+- slug_id: design-inline-style-proliferation
+  area: ux-design-consistency
+  question: LoginPage defines its own inputStyle/labelStyle/btnStyle instead of using
+    global .form-control/.btn classes. Standardize?
+  options_presented: []
+  options_eliminated: []
+  response: Replace inline styles with global CSS classes; add missing utility classes
+    to index.css if needed
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: LoginPage.tsx:16-48
+- slug_id: design-portal-color-mismatch
+  area: ux-design-consistency
+  question: PortalLayout.tsx uses rgba(77,171,247,...) light-blue rings/glow — conflicts
+    with indigo/violet palette in index.css. Unify?
+  options_presented: []
+  options_eliminated: []
+  response: Update PortalLayout to use CSS variable --primary/--accent colors for
+    all ring and glow elements
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: PortalLayout.tsx:26-76 vs index.css:34-36
+- slug_id: perf-no-code-splitting
+  area: ux-performance
+  question: All 16 page components imported statically in App.tsx — no React.lazy()/Suspense,
+    no route-level code splitting. Heavy Three.js bundle loads on first paint. Add
+    lazy loading?
+  options_presented: []
+  options_eliminated: []
+  response: Wrap page imports in React.lazy(); add Suspense boundaries with fallback
+    spinners at Route level; consider dynamic import for Three.js
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: App.tsx:1-21, package.json three@0.168.0 + @react-three/fiber
+- slug_id: responsive-login-fixed-width
+  area: ux-responsive
+  question: LoginPage has fixed width 380px — no responsive behavior on small screens
+    or tablets. Make fluid?
+  options_presented: []
+  options_eliminated: []
+  response: Replace fixed width:380 with max-width:380px + width:100% + horizontal
+    padding for mobile
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: LoginPage.tsx:155-162
+- slug_id: responsive-navbar-no-mobile-menu
+  area: ux-responsive
+  question: NavBar has no hamburger menu or responsive collapse behavior — links overflow
+    on small screens. Add mobile nav?
+  options_presented: []
+  options_eliminated: []
+  response: Add hamburger icon + slide-out nav for viewports < 768px; collapse nav
+    links behind toggle
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: App.tsx:25-38
+- slug_id: ia-no-404-page
+  area: ux-information-architecture
+  question: Fallback route is <Navigate to='/' replace/> — users hitting a bad URL
+    are silently redirected with no explanation. Add a 404 Not Found page?
+  options_presented: []
+  options_eliminated: []
+  response: Create NotFoundPage.tsx with friendly message and back-to-home link; wire
+    as the catch-all Route element
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: App.tsx:392
+- slug_id: ia-no-breadcrumbs
+  area: ux-information-architecture
+  question: Deep routes (/practitioners/:id/skills, /profile/:profileId/skills) have
+    no breadcrumb trail. Practitioners lose orientation. Add breadcrumbs?
+  options_presented: []
+  options_eliminated: []
+  response: Add a reusable Breadcrumb component driven by route params; render inside
+    PortalLayout above page content
+  response_type: single-select
+  source: inferred
+  activates: []
+  notes: App.tsx:300-309
+- slug_id: interaction-hardcoded-error-colors
+  area: ux-interaction-patterns
+  question: 'LoginPage error state uses hardcoded #ef4444 / #fef2f2 instead of CSS
+    var(--danger). No dark-mode variant. Fix?'
+  options_presented: []
+  options_eliminated: []
+  response: Replace hardcoded hex with var(--danger) and var(--surface)/opacity-tinted
+    backgrounds; verify dark mode
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: LoginPage.tsx:196-200
+- slug_id: interaction-requireauth-loading-state
+  area: ux-interaction-patterns
+  question: RequireAuth loading state is a bare <div>Loading…</div> — no spinner,
+    no aria-live. Upgrade?
+  options_presented: []
+  options_eliminated: []
+  response: Replace with spinner + role=status aria-live=polite; match spinner style
+    in index.css
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: App.tsx:199
+- slug_id: i18n-readiness
+  area: ux-component-system
+  question: All UI strings are hardcoded English literals scattered across components.
+    No i18n library, no message catalog. Deloitte enterprise tools must support locale
+    switching. Add i18n infrastructure?
+  options_presented: []
+  options_eliminated: []
+  response: Add react-intl or similar; extract all user-visible strings into messages.ts;
+    wire IntlProvider; Deloitte standard is en-US with fallback
+  response_type: single-select
+  source: inferred
+  activates: []
+  notes: LoginPage.tsx, QuizRunner.tsx, App.tsx (numerous hardcoded strings)
+deferred_ideas: []
+constraint_audit:
+  passed: false
+  violations:
+  - 'wcag-2.1-aa: missing label binding (2.4.6), no skip link (2.4.1), no aria-expanded
+    (4.1.2), no live regions (4.1.3)'
+  - 'mobile-responsive: fixed 380px login width, no hamburger nav'
+  - 'performance-budget: no code splitting, Three.js >500KB'
+  - 'design-token-consistency: PortalLayout uses hardcoded rgba(77,171,247) blues
+    not from CSS vars'
+  - 'error-state-ux: hardcoded hex colors in LoginPage errors'
+  passing:
+  - 'no-browser-storage: zero localStorage/sessionStorage confirmed'
+active_references:
+  computed_at: '2026-08-31'
+  guidance_references: []
+  domain_brief_paths: []
+  archetype_playbook_paths: []

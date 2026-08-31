@@ -1,0 +1,36 @@
+raw_statement: |
+  Please investigate the frontend implementation and let me know if it aligns with
+  the guidelines and recommendations from Deloitte best practices on UI/UX design.
+
+improvement_type: enhancement  # brownfield — auditing existing code for UX compliance
+
+target_areas:
+  - accessibility              # WCAG 2.1 AA compliance — forms, ARIA, focus management
+  - design_consistency         # CSS variable usage, inline style vs. CSS class discipline
+  - responsive_design          # mobile-first, breakpoints, flexible layouts
+  - performance                # code splitting, lazy loading, bundle size
+  - information_architecture   # navigation, breadcrumbs, 404 handling, routing clarity
+  - interaction_patterns       # loading states, error states, empty states, feedback loops
+  - component_reusability      # inline styles vs. shared classes, design system discipline
+
+constraints:
+  - no_browser_storage         # no localStorage/sessionStorage — existing hard policy
+  - existing_tech_stack        # React 18 + TypeScript + Vite; no framework swap
+  - httponly_session_cookie     # auth pattern must remain unchanged
+  - tanstack_query_for_state   # server state pattern must remain unchanged
+  - no_inline_secrets          # env-based config, no hardcoded values
+
+integration_surface: 1  # only the backend REST API; no third-party UX SDKs yet
+
+process_flow: |
+  1. User opens app → NavBar renders (sticky, role-aware)
+  2. Login → SessionContext loads /auth/me → routing decides destination
+  3. PortalLayout wraps all authenticated pages (3D background + rings)
+  4. Practitioners: Profile → Skills Dashboard → QuizRunner / SkillRadar / Charts
+  5. Admins: Practitioners list → Nudges → Observability
+  6. Product admins: separate portal with sidebar nav
+
+end_users:
+  - practitioners              # Deloitte staff using the learning platform
+  - admins_and_leadership      # org-level admins managing practitioners
+  - product_admins             # Mastery Pulse platform operators
