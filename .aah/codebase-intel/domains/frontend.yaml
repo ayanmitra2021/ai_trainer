@@ -1,0 +1,98 @@
+domain: "frontend"
+last_updated: "2026-08-31T00:00:00Z"
+last_updated_after_feature: "brownfield_import"
+
+narrative: |
+  The frontend is a React 18 + TypeScript single-page application built with Vite.
+  TanStack Query v5 manages all server state; there is a strict no-browser-storage policy
+  (no localStorage / sessionStorage anywhere). A Three.js / @react-three/fiber 3D portal
+  component is the primary UI shell. All API call logic is centralised in hooks/index.ts
+  (91 exported hooks) and type contracts in api/types.ts (86 type definitions) — both are
+  high-change-impact hotspots.
+
+source_files:
+  - path: "frontend/src/api/index.ts"
+    line_range: "1-100"
+    role: "Base HTTP client setup (fetch/axios config, base URL, cookie credentials)"
+  - path: "frontend/src/api/types.ts"
+    line_range: "1-300"
+    role: "All shared TypeScript types matching backend Pydantic schemas (86 symbols — hotspot)"
+  - path: "frontend/src/hooks/index.ts"
+    line_range: "1-500"
+    role: "TanStack Query hooks for all server state (91 symbols — hotspot)"
+  - path: "frontend/src/components/Portal3D/"
+    line_range: "N/A"
+    role: "Three.js 3D portal scene — main app shell"
+  - path: "frontend/src/components/PortalLayout/"
+    line_range: "N/A"
+    role: "Top-level layout wrapping 3D portal + navigation"
+  - path: "frontend/src/components/CertAdvisor/"
+    line_range: "N/A"
+    role: "Cert recommendation questionnaire UI"
+  - path: "frontend/src/components/CertDomainGapChart/"
+    line_range: "N/A"
+    role: "Domain readiness bar chart (exam domain scores)"
+  - path: "frontend/src/components/AdoptionTrendChart/"
+    line_range: "N/A"
+    role: "Mastery vs adoption trend chart"
+  - path: "frontend/src/components/NudgeInbox/"
+    line_range: "N/A"
+    role: "In-app nudge notification inbox"
+  - path: "frontend/src/pages/"
+    line_range: "N/A"
+    role: "React Router page components — one per route"
+
+flow_traces:
+  - name: "data_fetch_pattern"
+    description: "How components read server state"
+    steps:
+      - "Component imports a hook from frontend/src/hooks/index.ts"
+      - "Hook wraps useQuery() or useMutation() from TanStack Query"
+      - "useQuery calls api/index.ts fetch wrapper with credentials: 'include' (sends session cookie)"
+      - "TanStack Query caches result; re-fetches on stale/focus/refetch triggers"
+      - "Component renders from query.data — no local state for server data"
+
+  - name: "auth_flow_frontend"
+    description: "How the frontend handles login and session"
+    steps:
+      - "User submits login form → POST /api/v1/auth/practitioner-login"
+      - "Server sets HttpOnly session-id cookie in response"
+      - "Subsequent fetch calls include cookie automatically (credentials: 'include')"
+      - "On 401 response: invalidate query cache, redirect to login"
+
+  - name: "build_and_deploy"
+    description: "Frontend build pipeline"
+    steps:
+      - "npm run build: tsc -b (type check) then vite build"
+      - "postbuild: copies dist/index.html to dist/404.html for GitHub Pages SPA routing"
+      - "gh-pages deploys dist/ to GitHub Pages"
+
+integration_points:
+  - target: "backend API"
+    mechanism: "REST/JSON via fetch with credentials: 'include'; HttpOnly cookie for session"
+    direction: "outbound"
+  - target: "Three.js / WebGL"
+    mechanism: "@react-three/fiber renders Three.js scene inside React component tree"
+    direction: "internal"
+
+known_issues:
+  - description: "No localStorage/sessionStorage policy means all state must survive page reload via the backend"
+    severity: "medium"
+    workaround: "All user preferences and state are stored server-side; TanStack Query refetches on mount"
+  - description: "hooks/index.ts (91 symbols) and api/types.ts (86 symbols) are the highest fan-out files — changes here affect every component"
+    severity: "medium"
+    workaround: "When adding a new API endpoint, add its type to api/types.ts and hook to hooks/index.ts following existing patterns"
+  - description: "Three.js 3D portal adds significant bundle size; no code-splitting in current config"
+    severity: "low"
+    workaround: "Acceptable for current user base; consider dynamic import if initial load time becomes an issue"
+
+patterns:
+  - name: "tanstack-query-for-all-server-state"
+    description: "Every piece of server data lives in a useQuery or useMutation hook in hooks/index.ts — no raw fetch calls in components"
+    example_file: "frontend/src/hooks/index.ts:1"
+  - name: "type-matching-backend-schemas"
+    description: "api/types.ts mirrors backend Pydantic schemas exactly; when a backend schema changes, api/types.ts must be updated in the same change"
+    example_file: "frontend/src/api/types.ts:1"
+  - name: "credentials-include-fetch"
+    description: "All fetch calls use credentials: 'include' to send the HttpOnly session cookie cross-origin"
+    example_file: "frontend/src/api/index.ts:1"

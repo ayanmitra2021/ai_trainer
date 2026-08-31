@@ -1,0 +1,110 @@
+domain: "api"
+last_updated: "2026-08-31T00:00:00Z"
+last_updated_after_feature: "brownfield_import"
+
+narrative: |
+  The api domain covers FastAPI route modules, auth dependencies, and request/response Pydantic schemas.
+  16 router modules are registered in main.py under /api/v1/ prefix; all are phase-labelled comments.
+  Auth uses an HttpOnly session-cookie pattern with server-side Session rows; identity_type discriminates
+  between practitioner, admin, and product_admin identities. CORS is configured with explicit origins
+  (allow_credentials=True requires explicit origin list, not '*').
+
+source_files:
+  - path: "backend/app/main.py"
+    line_range: "1-168"
+    role: "FastAPI app init, CORS middleware, global exception handlers, all 16 router includes"
+  - path: "backend/app/api/deps/session.py"
+    line_range: "1-120"
+    role: "get_session(), require_admin(), require_product_admin() FastAPI dependencies; session expiry check"
+  - path: "backend/app/api/deps/plan.py"
+    line_range: "1-50"
+    role: "Learning plan dependencies"
+  - path: "backend/app/api/routes/auth.py"
+    line_range: "1-350"
+    role: "Practitioner login (upsert), admin login (bcrypt verify), logout, /me, enrollment-info"
+  - path: "backend/app/api/routes/practitioners.py"
+    line_range: "1-200"
+    role: "Practitioner CRUD + deactivation (Phase 22 org-scoped)"
+  - path: "backend/app/api/routes/profiles.py"
+    line_range: "1-250"
+    role: "Profile management + skill assessments + lock workflow"
+  - path: "backend/app/api/routes/nudges.py"
+    line_range: "1-400"
+    role: "Nudge inbox, approval, campaign management + aggregate KPI computation (god node)"
+  - path: "backend/app/api/routes/product_admin.py"
+    line_range: "1-350"
+    role: "Product-admin tier: org/plan CRUD, practitioner deactivation, org suspension (Phase 22)"
+  - path: "backend/app/api/routes/observability.py"
+    line_range: "1-100"
+    role: "agent_runs and workflow_runs monitoring dashboard queries"
+
+flow_traces:
+  - name: "practitioner_login_flow"
+    description: "How a practitioner logs in and gets a session cookie"
+    steps:
+      - "POST /api/v1/auth/practitioner-login with {name, email, role, practice, enrollment_code}"
+      - "auth.py: look up Practitioner by email; upsert (insert or update name/role/practice)"
+      - "If enrollment_code provided: validate OrgEnrollmentCode, assign organization_id"
+      - "Check organization.is_active + subscription plan tier for suspended/deactivated orgs"
+      - "Create Session row (identity_type='practitioner', practitioner_id=...)"
+      - "Set HttpOnly cookie session_id=<session.id> on Response"
+      - "Return PractitionerLoginResponse with identity info"
+
+  - name: "admin_login_flow"
+    description: "How an admin logs in with password"
+    steps:
+      - "POST /api/v1/auth/admin-login with {email, password}"
+      - "auth.py: fetch AdminUser by email"
+      - "bcrypt.checkpw(password, admin.password_hash)"
+      - "Create Session row (identity_type='admin', admin_user_id=..., expires_at=now+timeout)"
+      - "Set HttpOnly cookie; return AdminLoginResponse"
+
+  - name: "session_guard_check"
+    description: "How session guards validate incoming requests"
+    steps:
+      - "api/deps/session.py: read session_id from HttpOnly cookie"
+      - "SELECT Session WHERE id=session_id"
+      - "If admin/product_admin: check expires_at > now(); delete row + raise 401 if expired"
+      - "Return SessionInfo(identity_type, practitioner_id or admin_user_id)"
+
+  - name: "cors_exception_handler"
+    description: "Why unhandled exceptions must be caught inside CORSMiddleware"
+    steps:
+      - "main.py: CORSMiddleware added BEFORE routes"
+      - "Exception raised inside route propagates to Starlette's outermost ServerErrorMiddleware"
+      - "Without @app.exception_handler(Exception): 500 response generated OUTSIDE CORS layer"
+      - "Browser sees CORS error instead of 500 — misleading"
+      - "Catch-all handler in main.py runs INSIDE CORS layer, adds Access-Control-Allow-Origin header"
+
+integration_points:
+  - target: "db (AsyncSession)"
+    mechanism: "Depends(get_db) injects session into every route"
+    direction: "inbound"
+  - target: "agents / workflows"
+    mechanism: "Routes call workflow functions or agent.run() directly for LLM-backed operations"
+    direction: "outbound"
+  - target: "frontend"
+    mechanism: "REST/JSON over HTTPS; HttpOnly cookie for session; CORS configured with explicit origins"
+    direction: "inbound"
+
+known_issues:
+  - description: "nudges._get_aggregate_kpi is a god node (out_degree=19) — computes all KPIs in one function"
+    severity: "medium"
+    workaround: "Acceptable for current scale; refactor if query complexity grows or performance degrades"
+  - description: "Practitioner sessions never expire (expires_at=null) — long-lived sessions"
+    severity: "medium"
+    workaround: "Current design decision; add session rotation or max-age if security policy requires it"
+  - description: "CORS allow_credentials=True requires explicit origin list — '*' won't work"
+    severity: "high"
+    workaround: "Always set ALLOWED_ORIGINS in .env; never set to '*' when credentials are enabled"
+
+patterns:
+  - name: "session-cookie-auth"
+    description: "Browser sends only opaque session UUID cookie; server validates against sessions table and returns SessionInfo with identity_type discriminator"
+    example_file: "backend/app/api/deps/session.py:1"
+  - name: "route-per-domain"
+    description: "Each API domain gets its own router module in api/routes/; registered in main.py with phase-boundary comments"
+    example_file: "backend/app/main.py:114"
+  - name: "error-inside-cors"
+    description: "All exception handlers registered AFTER CORSMiddleware to ensure CORS headers are always present on error responses"
+    example_file: "backend/app/main.py:58"

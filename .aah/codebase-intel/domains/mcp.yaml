@@ -1,0 +1,48 @@
+domain: "mcp"
+last_updated: "2026-08-31T00:00:00Z"
+last_updated_after_feature: "brownfield_import"
+
+narrative: |
+  The mcp domain contains two local stdio MCP servers that adapt internal data sources for
+  LLM agents. learning_portal/server.py exposes learning content for CurriculumPlanner;
+  usage_signals/server.py ingests Claude Code session and git activity for UsageSignal agent.
+  Both run as subprocesses via the anthropic[mcp] client-side stdio pattern — they require
+  no public HTTPS endpoint, unlike hosted MCP connectors.
+
+source_files:
+  - path: "backend/app/mcp_servers/learning_portal/server.py"
+    line_range: "1-150"
+    role: "MCP server exposing learning portal content as tools/resources"
+  - path: "backend/app/mcp_servers/usage_signals/server.py"
+    line_range: "1-150"
+    role: "MCP server normalising Claude Code session + git commit signals"
+
+flow_traces:
+  - name: "mcp_stdio_invocation"
+    description: "How agents interact with local MCP servers"
+    steps:
+      - "Agent configured with mcp_server_params pointing to server.py"
+      - "base.py spawns server subprocess via anthropic[mcp] client-side stdio pattern"
+      - "Agent calls tools/resources exposed by the MCP server as part of its LLM context"
+      - "MCP server subprocess exits after the agent call completes"
+
+integration_points:
+  - target: "anthropic[mcp] SDK"
+    mechanism: "stdio subprocess spawned by the MCP client pattern; no HTTP endpoint needed"
+    direction: "inbound"
+  - target: "usage_signal agent"
+    mechanism: "usage_signals MCP server provides Claude Code + git data to UsageSignal agent"
+    direction: "outbound"
+  - target: "curriculum_planner agent"
+    mechanism: "learning_portal MCP server provides content catalogue to CurriculumPlanner"
+    direction: "outbound"
+
+known_issues:
+  - description: "MCP servers must run locally (stdio) — hosted MCP connectors require public HTTPS endpoints these adapters don't have"
+    severity: "high"
+    workaround: "Always use the client-side stdio pattern via anthropic[mcp]; never configure mcp_toolset/mcp_servers API params for these adapters"
+
+patterns:
+  - name: "local-stdio-mcp"
+    description: "MCP servers registered as subprocesses via mcp_server_params, not as cloud-hosted tools — enables local data sources without public endpoints"
+    example_file: "backend/app/mcp_servers/learning_portal/server.py:1"

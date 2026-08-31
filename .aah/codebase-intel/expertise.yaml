@@ -1,0 +1,157 @@
+version: 1
+project_id: "ai_trainer"
+last_updated: "2026-08-31T00:00:00Z"
+last_updated_after_feature: null
+
+tech_patterns:
+  multi_tier_llm_client:
+    tool: "anthropic + openai SDKs via MultiTierModelClient"
+    pattern: "3-tier fallback chain (NVIDIA Ultra → Lightning → Haiku in NVIDIA mode; Haiku → Ultra → Lightning in ANTHROPIC mode) with NvidiaCircuitBreaker that trips after 5 consecutive both-NVIDIA-fail calls."
+    injection: "call create_model_client() — NEVER create_haiku_only_client() — and pass result to Agent.run()"
+
+  structured_outputs:
+    tool: "anthropic messages.parse() / NVIDIA NIM JSON mode"
+    pattern: "Every agent defines a Pydantic output_model; parse() enforces the schema. NVIDIA path strips <think> blocks and normalises trailing ':' in JSON keys before Pydantic validation."
+    injection: "Agent subclass sets output_model = SomeOutput; base.py calls client.messages.parse(output_format=output_model)"
+
+  prompt_file_pattern:
+    tool: "pathlib + markdown files"
+    pattern: "Each agent's system prompt lives at agents/prompts/<agent_name>.md, loaded once at Agent instantiation via PROMPTS_DIR / f'{self.name}.md'. Never inline in Python."
+    injection: "base.py reads the file at __init__ time; subclasses set self.name matching the .md filename"
+
+  async_sqlalchemy:
+    tool: "SQLAlchemy 2.0 async + asyncpg / aiosqlite"
+    pattern: "All DB access via AsyncSession from get_db() dependency. Models use Mapped[] + mapped_column(). sa.JSON for cross-database compat (JSONB in DDL, sa.JSON in ORM)."
+    injection: "FastAPI Depends(get_db) injects AsyncSession into routes; agents receive it from their callers"
+
+  session_cookie_auth:
+    tool: "server-side sessions + HttpOnly cookie"
+    pattern: "Browser holds only an opaque UUID session-id cookie. Server validates against sessions table. identity_type discriminator ('practitioner'|'admin'|'product_admin') routes to the correct user row."
+    injection: "get_session() / require_admin() / require_product_admin() FastAPI dependencies in api/deps/session.py"
+
+integrations:
+  - "Anthropic API (https://api.anthropic.com): Claude Haiku 4.5 structured outputs via anthropic SDK >= 0.40; primary in ANTHROPIC mode, Tier 3 Haiku fallback in NVIDIA mode."
+  - "NVIDIA NIM API (https://integrate.api.nvidia.com/v1): Nemotron Ultra 253B + Lightning 70B via OpenAI-compatible endpoint; primary Tier 1+2 in NVIDIA mode."
+  - "MCP stdio servers (local process): learning_portal/server.py and usage_signals/server.py adapt internal data sources via the MCP protocol; no public HTTPS endpoint."
+  - "PostgreSQL + pgvector: primary data store; pgvector provisioned but not yet active for vector search."
+
+project_knowledge:
+  - id: "w0-t1"
+    topic: "no-agent-imports-agent"
+    insight: "Agents never call other agents directly; all cross-agent data flow is the workflow's responsibility — enforced by convention in base.py."
+    evidence: ["brownfield_import"]
+    wave_added: 0
+    revised_from: null
+
+  - id: "w0-t2"
+    topic: "append-only-event-tables"
+    insight: "skill_profile_events, usage_events, mastery_history, and correlation_snapshots are append-only — never UPDATE or DELETE rows; agents upsert derived snapshot tables separately."
+    evidence: ["brownfield_import"]
+    wave_added: 0
+    revised_from: null
+
+  - id: "w0-t3"
+    topic: "domain-version-freeze"
+    insight: "practitioner_profiles.domain_version_id is frozen at profile-lock time; cert domain refreshes create a new CertificationDomainVersion row and never retroactively change a locked profile's scores."
+    evidence: ["brownfield_import"]
+    wave_added: 0
+    revised_from: null
+
+  - id: "w0-t4"
+    topic: "human-gated-nudge-delivery"
+    insight: "Nudges are drafted by NudgeComposer (status='drafted') and require explicit admin approval before delivery; no auto-send path exists."
+    evidence: ["brownfield_import"]
+    wave_added: 0
+    revised_from: null
+
+  - id: "w0-t5"
+    topic: "multi-tenant-phase22"
+    insight: "Phase 22 added Organization + SubscriptionPlan multi-tenancy; practitioners and admin_users now carry organization_id FK; routes that query these tables must filter or scope by org where relevant."
+    evidence: ["brownfield_import"]
+    wave_added: 0
+    revised_from: null
+
+consumption_views:
+  quick_context: |
+    Mastery Pulse is a learning-and-adoption platform for Deloitte practitioners with two loops: Mastery Mesh (cert-targeted learning, quiz generation, grading) and Adoption Pulse (usage-signal ingestion, correlation, nudge delivery). The backend is a FastAPI layered monolith with 11+ LLM agents orchestrated by plain async Python workflows — no LangGraph or Temporal. All LLM calls go through a MultiTierModelClient (NVIDIA Ultra → Lightning → Haiku with circuit breaker, or Haiku-first in ANTHROPIC mode). PostgreSQL stores everything; 22 Alembic revisions cover the full schema. The React 18 + TypeScript frontend uses TanStack Query for server state and includes a Three.js 3D portal component. Phase 22 added full multi-tenancy (Organization, SubscriptionPlan, product_admin_users). No browser storage (localStorage/sessionStorage) is used anywhere in the frontend.
+
+  style_guide: |
+    ## Agent Implementation
+    - Every agent MUST inherit app.agents.base.Agent and set name, model, output_model
+    - System prompt MUST live in agents/prompts/<agent_name>.md — never inline in Python
+    - Agents MUST use Structured Outputs (output_model Pydantic class) — never parse raw JSON text
+    - Agents MUST NOT import or call other agents — cross-agent flow belongs to workflows
+    - All agent output persists via the CALLER (route/workflow) — agents don't write business tables
+
+    ## Model Client
+    - ALWAYS call create_model_client() — NEVER create_haiku_only_client() directly
+    - create_model_client() returns a MultiTierModelClient; pass it to Agent.run() unchanged
+    - NvidiaCircuitBreaker is module-level singleton — do not reinstantiate per request
+
+    ## Database
+    - All DB access via AsyncSession from Depends(get_db) — never create a sync session
+    - Use sa.JSON for ORM column types (not JSONB) — JSONB belongs only in Alembic DDL
+    - Append-only tables (skill_profile_events, usage_events, mastery_history, correlation_snapshots): NEVER UPDATE or DELETE rows
+    - Every new migration must run alembic upgrade head immediately after writing the migration file
+    - Practitioner profiles: domain_version_id is frozen at lock time — never modify post-lock
+
+    ## Auth
+    - Session cookie is HttpOnly; identity_type ('practitioner'|'admin'|'product_admin') determines which user table to join
+    - Practitioner sessions have no expiry (expires_at = null); admin/product_admin sessions expire
+    - Phase 22: routes querying practitioners or admin_users must scope by organization_id where relevant
+
+    ## API Conventions
+    - All routes live under /api/v1/ prefix; each domain gets its own router module in api/routes/
+    - Pydantic request/response schemas live in schemas/<domain>.py — not inline in route files
+    - FastAPI auth guards: get_session() (any identity), require_admin() (admin only), require_product_admin() (product_admin only)
+
+    ## Frontend
+    - NO localStorage or sessionStorage anywhere — all state via TanStack Query + session cookie
+    - All server state queries go through hooks in frontend/src/hooks/index.ts
+    - API types live in frontend/src/api/types.ts — match backend Pydantic schemas
+
+    ## Testing
+    - Tests are scenarios (Given/When/Then) in backend/tests/scenarios/ — no unit mocks
+    - Use aiosqlite for SQLite-backed scenario tests (no Postgres required); mark real-Postgres tests @pytest.mark.integration
+    - Run tests via: py -m pytest (from backend/)
+
+  known_concerns: |
+    ## Concern 1: Using create_haiku_only_client()
+    WHEN: Adding a new agent that needs large output (tempting to bypass NVIDIA tiers)
+    WHAT: Skips the free-tier NVIDIA provider entirely, burning Anthropic credits unnecessarily
+    HOW: Always use create_model_client(); the multi-tier chain already handles large outputs correctly
+
+    ## Concern 2: Modifying app.db.models without a migration
+    WHEN: Adding/renaming columns or tables in models.py
+    WHAT: Application boots fine but new columns don't exist in the real DB, causing 500 errors at runtime
+    HOW: Write an Alembic migration and run alembic upgrade head immediately after every models.py change
+
+    ## Concern 3: Breaking the partial unique index on SQLite
+    WHEN: Writing unit tests that create multiple CertificationDomainVersion rows with is_current=True for the same cert
+    WHAT: SQLite drops the WHERE clause from the partial index, so the uniqueness constraint is not enforced in tests
+    HOW: Only integration tests (with Postgres) exercise multi-version scenarios; unit tests must not rely on this constraint
+
+    ## Concern 4: Updating a locked practitioner profile's domain scores
+    WHEN: A cert domain refresh runs while a practitioner has a locked profile
+    WHAT: Old scores would reference the new domain version, breaking the freeze-at-lock-time semantics
+    HOW: CertDomainDiscovery creates a new CertificationDomainVersion row; locked profiles keep their frozen domain_version_id
+
+    ## Concern 5: Auto-sending nudges
+    WHEN: Adding delivery logic (email dispatch, push notification)
+    WHAT: Nudges bypass human review, violating the human-in-the-loop policy
+    HOW: Nudge delivery must always require status='approved' set by an admin; never trigger on 'drafted'
+
+    ## Concern 6: Agent importing another agent
+    WHEN: An agent needs data that another agent produces
+    WHAT: Creates circular imports, tight coupling, and breaks the single-responsibility contract
+    HOW: Route cross-agent data through a workflow that calls both agents in sequence
+
+    ## Concern 7: Forgetting organization_id scoping (Phase 22)
+    WHEN: Writing queries against practitioners or admin_users
+    WHAT: Data leaks across org tenants; one org can see another org's data
+    HOW: Filter by organization_id when the route is org-scoped; product_admin routes are the exception (see all orgs)
+
+    ## Concern 8: Browser storage in frontend
+    WHEN: Adding features that need to persist user preferences locally
+    WHAT: Violates CLAUDE.md no-localStorage policy; may cause unexpected behavior in the 3D portal
+    HOW: Store all state server-side via API calls and TanStack Query cache; cookies only for session identity

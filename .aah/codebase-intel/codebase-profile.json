@@ -1,0 +1,3006 @@
+{
+  "profile_version": "1.0",
+  "root": "C:\\claude\\ai_trainer",
+  "summary": {
+    "total_files": 232,
+    "total_lines": 54474,
+    "total_bytes": 2128064,
+    "primary_language": "python",
+    "languages": {
+      "python": 148,
+      "tsx": 42,
+      "typescript": 26,
+      "json": 10,
+      "docker": 2,
+      "toml": 1,
+      "sql": 1,
+      "javascript": 1,
+      "shell": 1
+    },
+    "frameworks": [],
+    "data_stores": [
+      "postgresql"
+    ]
+  },
+  "directory_structure": {
+    "backend": 156,
+    "frontend": 75,
+    "scripts": 1
+  },
+  "architecture": {
+    "layers": {
+      "infrastructure": 5,
+      "application": 114,
+      "presentation": 43,
+      "data": 13,
+      "testing": 56,
+      "utilities": 1
+    },
+    "layer_files": {
+      "infrastructure": [
+        "backend\\Dockerfile",
+        "backend\\pyproject.toml",
+        "frontend\\Dockerfile",
+        "frontend\\package.json",
+        "frontend\\tsconfig.json"
+      ],
+      "application": [
+        "backend\\alembic\\env.py",
+        "backend\\alembic\\versions\\001_initial_schema.py",
+        "backend\\alembic\\versions\\002_certification_catalog.py",
+        "backend\\alembic\\versions\\003_learning_paths.py",
+        "backend\\alembic\\versions\\004_quiz_items.py",
+        "backend\\alembic\\versions\\005_adoption_pulse.py",
+        "backend\\alembic\\versions\\006_auth.py",
+        "backend\\alembic\\versions\\007_practitioner_profiles.py",
+        "backend\\alembic\\versions\\008_smart_nudge.py",
+        "backend\\alembic\\versions\\009_remove_rollups.py"
+      ],
+      "presentation": [
+        "backend\\app\\api\\__init__.py",
+        "backend\\app\\api\\deps\\__init__.py",
+        "backend\\app\\api\\deps\\plan.py",
+        "backend\\app\\api\\deps\\session.py",
+        "backend\\app\\api\\routes\\__init__.py",
+        "backend\\app\\api\\routes\\admin_users.py",
+        "backend\\app\\api\\routes\\auth.py",
+        "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "backend\\app\\api\\routes\\cert_discovery.py",
+        "backend\\app\\api\\routes\\cert_domain_versions.py"
+      ],
+      "data": [
+        "backend\\app\\db\\__init__.py",
+        "backend\\app\\db\\models.py",
+        "backend\\app\\db\\session.py",
+        "backend\\app\\schemas\\__init__.py",
+        "backend\\app\\schemas\\cert_domain_versions.py",
+        "backend\\app\\schemas\\certifications.py",
+        "backend\\app\\schemas\\items.py",
+        "backend\\app\\schemas\\learning_paths.py",
+        "backend\\app\\schemas\\nudge_campaign.py",
+        "backend\\app\\schemas\\practitioners.py"
+      ],
+      "testing": [
+        "backend\\tests\\__init__.py",
+        "backend\\tests\\conftest.py",
+        "backend\\tests\\fixtures\\__init__.py",
+        "backend\\tests\\fixtures\\learning_portal\\certifications.json",
+        "backend\\tests\\fixtures\\learning_portal\\course_completions.json",
+        "backend\\tests\\fixtures\\learning_portal\\self_assessments.json",
+        "backend\\tests\\fixtures\\stub_claude_client.py",
+        "backend\\tests\\fixtures\\usage_signals\\commits.json",
+        "backend\\tests\\fixtures\\usage_signals\\sessions.json",
+        "backend\\tests\\scenarios\\__init__.py"
+      ],
+      "utilities": [
+        "frontend\\src\\utils\\markdownToPlain.ts"
+      ]
+    },
+    "coupling": {
+      "afferent_top": [
+        {
+          "module": "__future__",
+          "dependents": 86
+        },
+        {
+          "module": "app.db.models",
+          "dependents": 84
+        },
+        {
+          "module": "sqlalchemy.ext.asyncio",
+          "dependents": 62
+        },
+        {
+          "module": "typing",
+          "dependents": 55
+        },
+        {
+          "module": "datetime",
+          "dependents": 54
+        },
+        {
+          "module": "import uuid",
+          "dependents": 51
+        },
+        {
+          "module": "sqlalchemy",
+          "dependents": 50
+        },
+        {
+          "module": "import pytest",
+          "dependents": 41
+        },
+        {
+          "module": "app.agents.model_client",
+          "dependents": 34
+        },
+        {
+          "module": "pydantic",
+          "dependents": 33
+        },
+        {
+          "module": "app.db.session",
+          "dependents": 30
+        },
+        {
+          "module": "import pytest_asyncio",
+          "dependents": 30
+        },
+        {
+          "module": "import sqlalchemy as sa",
+          "dependents": 28
+        },
+        {
+          "module": "alembic",
+          "dependents": 26
+        },
+        {
+          "module": "import json",
+          "dependents": 23
+        }
+      ],
+      "efferent_top": [
+        {
+          "module": "backend\\app\\api\\routes\\profiles.py",
+          "dependencies": 29
+        },
+        {
+          "module": "backend\\app\\api\\routes\\learning_paths.py",
+          "dependencies": 28
+        },
+        {
+          "module": "backend\\app\\api\\routes\\nudges.py",
+          "dependencies": 25
+        },
+        {
+          "module": "backend\\tests\\scenarios\\test_phase15_multi_tier.py",
+          "dependencies": 24
+        },
+        {
+          "module": "backend\\tests\\scenarios\\test_phase14_provider_resilience.py",
+          "dependencies": 22
+        },
+        {
+          "module": "backend\\app\\main.py",
+          "dependencies": 20
+        },
+        {
+          "module": "backend\\app\\api\\routes\\auth.py",
+          "dependencies": 20
+        },
+        {
+          "module": "backend\\app\\api\\routes\\mock_exams.py",
+          "dependencies": 19
+        },
+        {
+          "module": "backend\\app\\api\\routes\\product_admin.py",
+          "dependencies": 18
+        },
+        {
+          "module": "backend\\tests\\scenarios\\test_phase17b_progressive_quiz.py",
+          "dependencies": 18
+        },
+        {
+          "module": "backend\\app\\agents\\model_client.py",
+          "dependencies": 17
+        },
+        {
+          "module": "backend\\tests\\scenarios\\test_domain_gap_scoring.py",
+          "dependencies": 17
+        },
+        {
+          "module": "backend\\tests\\scenarios\\test_model_client.py",
+          "dependencies": 17
+        },
+        {
+          "module": "backend\\tests\\scenarios\\test_domain_scorer.py",
+          "dependencies": 16
+        },
+        {
+          "module": "backend\\tests\\scenarios\\test_phase22_multi_tenant.py",
+          "dependencies": 16
+        }
+      ]
+    },
+    "hotspots": [
+      {
+        "file": "frontend\\src\\hooks\\index.ts",
+        "symbols": 91
+      },
+      {
+        "file": "frontend\\src\\api\\types.ts",
+        "symbols": 86
+      },
+      {
+        "file": "backend\\app\\db\\models.py",
+        "symbols": 75
+      },
+      {
+        "file": "backend\\app\\agents\\model_client.py",
+        "symbols": 55
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_phase15_multi_tier.py",
+        "symbols": 55
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_phase22_multi_tenant.py",
+        "symbols": 53
+      },
+      {
+        "file": "backend\\app\\api\\routes\\product_admin.py",
+        "symbols": 43
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_phase14_provider_resilience.py",
+        "symbols": 41
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_phase17_quiz_generation.py",
+        "symbols": 32
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_model_client.py",
+        "symbols": 26
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_phase16_instant_mcq_grading.py",
+        "symbols": 23
+      },
+      {
+        "file": "frontend\\src\\api\\index.ts",
+        "symbols": 22
+      },
+      {
+        "file": "backend\\app\\schemas\\nudge_campaign.py",
+        "symbols": 22
+      },
+      {
+        "file": "backend\\app\\api\\routes\\mock_exams.py",
+        "symbols": 21
+      },
+      {
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "symbols": 19
+      },
+      {
+        "file": "backend\\tests\\fixtures\\stub_claude_client.py",
+        "symbols": 19
+      },
+      {
+        "file": "frontend\\tests\\practitioner-journey.spec.ts",
+        "symbols": 19
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_admin_users_api.py",
+        "symbols": 18
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_agent_framework.py",
+        "symbols": 18
+      },
+      {
+        "file": "backend\\app\\schemas\\pulse.py",
+        "symbols": 17
+      }
+    ]
+  },
+  "symbols": {
+    "total": 1417,
+    "files_parsed": 175,
+    "by_kind": {
+      "async_function": 448,
+      "framework_instance": 3,
+      "function": 331,
+      "const": 185,
+      "class": 363,
+      "interface": 84,
+      "type": 3
+    },
+    "top_level": [
+      {
+        "name": "lifespan",
+        "kind": "async_function",
+        "file": "backend\\app\\main.py",
+        "line": 20,
+        "fqn": "backend\\app\\main.py:lifespan"
+      },
+      {
+        "name": "app",
+        "kind": "framework_instance",
+        "file": "backend\\app\\main.py",
+        "line": 27,
+        "fqn": "backend\\app\\main.py:app"
+      },
+      {
+        "name": "validation_error_handler",
+        "kind": "async_function",
+        "file": "backend\\app\\main.py",
+        "line": 59,
+        "fqn": "backend\\app\\main.py:validation_error_handler"
+      },
+      {
+        "name": "unhandled_exception_handler",
+        "kind": "async_function",
+        "file": "backend\\app\\main.py",
+        "line": 77,
+        "fqn": "backend\\app\\main.py:unhandled_exception_handler"
+      },
+      {
+        "name": "health_check",
+        "kind": "async_function",
+        "file": "backend\\app\\main.py",
+        "line": 109,
+        "fqn": "backend\\app\\main.py:health_check"
+      },
+      {
+        "name": "_data_dir",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\learning_portal\\server.py",
+        "line": 20,
+        "fqn": "backend\\app\\mcp_servers\\learning_portal\\server.py:_data_dir"
+      },
+      {
+        "name": "_load_file",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\learning_portal\\server.py",
+        "line": 25,
+        "fqn": "backend\\app\\mcp_servers\\learning_portal\\server.py:_load_file"
+      },
+      {
+        "name": "get_certifications",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\learning_portal\\server.py",
+        "line": 38,
+        "fqn": "backend\\app\\mcp_servers\\learning_portal\\server.py:get_certifications"
+      },
+      {
+        "name": "get_course_completions",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\learning_portal\\server.py",
+        "line": 45,
+        "fqn": "backend\\app\\mcp_servers\\learning_portal\\server.py:get_course_completions"
+      },
+      {
+        "name": "get_self_assessment",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\learning_portal\\server.py",
+        "line": 52,
+        "fqn": "backend\\app\\mcp_servers\\learning_portal\\server.py:get_self_assessment"
+      },
+      {
+        "name": "main",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\learning_portal\\server.py",
+        "line": 58,
+        "fqn": "backend\\app\\mcp_servers\\learning_portal\\server.py:main"
+      },
+      {
+        "name": "_data_dir",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\usage_signals\\server.py",
+        "line": 77,
+        "fqn": "backend\\app\\mcp_servers\\usage_signals\\server.py:_data_dir"
+      },
+      {
+        "name": "_load_file",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\usage_signals\\server.py",
+        "line": 82,
+        "fqn": "backend\\app\\mcp_servers\\usage_signals\\server.py:_load_file"
+      },
+      {
+        "name": "_infer_skill_id",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\usage_signals\\server.py",
+        "line": 134,
+        "fqn": "backend\\app\\mcp_servers\\usage_signals\\server.py:_infer_skill_id"
+      },
+      {
+        "name": "_map_session",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\usage_signals\\server.py",
+        "line": 158,
+        "fqn": "backend\\app\\mcp_servers\\usage_signals\\server.py:_map_session"
+      },
+      {
+        "name": "_map_commit",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\usage_signals\\server.py",
+        "line": 167,
+        "fqn": "backend\\app\\mcp_servers\\usage_signals\\server.py:_map_commit"
+      },
+      {
+        "name": "get_claude_code_sessions",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\usage_signals\\server.py",
+        "line": 183,
+        "fqn": "backend\\app\\mcp_servers\\usage_signals\\server.py:get_claude_code_sessions"
+      },
+      {
+        "name": "get_commit_activity",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\usage_signals\\server.py",
+        "line": 193,
+        "fqn": "backend\\app\\mcp_servers\\usage_signals\\server.py:get_commit_activity"
+      },
+      {
+        "name": "main",
+        "kind": "function",
+        "file": "backend\\app\\mcp_servers\\usage_signals\\server.py",
+        "line": 202,
+        "fqn": "backend\\app\\mcp_servers\\usage_signals\\server.py:main"
+      },
+      {
+        "name": "practitioners",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 70,
+        "fqn": "frontend\\src\\api\\index.ts:practitioners"
+      },
+      {
+        "name": "skills",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 114,
+        "fqn": "frontend\\src\\api\\index.ts:skills"
+      },
+      {
+        "name": "certifications",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 121,
+        "fqn": "frontend\\src\\api\\index.ts:certifications"
+      },
+      {
+        "name": "learningPaths",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 145,
+        "fqn": "frontend\\src\\api\\index.ts:learningPaths"
+      },
+      {
+        "name": "items",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 168,
+        "fqn": "frontend\\src\\api\\index.ts:items"
+      },
+      {
+        "name": "attempts",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 176,
+        "fqn": "frontend\\src\\api\\index.ts:attempts"
+      },
+      {
+        "name": "pulse",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 185,
+        "fqn": "frontend\\src\\api\\index.ts:pulse"
+      },
+      {
+        "name": "q",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 190,
+        "fqn": "frontend\\src\\api\\index.ts:q"
+      },
+      {
+        "name": "qs",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 194,
+        "fqn": "frontend\\src\\api\\index.ts:qs"
+      },
+      {
+        "name": "q",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 200,
+        "fqn": "frontend\\src\\api\\index.ts:q"
+      },
+      {
+        "name": "qs",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 204,
+        "fqn": "frontend\\src\\api\\index.ts:qs"
+      },
+      {
+        "name": "q",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 224,
+        "fqn": "frontend\\src\\api\\index.ts:q"
+      },
+      {
+        "name": "qs",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 227,
+        "fqn": "frontend\\src\\api\\index.ts:qs"
+      },
+      {
+        "name": "profiles",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 242,
+        "fqn": "frontend\\src\\api\\index.ts:profiles"
+      },
+      {
+        "name": "auth",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 261,
+        "fqn": "frontend\\src\\api\\index.ts:auth"
+      },
+      {
+        "name": "adminUsers",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 278,
+        "fqn": "frontend\\src\\api\\index.ts:adminUsers"
+      },
+      {
+        "name": "observability",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 287,
+        "fqn": "frontend\\src\\api\\index.ts:observability"
+      },
+      {
+        "name": "qs",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 289,
+        "fqn": "frontend\\src\\api\\index.ts:qs"
+      },
+      {
+        "name": "certDomains",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 296,
+        "fqn": "frontend\\src\\api\\index.ts:certDomains"
+      },
+      {
+        "name": "qs",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 327,
+        "fqn": "frontend\\src\\api\\index.ts:qs"
+      },
+      {
+        "name": "productAdmin",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 334,
+        "fqn": "frontend\\src\\api\\index.ts:productAdmin"
+      },
+      {
+        "name": "notificationSettings",
+        "kind": "const",
+        "file": "frontend\\src\\api\\index.ts",
+        "line": 386,
+        "fqn": "frontend\\src\\api\\index.ts:notificationSettings"
+      },
+      {
+        "name": "usePractitioners",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 36,
+        "fqn": "frontend\\src\\hooks\\index.ts:usePractitioners"
+      },
+      {
+        "name": "usePractitioner",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 39,
+        "fqn": "frontend\\src\\hooks\\index.ts:usePractitioner"
+      },
+      {
+        "name": "useSkillProfile",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 46,
+        "fqn": "frontend\\src\\hooks\\index.ts:useSkillProfile"
+      },
+      {
+        "name": "useActivitySummary",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 54,
+        "fqn": "frontend\\src\\hooks\\index.ts:useActivitySummary"
+      },
+      {
+        "name": "useDeactivatePractitioner",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 61,
+        "fqn": "frontend\\src\\hooks\\index.ts:useDeactivatePractitioner"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 62,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useReactivatePractitioner",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 72,
+        "fqn": "frontend\\src\\hooks\\index.ts:useReactivatePractitioner"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 73,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useSubmitSelfAssessment",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 83,
+        "fqn": "frontend\\src\\hooks\\index.ts:useSubmitSelfAssessment"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 84,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useCreatePractitioner",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 99,
+        "fqn": "frontend\\src\\hooks\\index.ts:useCreatePractitioner"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 100,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useSkills",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 109,
+        "fqn": "frontend\\src\\hooks\\index.ts:useSkills"
+      },
+      {
+        "name": "useSkillTree",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 112,
+        "fqn": "frontend\\src\\hooks\\index.ts:useSkillTree"
+      },
+      {
+        "name": "useCertifications",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 117,
+        "fqn": "frontend\\src\\hooks\\index.ts:useCertifications"
+      },
+      {
+        "name": "useAdviseMutation",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 120,
+        "fqn": "frontend\\src\\hooks\\index.ts:useAdviseMutation"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 121,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useCertificationGoals",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 138,
+        "fqn": "frontend\\src\\hooks\\index.ts:useCertificationGoals"
+      },
+      {
+        "name": "useUpdateGoalMutation",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 145,
+        "fqn": "frontend\\src\\hooks\\index.ts:useUpdateGoalMutation"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 146,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useLearningPaths",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 164,
+        "fqn": "frontend\\src\\hooks\\index.ts:useLearningPaths"
+      },
+      {
+        "name": "useGenerateLearningPath",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 176,
+        "fqn": "frontend\\src\\hooks\\index.ts:useGenerateLearningPath"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 177,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useGenerateQuizBatch",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 200,
+        "fqn": "frontend\\src\\hooks\\index.ts:useGenerateQuizBatch"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 201,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useRetryQuizGeneration",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 219,
+        "fqn": "frontend\\src\\hooks\\index.ts:useRetryQuizGeneration"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 220,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useItemsBySkill",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 234,
+        "fqn": "frontend\\src\\hooks\\index.ts:useItemsBySkill"
+      },
+      {
+        "name": "usePractitionerAttempts",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 243,
+        "fqn": "frontend\\src\\hooks\\index.ts:usePractitionerAttempts"
+      },
+      {
+        "name": "useSubmitAttempt",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 252,
+        "fqn": "frontend\\src\\hooks\\index.ts:useSubmitAttempt"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 253,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "filtered",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 262,
+        "fqn": "frontend\\src\\hooks\\index.ts:filtered"
+      },
+      {
+        "name": "useCorrelationSnapshots",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 274,
+        "fqn": "frontend\\src\\hooks\\index.ts:useCorrelationSnapshots"
+      },
+      {
+        "name": "useNudges",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 284,
+        "fqn": "frontend\\src\\hooks\\index.ts:useNudges"
+      },
+      {
+        "name": "useApproveNudge",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 293,
+        "fqn": "frontend\\src\\hooks\\index.ts:useApproveNudge"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 294,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useProfiles",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 306,
+        "fqn": "frontend\\src\\hooks\\index.ts:useProfiles"
+      },
+      {
+        "name": "useProfile",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 313,
+        "fqn": "frontend\\src\\hooks\\index.ts:useProfile"
+      },
+      {
+        "name": "useCreateProfile",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 320,
+        "fqn": "frontend\\src\\hooks\\index.ts:useCreateProfile"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 321,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useUpdateProfile",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 329,
+        "fqn": "frontend\\src\\hooks\\index.ts:useUpdateProfile"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 330,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useActivateProfile",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 339,
+        "fqn": "frontend\\src\\hooks\\index.ts:useActivateProfile"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 340,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useDeleteProfile",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 350,
+        "fqn": "frontend\\src\\hooks\\index.ts:useDeleteProfile"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 351,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useUpsertProfileSkills",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 359,
+        "fqn": "frontend\\src\\hooks\\index.ts:useUpsertProfileSkills"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 360,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useNudgeCategories",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 373,
+        "fqn": "frontend\\src\\hooks\\index.ts:useNudgeCategories"
+      },
+      {
+        "name": "useGenerateNudgeCategories",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 376,
+        "fqn": "frontend\\src\\hooks\\index.ts:useGenerateNudgeCategories"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 377,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "usePreviewRecipients",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 384,
+        "fqn": "frontend\\src\\hooks\\index.ts:usePreviewRecipients"
+      },
+      {
+        "name": "useComposeCampaign",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 391,
+        "fqn": "frontend\\src\\hooks\\index.ts:useComposeCampaign"
+      },
+      {
+        "name": "useSendNudges",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 394,
+        "fqn": "frontend\\src\\hooks\\index.ts:useSendNudges"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 395,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useSentCampaigns",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 402,
+        "fqn": "frontend\\src\\hooks\\index.ts:useSentCampaigns"
+      },
+      {
+        "name": "usePractitionerNudges",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 405,
+        "fqn": "frontend\\src\\hooks\\index.ts:usePractitionerNudges"
+      },
+      {
+        "name": "useMarkNudgeRead",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 412,
+        "fqn": "frontend\\src\\hooks\\index.ts:useMarkNudgeRead"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 413,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useUnreadNudgeCount",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 423,
+        "fqn": "frontend\\src\\hooks\\index.ts:useUnreadNudgeCount"
+      },
+      {
+        "name": "useMasteryHistory",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 431,
+        "fqn": "frontend\\src\\hooks\\index.ts:useMasteryHistory"
+      },
+      {
+        "name": "useAdoptionTrends",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 441,
+        "fqn": "frontend\\src\\hooks\\index.ts:useAdoptionTrends"
+      },
+      {
+        "name": "useCertDomainScores",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 451,
+        "fqn": "frontend\\src\\hooks\\index.ts:useCertDomainScores"
+      },
+      {
+        "name": "useCertDomainVersions",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 463,
+        "fqn": "frontend\\src\\hooks\\index.ts:useCertDomainVersions"
+      },
+      {
+        "name": "useCertDomainProposals",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 469,
+        "fqn": "frontend\\src\\hooks\\index.ts:useCertDomainProposals"
+      },
+      {
+        "name": "useTriggerCertDomainDiscover",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 475,
+        "fqn": "frontend\\src\\hooks\\index.ts:useTriggerCertDomainDiscover"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 476,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useTriggerCertDomainDiscoverAll",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 497,
+        "fqn": "frontend\\src\\hooks\\index.ts:useTriggerCertDomainDiscoverAll"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 498,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useApproveCertDomainProposal",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 507,
+        "fqn": "frontend\\src\\hooks\\index.ts:useApproveCertDomainProposal"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 508,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useRejectCertDomainProposal",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 518,
+        "fqn": "frontend\\src\\hooks\\index.ts:useRejectCertDomainProposal"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 519,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useStartMockExam",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 531,
+        "fqn": "frontend\\src\\hooks\\index.ts:useStartMockExam"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 532,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useActiveMockExam",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 542,
+        "fqn": "frontend\\src\\hooks\\index.ts:useActiveMockExam"
+      },
+      {
+        "name": "data",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 570,
+        "fqn": "frontend\\src\\hooks\\index.ts:data"
+      },
+      {
+        "name": "useMockExamSession",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 576,
+        "fqn": "frontend\\src\\hooks\\index.ts:useMockExamSession"
+      },
+      {
+        "name": "data",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 583,
+        "fqn": "frontend\\src\\hooks\\index.ts:data"
+      },
+      {
+        "name": "usePauseMockExam",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 588,
+        "fqn": "frontend\\src\\hooks\\index.ts:usePauseMockExam"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 589,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useResumeMockExam",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 599,
+        "fqn": "frontend\\src\\hooks\\index.ts:useResumeMockExam"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 600,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useAnswerMockExamQuestion",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 610,
+        "fqn": "frontend\\src\\hooks\\index.ts:useAnswerMockExamQuestion"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 611,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "patchSession",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 616,
+        "fqn": "frontend\\src\\hooks\\index.ts:patchSession"
+      },
+      {
+        "name": "useCompleteMockExam",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 631,
+        "fqn": "frontend\\src\\hooks\\index.ts:useCompleteMockExam"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 632,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useAbandonMockExam",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 643,
+        "fqn": "frontend\\src\\hooks\\index.ts:useAbandonMockExam"
+      },
+      {
+        "name": "qc",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 644,
+        "fqn": "frontend\\src\\hooks\\index.ts:qc"
+      },
+      {
+        "name": "useMockExamList",
+        "kind": "const",
+        "file": "frontend\\src\\hooks\\index.ts",
+        "line": 656,
+        "fqn": "frontend\\src\\hooks\\index.ts:useMockExamList"
+      },
+      {
+        "name": "_free_plan",
+        "kind": "function",
+        "file": "backend\\app\\api\\deps\\plan.py",
+        "line": 24,
+        "fqn": "backend\\app\\api\\deps\\plan.py:_free_plan"
+      },
+      {
+        "name": "PlanEnforcer",
+        "kind": "class",
+        "file": "backend\\app\\api\\deps\\plan.py",
+        "line": 39,
+        "fqn": "backend\\app\\api\\deps\\plan.py:PlanEnforcer"
+      },
+      {
+        "name": "__init__",
+        "kind": "function",
+        "file": "backend\\app\\api\\deps\\plan.py",
+        "line": 46,
+        "fqn": "backend\\app\\api\\deps\\plan.py:__init__"
+      },
+      {
+        "name": "check_profile_count",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\plan.py",
+        "line": 49,
+        "fqn": "backend\\app\\api\\deps\\plan.py:check_profile_count"
+      },
+      {
+        "name": "check_learning_path_count",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\plan.py",
+        "line": 76,
+        "fqn": "backend\\app\\api\\deps\\plan.py:check_learning_path_count"
+      },
+      {
+        "name": "check_mock_exam_count",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\plan.py",
+        "line": 102,
+        "fqn": "backend\\app\\api\\deps\\plan.py:check_mock_exam_count"
+      },
+      {
+        "name": "get_plan_enforcer",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\plan.py",
+        "line": 138,
+        "fqn": "backend\\app\\api\\deps\\plan.py:get_plan_enforcer"
+      },
+      {
+        "name": "SessionInfo",
+        "kind": "class",
+        "file": "backend\\app\\api\\deps\\session.py",
+        "line": 39,
+        "fqn": "backend\\app\\api\\deps\\session.py:SessionInfo"
+      },
+      {
+        "name": "get_session",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\session.py",
+        "line": 52,
+        "fqn": "backend\\app\\api\\deps\\session.py:get_session"
+      },
+      {
+        "name": "require_any_authenticated",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\session.py",
+        "line": 134,
+        "fqn": "backend\\app\\api\\deps\\session.py:require_any_authenticated"
+      },
+      {
+        "name": "require_practitioner",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\session.py",
+        "line": 146,
+        "fqn": "backend\\app\\api\\deps\\session.py:require_practitioner"
+      },
+      {
+        "name": "require_admin",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\session.py",
+        "line": 155,
+        "fqn": "backend\\app\\api\\deps\\session.py:require_admin"
+      },
+      {
+        "name": "require_admin_or_leadership",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\session.py",
+        "line": 169,
+        "fqn": "backend\\app\\api\\deps\\session.py:require_admin_or_leadership"
+      },
+      {
+        "name": "require_product_admin",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\deps\\session.py",
+        "line": 183,
+        "fqn": "backend\\app\\api\\deps\\session.py:require_product_admin"
+      },
+      {
+        "name": "enforce_self_or_admin",
+        "kind": "function",
+        "file": "backend\\app\\api\\deps\\session.py",
+        "line": 192,
+        "fqn": "backend\\app\\api\\deps\\session.py:enforce_self_or_admin"
+      },
+      {
+        "name": "AdminUserResponse",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\admin_users.py",
+        "line": 35,
+        "fqn": "backend\\app\\api\\routes\\admin_users.py:AdminUserResponse"
+      },
+      {
+        "name": "AdminUserCreate",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\admin_users.py",
+        "line": 47,
+        "fqn": "backend\\app\\api\\routes\\admin_users.py:AdminUserCreate"
+      },
+      {
+        "name": "password_min_length",
+        "kind": "function",
+        "file": "backend\\app\\api\\routes\\admin_users.py",
+        "line": 55,
+        "fqn": "backend\\app\\api\\routes\\admin_users.py:password_min_length"
+      },
+      {
+        "name": "email_lowercase",
+        "kind": "function",
+        "file": "backend\\app\\api\\routes\\admin_users.py",
+        "line": 62,
+        "fqn": "backend\\app\\api\\routes\\admin_users.py:email_lowercase"
+      },
+      {
+        "name": "list_admin_users",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\admin_users.py",
+        "line": 69,
+        "fqn": "backend\\app\\api\\routes\\admin_users.py:list_admin_users"
+      },
+      {
+        "name": "create_admin_user",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\admin_users.py",
+        "line": 82,
+        "fqn": "backend\\app\\api\\routes\\admin_users.py:create_admin_user"
+      },
+      {
+        "name": "delete_admin_user",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\admin_users.py",
+        "line": 122,
+        "fqn": "backend\\app\\api\\routes\\admin_users.py:delete_admin_user"
+      },
+      {
+        "name": "_hash_pw",
+        "kind": "function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 47,
+        "fqn": "backend\\app\\api\\routes\\auth.py:_hash_pw"
+      },
+      {
+        "name": "_verify_pw",
+        "kind": "function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 51,
+        "fqn": "backend\\app\\api\\routes\\auth.py:_verify_pw"
+      },
+      {
+        "name": "_org_suspended_message",
+        "kind": "function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 55,
+        "fqn": "backend\\app\\api\\routes\\auth.py:_org_suspended_message"
+      },
+      {
+        "name": "PractitionerLoginRequest",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 69,
+        "fqn": "backend\\app\\api\\routes\\auth.py:PractitionerLoginRequest"
+      },
+      {
+        "name": "PractitionerLookupResponse",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 79,
+        "fqn": "backend\\app\\api\\routes\\auth.py:PractitionerLookupResponse"
+      },
+      {
+        "name": "AdminLoginRequest",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 87,
+        "fqn": "backend\\app\\api\\routes\\auth.py:AdminLoginRequest"
+      },
+      {
+        "name": "ChangePasswordRequest",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 92,
+        "fqn": "backend\\app\\api\\routes\\auth.py:ChangePasswordRequest"
+      },
+      {
+        "name": "PractitionerLoginResponse",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 97,
+        "fqn": "backend\\app\\api\\routes\\auth.py:PractitionerLoginResponse"
+      },
+      {
+        "name": "AdminLoginResponse",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 103,
+        "fqn": "backend\\app\\api\\routes\\auth.py:AdminLoginResponse"
+      },
+      {
+        "name": "MeResponse",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 110,
+        "fqn": "backend\\app\\api\\routes\\auth.py:MeResponse"
+      },
+      {
+        "name": "EnrollmentInfoResponse",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 125,
+        "fqn": "backend\\app\\api\\routes\\auth.py:EnrollmentInfoResponse"
+      },
+      {
+        "name": "enrollment_info",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 135,
+        "fqn": "backend\\app\\api\\routes\\auth.py:enrollment_info"
+      },
+      {
+        "name": "practitioner_login",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 166,
+        "fqn": "backend\\app\\api\\routes\\auth.py:practitioner_login"
+      },
+      {
+        "name": "lookup_email",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 309,
+        "fqn": "backend\\app\\api\\routes\\auth.py:lookup_email"
+      },
+      {
+        "name": "admin_login",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 339,
+        "fqn": "backend\\app\\api\\routes\\auth.py:admin_login"
+      },
+      {
+        "name": "logout",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 388,
+        "fqn": "backend\\app\\api\\routes\\auth.py:logout"
+      },
+      {
+        "name": "resp",
+        "kind": "framework_instance",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 400,
+        "fqn": "backend\\app\\api\\routes\\auth.py:resp"
+      },
+      {
+        "name": "change_password",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 414,
+        "fqn": "backend\\app\\api\\routes\\auth.py:change_password"
+      },
+      {
+        "name": "me",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "line": 439,
+        "fqn": "backend\\app\\api\\routes\\auth.py:me"
+      },
+      {
+        "name": "LessonSummary",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 61,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:LessonSummary"
+      },
+      {
+        "name": "LessonDetail",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 77,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:LessonDetail"
+      },
+      {
+        "name": "LessonListResponse",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 82,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:LessonListResponse"
+      },
+      {
+        "name": "ReadSessionCreate",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 87,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:ReadSessionCreate"
+      },
+      {
+        "name": "ReadSessionClose",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 91,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:ReadSessionClose"
+      },
+      {
+        "name": "ReadSessionResponse",
+        "kind": "class",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 95,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:ReadSessionResponse"
+      },
+      {
+        "name": "_collect_wrong_quiz_evidence",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 103,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:_collect_wrong_quiz_evidence"
+      },
+      {
+        "name": "_collect_wrong_mock_evidence",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 173,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:_collect_wrong_mock_evidence"
+      },
+      {
+        "name": "_skill_sort_key",
+        "kind": "function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 250,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:_skill_sort_key"
+      },
+      {
+        "name": "_generate_byte_sized_lessons",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 281,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:_generate_byte_sized_lessons"
+      },
+      {
+        "name": "_build_lesson_summary",
+        "kind": "function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 508,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:_build_lesson_summary"
+      },
+      {
+        "name": "generate_byte_sized_lessons",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 532,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:generate_byte_sized_lessons"
+      },
+      {
+        "name": "list_byte_sized_lessons",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 671,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:list_byte_sized_lessons"
+      },
+      {
+        "name": "get_byte_sized_lesson",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 743,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:get_byte_sized_lesson"
+      },
+      {
+        "name": "open_read_session",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 773,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:open_read_session"
+      },
+      {
+        "name": "close_read_session",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "line": 806,
+        "fqn": "backend\\app\\api\\routes\\byte_sized_lessons.py:close_read_session"
+      },
+      {
+        "name": "list_certifications",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\certifications.py",
+        "line": 56,
+        "fqn": "backend\\app\\api\\routes\\certifications.py:list_certifications"
+      },
+      {
+        "name": "run_certification_advisor",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\certifications.py",
+        "line": 77,
+        "fqn": "backend\\app\\api\\routes\\certifications.py:run_certification_advisor"
+      },
+      {
+        "name": "_find_cert",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\certifications.py",
+        "line": 136,
+        "fqn": "backend\\app\\api\\routes\\certifications.py:_find_cert"
+      },
+      {
+        "name": "list_certification_goals",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\certifications.py",
+        "line": 243,
+        "fqn": "backend\\app\\api\\routes\\certifications.py:list_certification_goals"
+      },
+      {
+        "name": "update_certification_goal",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\certifications.py",
+        "line": 280,
+        "fqn": "backend\\app\\api\\routes\\certifications.py:update_certification_goal"
+      },
+      {
+        "name": "discover_cert_skills",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\cert_discovery.py",
+        "line": 24,
+        "fqn": "backend\\app\\api\\routes\\cert_discovery.py:discover_cert_skills"
+      },
+      {
+        "name": "list_cert_domain_versions",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\cert_domain_versions.py",
+        "line": 61,
+        "fqn": "backend\\app\\api\\routes\\cert_domain_versions.py:list_cert_domain_versions"
+      },
+      {
+        "name": "list_cert_domain_proposals",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\cert_domain_versions.py",
+        "line": 108,
+        "fqn": "backend\\app\\api\\routes\\cert_domain_versions.py:list_cert_domain_proposals"
+      },
+      {
+        "name": "_run_discovery_for_cert",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\cert_domain_versions.py",
+        "line": 153,
+        "fqn": "backend\\app\\api\\routes\\cert_domain_versions.py:_run_discovery_for_cert"
+      },
+      {
+        "name": "discover_cert_domains",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\cert_domain_versions.py",
+        "line": 220,
+        "fqn": "backend\\app\\api\\routes\\cert_domain_versions.py:discover_cert_domains"
+      },
+      {
+        "name": "discover_all_cert_domains",
+        "kind": "async_function",
+        "file": "backend\\app\\api\\routes\\cert_domain_versions.py",
+        "line": 297,
+        "fqn": "backend\\app\\api\\routes\\cert_domain_versions.py:discover_all_cert_domains"
+      }
+    ]
+  },
+  "imports": {
+    "module_graph_size": 139,
+    "entries": [
+      {
+        "file": "backend\\app\\main.py",
+        "imports": [
+          "contextlib",
+          "import logging",
+          "fastapi",
+          "fastapi.exceptions",
+          "fastapi.middleware.cors",
+          "fastapi.responses",
+          "app.config",
+          "app.db.session",
+          "app.db.models",
+          "app.agents.model_client",
+          "app.api.routes",
+          "app.api.routes",
+          "app.api.routes",
+          "app.api.routes",
+          "app.api.routes",
+          "app.api.routes",
+          "app.api.routes",
+          "app.api.routes",
+          "app.api.routes",
+          "app.api.routes"
+        ]
+      },
+      {
+        "file": "backend\\app\\mcp_servers\\learning_portal\\server.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "import os",
+          "pathlib",
+          "mcp.server.fastmcp"
+        ]
+      },
+      {
+        "file": "backend\\app\\mcp_servers\\usage_signals\\server.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "import os",
+          "pathlib",
+          "mcp.server.fastmcp"
+        ]
+      },
+      {
+        "file": "frontend\\src\\api\\index.ts",
+        "imports": [
+          "./client"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\deps\\plan.py",
+        "imports": [
+          "__future__",
+          "fastapi",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\deps\\session.py",
+        "imports": [
+          "__future__",
+          "dataclasses",
+          "datetime",
+          "typing",
+          "fastapi",
+          "sqlalchemy.ext.asyncio",
+          "app.config",
+          "app.db.models",
+          "app.db.models",
+          "app.db.models",
+          "app.db.session",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\admin_users.py",
+        "imports": [
+          "__future__",
+          "import uuid",
+          "datetime",
+          "import bcrypt as _bcrypt_lib",
+          "fastapi",
+          "fastapi.responses",
+          "pydantic",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "typing",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\auth.py",
+        "imports": [
+          "__future__",
+          "import uuid",
+          "datetime",
+          "import bcrypt as _bcrypt_lib",
+          "fastapi",
+          "fastapi.responses",
+          "pydantic",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.api.deps.session",
+          "app.config",
+          "app.db.models",
+          "app.db.models",
+          "app.db.models",
+          "app.db.models",
+          "app.db.models",
+          "app.db.models",
+          "app.db.models",
+          "app.db.models",
+          "app.db.session"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\byte_sized_lessons.py",
+        "imports": [
+          "import uuid",
+          "datetime",
+          "fastapi",
+          "pydantic",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.agents.byte_sized_lesson",
+          "app.agents.model_client",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session",
+          "import logging as _log",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\certifications.py",
+        "imports": [
+          "import uuid",
+          "datetime",
+          "fastapi",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "sqlalchemy.orm",
+          "app.agents.model_client",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session",
+          "app.schemas.certifications",
+          "app.agents.certification_advisor",
+          "app.agents.certification_advisor"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\cert_discovery.py",
+        "imports": [
+          "__future__",
+          "fastapi",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.agents.cert_skill_mapper",
+          "app.agents.model_client",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session",
+          "app.services.cert_skill_mapper_service"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\cert_domain_versions.py",
+        "imports": [
+          "__future__",
+          "import asyncio",
+          "import uuid",
+          "datetime",
+          "fastapi",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.agents.cert_domain_discovery",
+          "app.agents.model_client",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session",
+          "app.schemas.cert_domain_versions",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\learning_paths.py",
+        "imports": [
+          "import random",
+          "import uuid",
+          "datetime",
+          "typing",
+          "fastapi",
+          "sqlalchemy",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "sqlalchemy.orm",
+          "app.agents.base",
+          "app.agents.model_client",
+          "app.api.deps.plan",
+          "app.api.deps.session",
+          "app.config",
+          "app.db.models",
+          "app.agents.quiz_batch_generator",
+          "app.db.session",
+          "app.schemas.cert_domain_versions",
+          "app.schemas.items",
+          "app.schemas.learning_paths",
+          "app.workflows.generate_learning_path",
+          "import logging as _log",
+          "app.db.models",
+          "import logging as _bg_logging",
+          "app.api.routes.byte_sized_lessons",
+          "import uuid as _uuid_mod",
+          "app.agents.grader",
+          "app.agents.model_client"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\mock_exams.py",
+        "imports": [
+          "__future__",
+          "import logging",
+          "import random",
+          "import uuid",
+          "datetime",
+          "fastapi",
+          "pydantic",
+          "import sqlalchemy as sa",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "sqlalchemy.orm",
+          "app.agents.mock_exam_generator",
+          "app.agents.model_client",
+          "app.api.deps.plan",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session",
+          "app.db.models",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\notification_settings.py",
+        "imports": [
+          "__future__",
+          "import logging",
+          "datetime",
+          "import httpx",
+          "fastapi",
+          "pydantic",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\nudges.py",
+        "imports": [
+          "__future__",
+          "import uuid",
+          "datetime",
+          "typing",
+          "fastapi",
+          "pydantic",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.agents.base",
+          "app.agents.model_client",
+          "app.api.deps.session",
+          "app.config",
+          "app.db.models",
+          "app.db.session",
+          "app.schemas.nudge_campaign",
+          "app.services.nudge_resolver",
+          "app.agents.nudge_category_generator",
+          "app.schemas.nudge_campaign",
+          "app.agents.nudge_campaign_composer",
+          "app.schemas.nudge_campaign",
+          "collections",
+          "import httpx",
+          "import logging as _logging",
+          "app.db.models",
+          "sqlalchemy"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\observability.py",
+        "imports": [
+          "__future__",
+          "datetime",
+          "fastapi",
+          "pydantic",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\practitioners.py",
+        "imports": [
+          "import uuid",
+          "datetime",
+          "fastapi",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session",
+          "app.schemas.practitioners"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\product_admin.py",
+        "imports": [
+          "__future__",
+          "import secrets",
+          "import uuid",
+          "datetime",
+          "typing",
+          "import bcrypt as _bcrypt_lib",
+          "import sqlalchemy as sa",
+          "fastapi",
+          "fastapi.responses",
+          "pydantic",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.api.deps.session",
+          "app.config",
+          "app.db.models",
+          "app.db.session",
+          "app.db.models",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\profiles.py",
+        "imports": [
+          "__future__",
+          "import logging",
+          "import uuid",
+          "datetime",
+          "fastapi",
+          "fastapi.responses",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "sqlalchemy.orm",
+          "app.api.deps.plan",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session",
+          "app.schemas.profiles",
+          "app.db.models",
+          "sqlalchemy",
+          "app.db.models",
+          "app.db.models",
+          "app.agents.domain_scorer",
+          "app.agents.model_client",
+          "import uuid as _uuid",
+          "import asyncio",
+          "sqlalchemy",
+          "app.agents.cert_skill_mapper",
+          "app.services.cert_skill_mapper_service",
+          "app.agents.model_client",
+          "import logging as _logging",
+          "import logging as _log2",
+          "import logging as _log3"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\pulse.py",
+        "imports": [
+          "__future__",
+          "datetime",
+          "fastapi",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session",
+          "app.schemas.pulse"
+        ]
+      },
+      {
+        "file": "backend\\app\\api\\routes\\skills.py",
+        "imports": [
+          "fastapi",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.api.deps.session",
+          "app.db.models",
+          "app.db.session",
+          "app.schemas.skills"
+        ]
+      },
+      {
+        "file": "backend\\app\\services\\cert_skill_mapper_service.py",
+        "imports": [
+          "__future__",
+          "import logging",
+          "import uuid",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.agents.cert_skill_mapper",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\app\\services\\email.py",
+        "imports": [
+          "__future__",
+          "import logging",
+          "email.mime.multipart",
+          "email.mime.text",
+          "typing",
+          "import os",
+          "import aiosmtplib"
+        ]
+      },
+      {
+        "file": "backend\\app\\services\\nudge_resolver.py",
+        "imports": [
+          "__future__",
+          "datetime",
+          "typing",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\app\\schemas\\certifications.py",
+        "imports": [
+          "datetime",
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\app\\schemas\\cert_domain_versions.py",
+        "imports": [
+          "__future__",
+          "datetime",
+          "typing",
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\app\\schemas\\items.py",
+        "imports": [
+          "datetime",
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\app\\schemas\\learning_paths.py",
+        "imports": [
+          "datetime",
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\app\\schemas\\nudge_campaign.py",
+        "imports": [
+          "__future__",
+          "datetime",
+          "typing",
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\app\\schemas\\practitioners.py",
+        "imports": [
+          "datetime",
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\app\\schemas\\profiles.py",
+        "imports": [
+          "datetime",
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\app\\schemas\\pulse.py",
+        "imports": [
+          "__future__",
+          "datetime",
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\app\\schemas\\skills.py",
+        "imports": [
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\app\\db\\models.py",
+        "imports": [
+          "import uuid",
+          "datetime",
+          "import sqlalchemy as sa",
+          "sqlalchemy.orm"
+        ]
+      },
+      {
+        "file": "backend\\app\\db\\session.py",
+        "imports": [
+          "collections.abc",
+          "sqlalchemy.ext.asyncio",
+          "app.config"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\env.py",
+        "imports": [
+          "import asyncio",
+          "import sys",
+          "import os",
+          "logging.config",
+          "pathlib",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "alembic",
+          "app.db.models",
+          "app.config"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\001_initial_schema.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\002_certification_catalog.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\003_learning_paths.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\004_quiz_items.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\005_adoption_pulse.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\006_auth.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\007_practitioner_profiles.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic",
+          "sqlalchemy.dialects.postgresql"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\008_smart_nudge.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic",
+          "sqlalchemy.dialects.postgresql"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\009_remove_rollups.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\010_profile_lockdown.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\011_backfill_locked_profiles.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\012_certification_domains.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\013_domain_versioning.py",
+        "imports": [
+          "import uuid",
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\014_seed_domain_data.py",
+        "imports": [
+          "import uuid",
+          "datetime",
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\015_progressive_scoring.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\016_mock_exam.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\017_cert_skill_domain_source.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\018_domain_scoring_status.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\018_learning_path_item_quiz_status.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\019_byte_sized_lessons.py",
+        "imports": [
+          "typing",
+          "import sqlalchemy as sa",
+          "sqlalchemy.dialects.postgresql",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\020_mock_exam_generating_status.py",
+        "imports": [
+          "__future__",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\022_mock_exam_abandon.py",
+        "imports": [
+          "__future__",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\023_practitioners_is_active.py",
+        "imports": [
+          "alembic",
+          "import sqlalchemy as sa"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\024_multi_tenant_schema.py",
+        "imports": [
+          "__future__",
+          "import secrets",
+          "import uuid",
+          "import bcrypt",
+          "import sqlalchemy as sa",
+          "alembic"
+        ]
+      },
+      {
+        "file": "backend\\alembic\\versions\\025_product_admin_password_rotation.py",
+        "imports": [
+          "alembic",
+          "import sqlalchemy as sa"
+        ]
+      },
+      {
+        "file": "backend\\app\\config.py",
+        "imports": [
+          "functools",
+          "pathlib",
+          "pydantic",
+          "pydantic_settings"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\base.py",
+        "imports": [
+          "__future__",
+          "import asyncio",
+          "import time",
+          "import uuid",
+          "abc",
+          "datetime",
+          "pathlib",
+          "typing",
+          "import pydantic",
+          "pydantic",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models",
+          "app.agents.model_client"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\byte_sized_lesson.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "pydantic",
+          "app.agents.base"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\certification_advisor.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "pydantic",
+          "app.agents.base",
+          "app.schemas.certifications"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\cert_domain_discovery.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "pydantic",
+          "app.agents.base"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\cert_skill_mapper.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "pydantic",
+          "app.agents.base"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\correlation.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "app.agents.base",
+          "app.schemas.pulse"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\curriculum_planner.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "app.agents.base",
+          "app.schemas.learning_paths"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\domain_scorer.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "pydantic",
+          "app.agents.base"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\grader.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "import pydantic",
+          "typing",
+          "app.agents.base",
+          "app.agents.model_client",
+          "app.schemas.items"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\item_writer.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "app.agents.base",
+          "app.schemas.items"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\mock_exam_generator.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "pydantic",
+          "app.agents.base"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\model_client.py",
+        "imports": [
+          "__future__",
+          "import asyncio",
+          "import json",
+          "import time",
+          "abc",
+          "datetime",
+          "pathlib",
+          "typing",
+          "import anthropic",
+          "import openai",
+          "pydantic",
+          "app.config",
+          "import re",
+          "import re as _re",
+          "import logging as _logging",
+          "app.config",
+          "app.config"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\nudge_campaign_composer.py",
+        "imports": [
+          "__future__",
+          "typing",
+          "app.agents.base",
+          "app.schemas.nudge_campaign"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\nudge_category_generator.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "app.agents.base",
+          "app.schemas.nudge_campaign"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\nudge_composer.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "app.agents.base",
+          "app.schemas.pulse"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\quiz_batch_generator.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "pydantic",
+          "app.agents.base",
+          "app.schemas.items"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\round_metrics.py",
+        "imports": [
+          "__future__",
+          "collections",
+          "dataclasses",
+          "datetime",
+          "typing",
+          "import uuid",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\skill_profiler.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "app.agents.base",
+          "app.schemas.learning_paths"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\usage_signal.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "app.agents.base",
+          "app.schemas.pulse"
+        ]
+      },
+      {
+        "file": "backend\\app\\agents\\_deprecated\\rollup_reporter.py",
+        "imports": [
+          "__future__",
+          "import json",
+          "typing",
+          "app.agents.base",
+          "app.schemas.pulse"
+        ]
+      },
+      {
+        "file": "backend\\app\\workflows\\generate_learning_path.py",
+        "imports": [
+          "__future__",
+          "import uuid",
+          "datetime",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "sqlalchemy.orm",
+          "app.agents.base",
+          "app.agents.curriculum_planner",
+          "app.agents.model_client",
+          "app.agents.skill_profiler",
+          "app.agents.round_metrics",
+          "app.db.models",
+          "app.schemas.learning_paths",
+          "import logging"
+        ]
+      },
+      {
+        "file": "backend\\seed\\certification_domains.py",
+        "imports": [
+          "seed.certification_domains",
+          "import uuid",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\seed\\generate.py",
+        "imports": [
+          "import asyncio",
+          "import random",
+          "import uuid",
+          "datetime",
+          "faker",
+          "sqlalchemy.ext.asyncio",
+          "sqlalchemy",
+          "app.config",
+          "app.db.models",
+          "seed.certification_domains",
+          "import bcrypt as _bcrypt_lib",
+          "sqlalchemy"
+        ]
+      },
+      {
+        "file": "backend\\seed\\generate_sql.py",
+        "imports": [
+          "import uuid",
+          "import sys",
+          "datetime",
+          "pathlib",
+          "import importlib.util, types"
+        ]
+      },
+      {
+        "file": "backend\\tools\\check_nvidia.py",
+        "imports": [
+          "import asyncio",
+          "import json",
+          "import sys",
+          "pathlib",
+          "import httpx",
+          "import openai",
+          "pydantic",
+          "app.config"
+        ]
+      },
+      {
+        "file": "frontend\\playwright.config.ts",
+        "imports": [
+          "@playwright/test"
+        ]
+      },
+      {
+        "file": "frontend\\vite.config.ts",
+        "imports": [
+          "vite",
+          "@vitejs/plugin-react"
+        ]
+      },
+      {
+        "file": "frontend\\src\\hooks\\useSpeechSynthesis.ts",
+        "imports": [
+          "react"
+        ]
+      },
+      {
+        "file": "backend\\tests\\conftest.py",
+        "imports": [
+          "__future__",
+          "import os",
+          "collections.abc",
+          "typing",
+          "import pytest",
+          "import pytest_asyncio",
+          "sqlalchemy.ext.asyncio",
+          "app.api.deps.session",
+          "app.db.models",
+          "tests.fixtures.stub_claude_client",
+          "app.config"
+        ]
+      },
+      {
+        "file": "backend\\tests\\fixtures\\stub_claude_client.py",
+        "imports": [
+          "tests.fixtures.stub_claude_client",
+          "__future__",
+          "typing",
+          "unittest.mock",
+          "pydantic"
+        ]
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_admin_users_api.py",
+        "imports": [
+          "__future__",
+          "import uuid",
+          "datetime",
+          "import pytest",
+          "import pytest_asyncio",
+          "import bcrypt as _bcrypt_lib",
+          "httpx",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models",
+          "app.db.session",
+          "app.main",
+          "tests.conftest"
+        ]
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_agent_framework.py",
+        "imports": [
+          "__future__",
+          "typing",
+          "import pytest",
+          "import pydantic",
+          "pydantic",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.agents.base",
+          "app.db.models",
+          "tests.fixtures.stub_claude_client"
+        ]
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_auth.py",
+        "imports": [
+          "__future__",
+          "import uuid",
+          "datetime",
+          "import bcrypt as _bcrypt_lib",
+          "import pytest",
+          "import pytest_asyncio",
+          "httpx",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models",
+          "app.db.models",
+          "app.db.session",
+          "app.main",
+          "app.db.models"
+        ]
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_certification_advisor.py",
+        "imports": [
+          "__future__",
+          "import uuid",
+          "import pytest",
+          "import pytest_asyncio",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.agents.certification_advisor",
+          "app.db.models",
+          "app.schemas.certifications",
+          "tests.fixtures.stub_claude_client",
+          "app.db.models",
+          "datetime"
+        ]
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_certification_catalog.py",
+        "imports": [
+          "__future__",
+          "import pytest",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models",
+          "seed.generate"
+        ]
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_certification_domains.py",
+        "imports": [
+          "__future__",
+          "import uuid",
+          "import pytest",
+          "import pytest_asyncio",
+          "httpx",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models",
+          "app.db.session",
+          "app.main",
+          "seed.generate",
+          "tests.conftest"
+        ]
+      },
+      {
+        "file": "backend\\tests\\scenarios\\test_cert_domain_discovery.py",
+        "imports": [
+          "__future__",
+          "import uuid",
+          "datetime",
+          "unittest.mock",
+          "import pytest",
+          "import pytest_asyncio",
+          "httpx",
+          "sqlalchemy",
+          "sqlalchemy.ext.asyncio",
+          "app.db.models",
+          "app.db.session",
+          "app.main",
+          "tests.conftest",
+          "tests.fixtures.stub_claude_client"
+        ]
+      }
+    ]
+  },
+  "entry_points": [
+    "backend\\app\\main.py",
+    "backend\\app\\mcp_servers\\learning_portal\\server.py",
+    "backend\\app\\mcp_servers\\usage_signals\\server.py",
+    "frontend\\src\\api\\index.ts",
+    "frontend\\src\\components\\AdoptionTrendChart\\index.ts",
+    "frontend\\src\\components\\CertAdvisor\\index.ts",
+    "frontend\\src\\components\\CertDomainGapChart\\index.ts",
+    "frontend\\src\\components\\NudgeInbox\\index.ts",
+    "frontend\\src\\components\\Portal3D\\index.ts",
+    "frontend\\src\\components\\PortalLayout\\index.ts",
+    "frontend\\src\\components\\ProgressTrendChart\\index.ts",
+    "frontend\\src\\components\\QuizRunner\\index.ts",
+    "frontend\\src\\components\\SkillCalibration3D\\index.ts",
+    "frontend\\src\\components\\SkillRadar\\index.ts",
+    "frontend\\src\\components\\SkillRadar3D\\index.ts",
+    "frontend\\src\\components\\TrendDashboard\\index.ts",
+    "frontend\\src\\hooks\\index.ts"
+  ],
+  "config_files": [
+    "backend\\Dockerfile",
+    "backend\\pyproject.toml",
+    "frontend\\Dockerfile",
+    "frontend\\package.json",
+    "frontend\\tsconfig.json"
+  ],
+  "data_model_files": [
+    "backend\\app\\schemas\\certifications.py",
+    "backend\\app\\schemas\\cert_domain_versions.py",
+    "backend\\app\\schemas\\items.py",
+    "backend\\app\\schemas\\learning_paths.py",
+    "backend\\app\\schemas\\nudge_campaign.py",
+    "backend\\app\\schemas\\practitioners.py",
+    "backend\\app\\schemas\\profiles.py",
+    "backend\\app\\schemas\\pulse.py",
+    "backend\\app\\schemas\\skills.py",
+    "backend\\app\\schemas\\__init__.py"
+  ],
+  "api_layer_files": [
+    "backend\\app\\api\\__init__.py",
+    "backend\\app\\api\\deps\\plan.py",
+    "backend\\app\\api\\deps\\session.py",
+    "backend\\app\\api\\deps\\__init__.py",
+    "backend\\app\\api\\routes\\admin_users.py",
+    "backend\\app\\api\\routes\\auth.py",
+    "backend\\app\\api\\routes\\byte_sized_lessons.py",
+    "backend\\app\\api\\routes\\certifications.py",
+    "backend\\app\\api\\routes\\cert_discovery.py",
+    "backend\\app\\api\\routes\\cert_domain_versions.py",
+    "backend\\app\\api\\routes\\learning_paths.py",
+    "backend\\app\\api\\routes\\mock_exams.py",
+    "backend\\app\\api\\routes\\notification_settings.py",
+    "backend\\app\\api\\routes\\nudges.py",
+    "backend\\app\\api\\routes\\observability.py",
+    "backend\\app\\api\\routes\\practitioners.py",
+    "backend\\app\\api\\routes\\product_admin.py",
+    "backend\\app\\api\\routes\\profiles.py",
+    "backend\\app\\api\\routes\\pulse.py",
+    "backend\\app\\api\\routes\\skills.py",
+    "backend\\app\\api\\routes\\__init__.py",
+    "backend\\app\\services\\cert_skill_mapper_service.py",
+    "backend\\app\\services\\email.py",
+    "backend\\app\\services\\nudge_resolver.py",
+    "frontend\\src\\api\\client.ts",
+    "frontend\\src\\api\\types.ts"
+  ],
+  "test_files_count": 56
+}

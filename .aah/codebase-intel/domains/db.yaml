@@ -1,0 +1,81 @@
+domain: "db"
+last_updated: "2026-08-31T00:00:00Z"
+last_updated_after_feature: "brownfield_import"
+
+narrative: |
+  The db domain owns all SQLAlchemy ORM models, the async session engine, and Alembic migrations.
+  models.py is a single 2083-line file defining 40+ ORM classes spanning 22 development phases.
+  The schema design favours append-only tables for audit trails (skill_profile_events, usage_events,
+  correlation_snapshots) and upsert-on-composite-PK tables for derived state (skill_profile_snapshots).
+  Phase 22 added full multi-tenancy via Organization, SubscriptionPlan, and ProductAdminUser.
+
+source_files:
+  - path: "backend/app/db/models.py"
+    line_range: "1-2083"
+    role: "All ORM model classes; 40+ tables across 22 phases; most-depended-upon file (84 dependents)"
+  - path: "backend/app/db/session.py"
+    line_range: "1-50"
+    role: "async engine creation + get_db() AsyncSession dependency"
+  - path: "backend/app/db/migrations/"
+    line_range: "N/A"
+    role: "22 Alembic migration files; run alembic upgrade head after every models.py change"
+
+flow_traces:
+  - name: "async_session_lifecycle"
+    description: "How a DB session is created and used per request"
+    steps:
+      - "db/session.py: creates async engine from settings.database_url"
+      - "get_db() yields AsyncSession(engine) as a FastAPI dependency"
+      - "Route injects db: AsyncSession = Depends(get_db)"
+      - "Route executes async queries via db.execute(select(...))"
+      - "db.commit() on success; context manager closes session on exit"
+
+  - name: "skill_profile_upsert"
+    description: "How SkillProfiler updates the skill snapshot table"
+    steps:
+      - "SkillProfiler agent reads skill_profile_events for the practitioner"
+      - "Computes new mastery_score + confidence per skill"
+      - "Caller route/workflow does INSERT ... ON CONFLICT UPDATE on (practitioner_id, skill_id)"
+      - "Simultaneously appends a MasteryHistory row (append-only)"
+
+  - name: "domain_version_lifecycle"
+    description: "How cert domain versions evolve without retroactive changes"
+    steps:
+      - "Bootstrap: migration seeds CertificationDomainVersion(version_label='bootstrap-step-10.1', is_current=True)"
+      - "Admin triggers CertDomainDiscovery agent → CertificationDomainProposal written"
+      - "Admin approves proposal → new CertificationDomainVersion row (is_current=True); old row flipped to is_current=False"
+      - "Partial unique index enforces at most one is_current=True per cert in Postgres"
+      - "Locked practitioner profiles keep their frozen domain_version_id unchanged"
+
+integration_points:
+  - target: "FastAPI routes"
+    mechanism: "Depends(get_db) injects AsyncSession into every route that touches the DB"
+    direction: "inbound"
+  - target: "agents (base.py)"
+    mechanism: "Callers pass AsyncSession to agent.run(); agent writes AgentRun row"
+    direction: "inbound"
+  - target: "Alembic CLI"
+    mechanism: "alembic upgrade head reads migrations/ folder; uses psycopg2 sync driver"
+    direction: "inbound"
+
+known_issues:
+  - description: "models.py is 2083 lines with 40+ ORM classes — hard to navigate"
+    severity: "medium"
+    workaround: "Use search/codemap to locate specific model; phase-boundary comments separate major table groups"
+  - description: "SQLite drops the partial unique index (WHERE is_current=true) on certification_domain_versions"
+    severity: "medium"
+    workaround: "Multi-version scenarios must be tested against Postgres only (@pytest.mark.integration)"
+  - description: "sa.JSON in ORM (not JSONB) — migrations use JSONB in DDL but ORM column type is generic"
+    severity: "low"
+    workaround: "This is intentional for SQLite test compat; never switch to sa.JSONB in the ORM layer"
+
+patterns:
+  - name: "append-only-event-table"
+    description: "skill_profile_events, usage_events, mastery_history, correlation_snapshots never receive UPDATE/DELETE — only INSERT; derived state is in separate snapshot tables"
+    example_file: "backend/app/db/models.py:200"
+  - name: "composite-pk-snapshot"
+    description: "skill_profile_snapshots uses (practitioner_id, skill_id) as composite PK — ensures one row per practitioner×skill via upsert semantics"
+    example_file: "backend/app/db/models.py:261"
+  - name: "check-constraints-everywhere"
+    description: "Every status/enum column has a CheckConstraint; score columns have 0-1 range checks; enforces data integrity at DB level"
+    example_file: "backend/app/db/models.py:241"
