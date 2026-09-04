@@ -475,6 +475,17 @@ async def me(
                 if plan:
                     plan_tier = plan.tier
 
+    elif session.identity_type == "admin" and session.admin_user_id:
+        # Phase 22: resolve plan_tier for admin users so the enterprise
+        # "Configure" tab (teams_notifications_enabled gate) shows correctly.
+        admin = await db.get(AdminUser, session.admin_user_id)
+        if admin and admin.organization_id:
+            org = await db.get(Organization, admin.organization_id)
+            if org:
+                plan = await db.get(SubscriptionPlan, org.plan_id)
+                if plan:
+                    plan_tier = plan.tier
+
     return MeResponse(
         identity_type=session.identity_type,
         first_name=session.first_name,
