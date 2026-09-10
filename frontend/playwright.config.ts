@@ -12,14 +12,12 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: [
-    ["html"],
-    // JUnit reporter writes to a file so CI / AAH harness can parse test results.
-    // Path is relative to this config file (frontend/); "../test-results/results.xml"
-    // places the file at the project root's test-results/ directory, which is where
-    // the AAH harness globs for JUnit XML (test-results/*.xml).
-    ["junit", { outputFile: "../test-results/results.xml" }],
-  ],
+  // JUnit output is handled by scripts/run_playwright.js via PLAYWRIGHT_JUNIT_OUTPUT_FILE
+  // + --reporter=junit CLI flag so the path matches the harness-injected PYTEST_ADDOPTS.
+  // Do NOT add a config-based junit reporter here — on Windows the relative outputFile
+  // resolves to a literal %SystemDrive%/ directory in the harness worktree environment,
+  // which causes the subject-unchanged check to fail.
+  reporter: [["html"]],
 
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */

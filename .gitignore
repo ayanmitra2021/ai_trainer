@@ -32,6 +32,9 @@ outputs/
 frontend/test-results/
 frontend/playwright-report/
 test-results/
+# Windows harness worktree artifact (created by config-based JUnit reporter with
+# relative outputFile path that Windows resolves to a literal %SystemDrive%/ dir)
+frontend/%SystemDrive%/
 
 # TypeScript incremental build info (generated artifact)
 *.tsbuildinfo
