@@ -59,7 +59,7 @@ Applicable standards from `.aah/plan/resolved-standards.yaml`: RX-A11Y-001 (inte
 
 ## Test Config
 
-- command: cd frontend && npx playwright test tests/profile-name-inline-edit.spec.ts --workers=1
+- command: py scripts/run_playwright.py
 - test_paths:
   - frontend/tests/profile-name-inline-edit.spec.ts
 
