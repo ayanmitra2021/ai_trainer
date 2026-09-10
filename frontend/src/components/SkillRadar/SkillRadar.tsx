@@ -8,7 +8,7 @@
  *  - Full learning-journey section
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useActiveMockExam,
@@ -18,6 +18,7 @@ import {
   useProfiles,
   useSkillProfile,
   useStartMockExam,
+  useUpdateProfileName,
 } from "../../hooks";
 import { useSession } from "../../context/SessionContext";
 import type { ByteSizedLesson, SkillSnapshot } from "../../api/types";
@@ -905,46 +906,204 @@ export default function SkillRadar({ practitionerId, readOnly = false }: Props) 
 // ── Profile banner ─────────────────────────────────────────────────────────────
 
 interface ProfileBannerProps {
-  profile: { name: string; certification_code?: string; mastery_pct?: number };
+  profile: {
+    id: string;
+    practitioner_id: string;
+    name: string;
+    certification_code?: string;
+    mastery_pct?: number;
+  };
   onEdit: () => void;
 }
 
+/**
+ * F-MOD-002: Active-profile header card with inline name editing.
+ *
+ * A pencil icon button before the profile name opens an inline <input>. Enter
+ * or blur saves; Escape cancels. Optimistic update via useUpdateProfileName
+ * shows the new name immediately; errors roll back and show a toast.
+ *
+ * No localStorage/sessionStorage — all state is component useState or TanStack Query.
+ * Standards satisfied: RX-A11Y-001 (button + aria-label), RX-A11Y-002 (input + aria-label),
+ * RX-SEC-002 (no browser storage), RX-ARCH-001/002 (hook at top level, logic extracted).
+ */
 function ProfileBanner({ profile, onEdit }: ProfileBannerProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftName, setDraftName] = useState(profile.name);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // Guard against double-save when Enter triggers blur as the input unmounts.
+  const editingRef = useRef(false);
+
+  const updateName = useUpdateProfileName(profile.practitioner_id, profile.id);
+
   const initial = profile.name.trim()[0]?.toUpperCase() ?? "P";
+
+  function startEdit() {
+    editingRef.current = true;
+    setDraftName(profile.name);
+    setIsEditing(true);
+  }
+
+  function handleSave() {
+    // Prevent double-firing (Enter key then synthetic blur from unmounting the input)
+    if (!editingRef.current) return;
+    editingRef.current = false;
+
+    const trimmed = draftName.trim();
+    if (!trimmed) {
+      // Empty name: cancel and restore original
+      setDraftName(profile.name);
+      setIsEditing(false);
+      return;
+    }
+    if (trimmed === profile.name) {
+      // Unchanged name: close editor without a network call
+      setIsEditing(false);
+      return;
+    }
+    // Close editor immediately; optimistic update shows the new name before the round-trip
+    setIsEditing(false);
+    updateName.mutate(trimmed, {
+      onError: () => {
+        setToastMessage("Failed to save profile name — please try again");
+      },
+    });
+  }
+
+  function handleCancel() {
+    editingRef.current = false;
+    setDraftName(profile.name);
+    setIsEditing(false);
+  }
+
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "0.875rem",
-        padding: "0.75rem 1rem",
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderLeft: "3px solid var(--primary)",
-        borderRadius: "8px",
-        marginBottom: "1.5rem",
-        boxShadow: "0 0 20px rgba(77, 171, 247, 0.06)",
-      }}
-    >
-      <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: "1rem", flexShrink: 0, boxShadow: "0 0 12px rgba(77, 171, 247, 0.4)" }}>
-        {initial}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-          {profile.name}
-          {profile.certification_code && (
-            <span style={{ fontSize: "0.7rem", padding: "0.15rem 0.5rem", borderRadius: "999px", background: "var(--primary)", color: "#fff", fontWeight: 600, letterSpacing: "0.03em" }}>
-              {profile.certification_code}
-            </span>
-          )}
+    <>
+      {toastMessage && (
+        <div
+          role="alert"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.75rem",
+            padding: "0.625rem 1rem",
+            marginBottom: "0.75rem",
+            borderRadius: "6px",
+            background: "color-mix(in srgb, var(--danger) 10%, var(--surface))",
+            border: "1px solid var(--danger)",
+            fontSize: "0.875rem",
+            color: "var(--danger)",
+          }}
+        >
+          <span>{toastMessage}</span>
+          <button
+            aria-label="Dismiss"
+            onClick={() => setToastMessage(null)}
+            style={{
+              flexShrink: 0,
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: "1rem",
+              color: "var(--danger)",
+              lineHeight: 1,
+              padding: "0.125rem",
+            }}
+          >
+            ✕
+          </button>
         </div>
-        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>
-          Active profile · radar and path are scoped to this context
+      )}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.875rem",
+          padding: "0.75rem 1rem",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderLeft: "3px solid var(--primary)",
+          borderRadius: "8px",
+          marginBottom: "1.5rem",
+          boxShadow: "0 0 20px rgba(77, 171, 247, 0.06)",
+        }}
+      >
+        <div style={{ width: 38, height: 38, borderRadius: "50%", background: "var(--primary)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: "1rem", flexShrink: 0, boxShadow: "0 0 12px rgba(77, 171, 247, 0.4)" }}>
+          {initial}
         </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            {isEditing ? (
+              <input
+                aria-label="Profile name"
+                autoFocus
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleSave();
+                  } else if (e.key === "Escape") {
+                    handleCancel();
+                  }
+                }}
+                onBlur={handleSave}
+                style={{
+                  font: "inherit",
+                  fontWeight: 600,
+                  fontSize: "0.9rem",
+                  padding: "0.125rem 0.375rem",
+                  border: "1px solid var(--primary)",
+                  borderRadius: "4px",
+                  background: "var(--surface)",
+                  color: "var(--text)",
+                  minWidth: 0,
+                  width: `${Math.max(draftName.length, 8)}ch`,
+                  maxWidth: "20rem",
+                  outline: "none",
+                  boxShadow: "0 0 0 2px rgba(77, 171, 247, 0.25)",
+                }}
+              />
+            ) : (
+              <>
+                {/* RX-A11Y-001: icon-only button uses semantic <button> + aria-label */}
+                <button
+                  aria-label="Edit profile name"
+                  onClick={startEdit}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: "0.1rem 0.25rem",
+                    fontSize: "0.85rem",
+                    lineHeight: 1,
+                    color: "var(--text-muted)",
+                    borderRadius: "3px",
+                    flexShrink: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                  }}
+                  title="Edit profile name"
+                >
+                  ✏️
+                </button>
+                {profile.name}
+              </>
+            )}
+            {profile.certification_code && (
+              <span style={{ fontSize: "0.7rem", padding: "0.15rem 0.5rem", borderRadius: "999px", background: "var(--primary)", color: "#fff", fontWeight: 600, letterSpacing: "0.03em" }}>
+                {profile.certification_code}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>
+            Active profile · radar and path are scoped to this context
+          </div>
+        </div>
+        <button className="btn btn-outline btn-3d" style={{ fontSize: "0.8125rem", flexShrink: 0 }} onClick={onEdit}>
+          Edit profile →
+        </button>
       </div>
-      <button className="btn btn-outline btn-3d" style={{ fontSize: "0.8125rem", flexShrink: 0 }} onClick={onEdit}>
-        Edit profile →
-      </button>
-    </div>
+    </>
   );
 }

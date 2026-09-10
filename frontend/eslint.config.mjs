@@ -1,10 +1,12 @@
 // ESLint configuration — AAH scaffold default (flat config).
 //
-// Deliberately imports nothing: eslint's own recommended config would need
-// `@eslint/js`, and a missing import makes eslint fail to load rather than
-// report findings — which the standards gate must treat as "could not check".
-// Extend this file (do not replace it) when the package needs real plugins;
-// add the plugin to devDependencies in the same change.
+// Uses @typescript-eslint/parser (already a devDependency) so TypeScript
+// syntax does not cause parse errors. Extended from the scaffold skeleton
+// to add the TS parser; the rule set is kept minimal — do NOT widen rules
+// to silence findings.
+
+import tsParser from "@typescript-eslint/parser";
+import tsPlugin from "@typescript-eslint/eslint-plugin";
 
 export default [
   {
@@ -19,13 +21,23 @@ export default [
   },
   {
     files: ["**/*.{js,mjs,cjs,jsx,ts,tsx}"],
+    plugins: {
+      "@typescript-eslint": tsPlugin,
+    },
     languageOptions: {
+      parser: tsParser,
       ecmaVersion: "latest",
       sourceType: "module",
     },
     rules: {
-      "no-unused-vars": "warn",
-      "no-undef": "off",
+      "no-unused-vars": "off",          // superseded by @typescript-eslint for TS files
+      // Conventional: _-prefixed params/vars are intentionally unused (e.g. _event, _totalDomains).
+      "@typescript-eslint/no-unused-vars": ["warn", {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "ignoreRestSiblings": true,
+      }],
+      "no-undef": "off",                // TypeScript handles undefined references
     },
   },
 ];

@@ -254,6 +254,9 @@ export const profiles = {
     api.delete<void>(`/practitioners/${practitioner_id}/profiles/${profile_id}`),
   upsertSkillAssessments: (practitioner_id: string, profile_id: string, body: ProfileSkillUpsert) =>
     api.post<ProfileSkillUpsertResponse>(`/practitioners/${practitioner_id}/profiles/${profile_id}/skill-assessments`, body),
+  /** F-MOD-002: rename an active profile (bypasses is_locked gate — dedicated carve-out). */
+  updateName: (practitioner_id: string, profile_id: string, name: string) =>
+    api.patch<PractitionerProfile>(`/practitioners/${practitioner_id}/profiles/${profile_id}/name`, { name }),
 };
 
 // ── Auth ───────────────────────────────────────────────────────────────────────

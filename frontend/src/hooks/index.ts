@@ -23,6 +23,7 @@ import type {
   MockExamSession,
   MockExamSessionSummary,
   PractitionerCreate,
+  PractitionerProfile,
   ProfileCreate,
   ProfileSkillUpsert,
   ProfileUpdate,
@@ -364,6 +365,49 @@ export const useUpsertProfileSkills = (practitioner_id: string, profile_id: stri
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["practitioners", practitioner_id, "profiles"] });
       qc.invalidateQueries({ queryKey: ["practitioners", practitioner_id, "profiles", profile_id] });
+    },
+  });
+};
+
+/**
+ * F-MOD-002: Rename an active profile.
+ *
+ * Uses TanStack Query v5 optimistic update — the header reflects the new name
+ * immediately without waiting for the network round-trip.
+ *
+ * Cache key used by useProfiles is ["practitioners", practitionerId, "profiles"];
+ * the spec description refers to this key conceptually as ['profiles', practitionerId].
+ */
+export const useUpdateProfileName = (practitionerId: string, profileId: string) => {
+  const qc = useQueryClient();
+  const cacheKey = ["practitioners", practitionerId, "profiles"] as const;
+
+  return useMutation({
+    mutationFn: (name: string) => profiles.updateName(practitionerId, profileId, name),
+
+    onMutate: async (name: string) => {
+      // Cancel in-flight refetches to prevent them from overwriting the optimistic update
+      await qc.cancelQueries({ queryKey: cacheKey });
+      // Snapshot the current list for potential rollback
+      const previousProfiles = qc.getQueryData<PractitionerProfile[]>(cacheKey);
+      // Apply optimistic update — update only the target profile's name
+      qc.setQueryData<PractitionerProfile[]>(cacheKey, (old) =>
+        old?.map((p) => (p.id === profileId ? { ...p, name } : p)),
+      );
+      return { previousProfiles };
+    },
+
+    onSuccess: () => {
+      // Reconcile cache with the server-confirmed profile object
+      qc.invalidateQueries({ queryKey: cacheKey });
+    },
+
+    onError: (_error, _variables, context) => {
+      // Roll back to the pre-edit snapshot
+      if (context?.previousProfiles !== undefined) {
+        qc.setQueryData(cacheKey, context.previousProfiles);
+      }
+      // Visual toast is shown by the call-site onError option in ProfileBanner
     },
   });
 };

@@ -12,7 +12,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: "html",
+  reporter: [
+    ["html"],
+    // JUnit reporter writes to a file so CI / AAH harness can parse test results.
+    // Path is relative to this config file (frontend/); "../test-results/results.xml"
+    // places the file at the project root's test-results/ directory, which is where
+    // the AAH harness globs for JUnit XML (test-results/*.xml).
+    ["junit", { outputFile: "../test-results/results.xml" }],
+  ],
 
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
