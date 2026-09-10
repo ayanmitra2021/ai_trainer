@@ -1,7 +1,7 @@
 {
   "features": [
     {
-      "status": "planned",
+      "status": "implementing",
       "id": "F-MOD-001",
       "title": "Profile Name PATCH Endpoint",
       "module_ref": "MOD-001",
