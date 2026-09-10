@@ -87,7 +87,7 @@
         "F-MOD-001"
       ],
       "test_config": {
-        "command": "cd frontend && npx playwright test tests/profile-name-inline-edit.spec.ts --reporter=junit",
+        "command": "cd frontend && npx playwright test tests/profile-name-inline-edit.spec.ts",
         "test_paths": [
           "frontend/tests/profile-name-inline-edit.spec.ts"
         ]
