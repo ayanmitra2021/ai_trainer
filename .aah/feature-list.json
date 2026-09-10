@@ -1,0 +1,139 @@
+{
+  "features": [
+    {
+      "status": "pending",
+      "id": "F-MOD-001",
+      "title": "Profile Name PATCH Endpoint",
+      "module_ref": "MOD-001",
+      "description": "This module adds a dedicated `PATCH /api/v1/practitioners/{practitioner_id}/profiles/{profile_id}/name` endpoint to the existing FastAPI backend. It is a brownfield carve-out \u2014 no Alembic migration is required because `PractitionerProfile.name` (`VARCHAR(500) NOT NULL`) already exists (see `.aah/architecture/data-model.md` \u00a7 \"Relevant Existing Columns\").\n\n**What it does:** Allows an authenticated learner to rename their own active profile without being blocked by the profile lock. The existing `PATCH /api/v1/practitioners/{practitioner_id}/profiles/{profile_id}` route (line 378 of `backend/app/api/routes/profiles.py`) returns HTTP 403 for any edit on a locked profile. This new endpoint is the intentional carve-out: it skips the `is_locked` gate entirely and updates only the `name` field. All other profile fields, and the lock semantics of the existing PATCH route, remain completely untouched.\n\n**How it is implemented:**\n\n1. **New route** in `backend/app/api/routes/profiles.py` \u2014 following the pattern of the existing `activate_profile` route (line 404 of that file). The handler must:\n   - Require an authenticated practitioner session via `Depends(require_any_authenticated)`.\n   - Call `enforce_self_or_admin(session, practitioner_id)`, raising HTTP 403 if the session practitioner does not match the URL `practitioner_id`.\n   - Look up the profile by `profile_id`; return HTTP 404 if not found or if `profile.practitioner_id != practitioner_id`.\n   - Reject non-active profiles (`profile.is_active != True`) with HTTP 404.\n   - NOT inspect `profile.is_locked` \u2014 the dedicated endpoint is the only bypass the architecture authorises (see `.aah/discuss/discuss-prd.md` \u00a7 \"Decision Registry Summary\", slug `profile-name-backend-approach`).\n   - Apply `profile.name = body.name.strip()` and update `profile.updated_at`.\n   - Commit and refresh, then return the updated profile as `ProfileRead` (same response shape as the existing profile GET routes).\n\n2. **New Pydantic schema** in `backend/app/schemas/profiles.py`:\n   ```python\n   class ProfileNameUpdate(BaseModel):\n       name: str = Field(..., min_length=1, max_length=500)\n   ```\n   This is the sole accepted input schema. No other profile fields are exposed by this endpoint.\n\n3. **No other changes** \u2014 `ProfileUpdate`, the existing `PATCH /profiles/{profile_id}` route, the `is_locked` gate at line 378, and all other profile routes are left entirely unchanged.\n\n**Architecture references:**\n- Endpoint contract, status codes, and response shape: `.aah/architecture/architecture-overview.md` \u00a7 \"New Endpoint\"\n- Relevant DB columns and schema invariants: `.aah/architecture/data-model.md` \u00a7 \"Relevant Existing Columns\" and \u00a7 \"Pydantic Schema Changes\"\n- End-to-end happy / cancel / error paths: `.aah/architecture/application-flow.md`\n- Product rationale and decision log: `.aah/discuss/discuss-prd.md` \u00a7 \"Decision Registry Summary\"\n- Applicable standards (FA-SEC-001, FA-SEC-002, FA-ARCH-001, FA-ARCH-002, PY-SEC-002, PY-SEC-003, PY-TEST-001): `.aah/plan/resolved-standards.yaml`\n\n**Behavioral expectations:**\n\n- Given a valid practitioner session, when `PATCH .../profiles/{profile_id}/name` is called with `{\"name\": \"New Name\"}` and the caller is the owner of an active profile, then the response is HTTP 200 and the body is a `ProfileRead` object with `name == \"New Name\"`.\n- Given a valid practitioner session, when the endpoint is called with `{\"name\": \"  trimmed  \"}`, then `profile.name` is persisted as `\"trimmed\"` (leading and trailing whitespace stripped before persistence).\n- Given a valid practitioner session whose `practitioner_id` does not match the `practitioner_id` URL path parameter, when the endpoint is called, then HTTP 403 is returned.\n- Given a valid practitioner session that owns the profile but the profile's `is_active` is `False`, when the endpoint is called, then HTTP 404 is returned.\n- Given a valid practitioner session, when the endpoint is called with `{\"name\": \"\"}` (empty string after trimming) or with the `name` field absent from the body, then HTTP 422 is returned.\n- Given a valid practitioner session, when the endpoint is called with a `name` value exceeding 500 characters, then HTTP 422 is returned.\n- Given a valid practitioner session that owns an active profile where `is_locked` is `True`, when the endpoint is called with a valid name, then HTTP 200 is returned and the name is updated \u2014 the lock gate is NOT consulted by this endpoint.\n- Given no authenticated session (missing or invalid cookie), when the endpoint is called, then HTTP 401 is returned.\n- Given a `profile_id` that does not exist in the database, when the endpoint is called, then HTTP 404 is returned.\n- Given the name update succeeds, when the response is inspected, then `is_locked`, `certification_id`, `questionnaire_snapshot`, and `is_active` on the returned profile are identical to their pre-update values.\n- Given the existing `PATCH /api/v1/practitioners/{practitioner_id}/profiles/{profile_id}` route, when called with any body on a locked profile, then HTTP 403 is still returned \u2014 the new endpoint does not alter this behavior.\n- Given `DATABASE_URL` is absent from the environment, when the application starts, then the startup env checker raises `ERR_CDR_78_EX_CONFIG` naming the missing variable before any route is reachable.",
+      "layers": [
+        "api"
+      ],
+      "api_contracts": "```yaml\nproduces:\n  - operation_id: patch_profile_name\n    method: PATCH\n    path: /api/v1/practitioners/{practitioner_id}/profiles/{profile_id}/name\n    schema_file: schema/MOD-001-api-schema.yaml\n    request_schema: ProfileNameUpdate\n    response_schema: ProfileRead\n    responses:\n      200: ProfileRead \u2014 updated profile object with name reflecting the new value\n      401: Unauthorized \u2014 no valid practitioner session\n      403: Forbidden \u2014 session practitioner_id does not match URL practitioner_id\n      404: Not Found \u2014 profile does not exist, or profile is not active\n      422: Unprocessable Entity \u2014 name is empty, missing, or exceeds 500 characters\n```",
+      "required_env": [
+        "DATABASE_URL"
+      ],
+      "applicable_standards": [
+        {
+          "total_rules": 40,
+          "critical": [
+            "PY-SEC-001",
+            "PY-SEC-002",
+            "PY-SEC-003",
+            "TS-SEC-001",
+            "TS-SEC-002",
+            "FA-SEC-001",
+            "FA-SEC-002",
+            "RX-SEC-001",
+            "RX-SEC-002",
+            "PG-SEC-001"
+          ],
+          "high": [
+            "PY-SEC-004",
+            "PY-TEST-001",
+            "PY-ERR-001",
+            "TS-TYPE-001",
+            "TS-TYPE-002",
+            "TS-TEST-001",
+            "TS-ERR-001",
+            "FA-ARCH-001",
+            "FA-ARCH-002",
+            "RX-ARCH-001",
+            "RX-ARCH-002",
+            "RX-A11Y-001",
+            "PG-SEC-002",
+            "PG-PERF-001",
+            "PG-PERF-002",
+            "PG-DATA-001",
+            "PG-DATA-002"
+          ],
+          "medium": [
+            "PY-ERR-002",
+            "PY-PERF-001",
+            "PY-PERF-002",
+            "TS-TYPE-003",
+            "FA-PERF-001",
+            "FA-PERF-002",
+            "RX-A11Y-002",
+            "RX-PERF-001",
+            "PG-PERF-003"
+          ],
+          "low": [
+            "PY-CONV-001",
+            "PY-CONV-002",
+            "PY-CONV-003",
+            "TS-CONV-001"
+          ]
+        }
+      ],
+      "passes": false
+    },
+    {
+      "status": "pending",
+      "id": "F-MOD-002",
+      "title": "Profile Name Inline Edit UI",
+      "module_ref": "MOD-002",
+      "description": "This module adds a pencil-icon-triggered inline edit experience for the active-profile name in `frontend/src/components/SkillRadar/SkillRadar.tsx` (the static `{profile.name}` render at line ~934). It also adds a new `profiles.updateName` call in `frontend/src/api/index.ts` and a new `useUpdateProfileName` TanStack Query v5 mutation hook in `frontend/src/hooks/index.ts`.\n\n**Context.** The architecture is documented in `.aah/architecture/architecture-overview.md` and `.aah/architecture/application-flow.md`. The product requirements and user stories (US-1 through US-6) are in `.aah/discuss/discuss-prd.md`. The module-map entry is `MOD-002` in `.aah/architecture/module-map.yaml`. All three documents must be read before implementing.\n\n**What the module does.** The SkillRadar active-profile header (the card that currently renders the avatar initial, profile name badge, certification code badge, and \"Edit profile \u2192\" button) gains a second affordance for the name specifically: a pencil icon rendered immediately before `{profile.name}`. The icon is the sole entry point for name editing \u2014 no other screen or button surfaces this action. Clicking the icon switches the name span into an `<input autoFocus>` pre-filled with the current name draft. The learner types a new name and confirms it via Enter or blur; Escape cancels without any API call. On save, the `useUpdateProfileName` mutation fires `PATCH /api/v1/practitioners/{practitioner_id}/profiles/{profile_id}/name` (delivered by F-MOD-001). The UI shows the new name immediately via TanStack Query v5 optimistic update before the network round-trip completes; if the request fails, the name rolls back to the pre-edit value and an error toast appears.\n\n**API call \u2014 `frontend/src/api/index.ts`.** A new `updateName` entry is appended to the existing `profiles` object (`.list`, `.create`, `.get`, `.update`, `.activate`, `.delete`, `.upsertSkillAssessments`). The call issues `PATCH /practitioners/${practitionerId}/profiles/${profileId}/name` with body `{ name }` and returns the updated `PractitionerProfile` shape. The addition follows the existing pattern of using `api.patch<PractitionerProfile>(...)` as seen in `profiles.update` and `profiles.activate`.\n\n**Mutation hook \u2014 `frontend/src/hooks/index.ts`.** A new exported hook `useUpdateProfileName(practitionerId: string, profileId: string)` is added, following the pattern of `useDeactivatePractitioner` and `useReactivatePractitioner`. It uses `useMutation` with:\n- `mutationFn`: calls `profiles.updateName(practitionerId, profileId, name)` where `name` is the mutation variable.\n- `onMutate`: retrieves the current `['profiles', practitionerId]` cache entry, applies an optimistic update setting `profile.name` to the new value, and returns the previous cache snapshot as context.\n- `onSuccess`: calls `queryClient.invalidateQueries({ queryKey: ['profiles', practitionerId] })` to reconcile server state.\n- `onError`: rolls back to the snapshot captured in `onMutate` and shows an error toast (\"Failed to save profile name \u2014 please try again\").\n\n**Component change \u2014 `SkillRadar.tsx` at line ~934.** The component adds two `useState` calls (`isEditing: boolean` and `draftName: string`, both local) and imports `useUpdateProfileName`. The previously static `{profile.name}` expression is replaced with a conditional block: in view mode a `<button aria-label=\"Edit profile name\">` pencil icon precedes the name text; in edit mode the name text is replaced by `<input autoFocus value={draftName} onChange={...} onKeyDown={handleKeyDown} onBlur={handleSave} />`. `handleKeyDown` maps Enter to `handleSave` and Escape to `handleCancel`. `handleSave` trims the draft, guards against an empty string or an unchanged name (skips the mutation if the trimmed value equals `profile.name`), then fires the mutation and sets `isEditing = false`. `handleCancel` resets `draftName` to `profile.name` and sets `isEditing = false`. No `localStorage` or `sessionStorage` is used; all transient edit state lives in component `useState`.\n\nThe pencil icon is rendered only for the active-profile header card \u2014 the same card that already has `is_active === true` filtering applied when the parent component selects which profile to display prominently.\n\nApplicable standards from `.aah/plan/resolved-standards.yaml`: RX-A11Y-001 (interactive elements must be keyboard accessible and use semantic HTML with `aria-label` for icon-only buttons), RX-SEC-002 (no `localStorage`/`sessionStorage`), RX-ARCH-001 (hooks called only at the top level of the component), RX-ARCH-002 (business logic extracted into `useUpdateProfileName`; component handles only view logic), TS-TYPE-001 (no `any`; mutation variable is typed `string`), TS-TYPE-003 (edit/view modes modelled as two explicit `useState` flags rather than a single ambiguous optional).\n\n**Behavioral expectations.**\n\n- Given a learner is authenticated and viewing the SkillRadar page, when the active-profile header renders, then a pencil icon `<button aria-label=\"Edit profile name\">` is visible immediately before the profile name text.\n- Given the SkillRadar header is in view mode, when a learner clicks the pencil icon, then `isEditing` becomes `true`, the profile name text is replaced by an `<input autoFocus>` whose value equals the current `profile.name`, and focus lands on the input without additional user action.\n- Given the input is focused and the learner types a new name, when the learner presses Enter, then `handleSave` fires: the draft is trimmed, `useUpdateProfileName.mutate` is called with the trimmed name, `isEditing` returns to `false`, and the header immediately shows the optimistic new name before the network response arrives.\n- Given the input is focused and the learner types a new name, when the learner clicks away (blur event), then the same `handleSave` logic fires identically to the Enter path.\n- Given the input is focused, when the learner presses Escape, then `handleCancel` fires: `draftName` resets to the original `profile.name`, `isEditing` returns to `false`, and no API call is made.\n- Given the learner attempts to save, when the trimmed draft is an empty string, then the mutation is not fired and the edit is cancelled (restoring the original name), protecting the server-side min_length=1 constraint from unnecessary network round-trips.\n- Given the learner attempts to save, when the trimmed draft is identical to the current `profile.name`, then the mutation is not fired and `isEditing` returns to `false` without a network call.\n- Given `useUpdateProfileName.mutate` fires, when the `onMutate` callback executes, then the TanStack Query cache entry for `['profiles', practitionerId]` is updated optimistically to reflect the new name before the HTTP response arrives, so the header displays the new name with no visible latency.\n- Given the `PATCH /name` request returns `200 OK`, when `onSuccess` executes, then `queryClient.invalidateQueries({ queryKey: ['profiles', practitionerId] })` is called, reconciling the cache with the server-confirmed profile object.\n- Given the `PATCH /name` request returns any error (network failure, 403, 422), when `onError` executes, then the cache is rolled back to the snapshot captured in `onMutate`, the header displays the original profile name, and a toast notification reads \"Failed to save profile name \u2014 please try again\".\n- Given `profiles.updateName` is called, when the HTTP request is issued, then the method sends `PATCH /practitioners/{practitionerId}/profiles/{profileId}/name` with body `{ name: <trimmed string> }` using the same `api.patch` helper used by existing `profiles.update`.\n- Given the entire module, when `npm run build` completes in the `frontend/` directory, then the build exits with code 0 and no TypeScript type errors \u2014 consistent with the `smoke_test` defined in module-map.yaml.\n- Given the pencil icon button, when it is rendered, then it carries `aria-label=\"Edit profile name\"` and is implemented as a `<button>` element (not a `<div>` or `<span>` with onClick), satisfying RX-A11Y-001.\n- Given the edit input, when it renders, then it is an `<input>` element (semantic HTML) with an associated `<label>` or accessible name via `aria-label`, satisfying RX-A11Y-002.\n- Given the entire component, when any edit interaction occurs, then no value is written to `localStorage` or `sessionStorage`, satisfying RX-SEC-002 and the project-wide browser storage ban stated in `CLAUDE.md`.\n- Given the pencil icon, when the profile displayed is not the learner's active profile (i.e., any non-active profile card), then the pencil icon is not rendered \u2014 the edit affordance is limited strictly to the active-profile header.",
+      "layers": [
+        "ui/ux"
+      ],
+      "dependencies": [
+        "F-MOD-001"
+      ],
+      "applicable_standards": [
+        {
+          "total_rules": 40,
+          "critical": [
+            "PY-SEC-001",
+            "PY-SEC-002",
+            "PY-SEC-003",
+            "TS-SEC-001",
+            "TS-SEC-002",
+            "FA-SEC-001",
+            "FA-SEC-002",
+            "RX-SEC-001",
+            "RX-SEC-002",
+            "PG-SEC-001"
+          ],
+          "high": [
+            "PY-SEC-004",
+            "PY-TEST-001",
+            "PY-ERR-001",
+            "TS-TYPE-001",
+            "TS-TYPE-002",
+            "TS-TEST-001",
+            "TS-ERR-001",
+            "FA-ARCH-001",
+            "FA-ARCH-002",
+            "RX-ARCH-001",
+            "RX-ARCH-002",
+            "RX-A11Y-001",
+            "PG-SEC-002",
+            "PG-PERF-001",
+            "PG-PERF-002",
+            "PG-DATA-001",
+            "PG-DATA-002"
+          ],
+          "medium": [
+            "PY-ERR-002",
+            "PY-PERF-001",
+            "PY-PERF-002",
+            "TS-TYPE-003",
+            "FA-PERF-001",
+            "FA-PERF-002",
+            "RX-A11Y-002",
+            "RX-PERF-001",
+            "PG-PERF-003"
+          ],
+          "low": [
+            "PY-CONV-001",
+            "PY-CONV-002",
+            "PY-CONV-003",
+            "TS-CONV-001"
+          ]
+        }
+      ],
+      "passes": false
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "nodes": [
+    {
+      "id": "F-MOD-001",
+      "module_ref": "MOD-001",
+      "layers": [
+        "api"
+      ]
+    },
+    {
+      "id": "F-MOD-002",
+      "module_ref": "MOD-002",
+      "layers": [
+        "ui/ux"
+      ],
+      "dependencies": [
+        "F-MOD-001"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "F-MOD-001",
+      "to": "F-MOD-002"
+    }
+  ]
+}
