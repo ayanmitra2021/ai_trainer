@@ -1,0 +1,16 @@
+
+Running 12 tests using 1 worker
+
+[1/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:138:1 â€º test_F_MOD_002_pencil_icon_visible_before_profile_name
+[2/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:150:1 â€º test_F_MOD_002_pencil_button_is_button_element_with_aria_label
+[3/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:163:1 â€º test_F_MOD_002_clicking_pencil_opens_input_with_current_name
+[4/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:179:1 â€º test_F_MOD_002_input_has_accessible_name_satisfying_a11y
+[5/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:192:1 â€º test_F_MOD_002_enter_key_saves_new_name_and_exits_edit_mode
+[6/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:220:1 â€º test_F_MOD_002_escape_key_cancels_edit_and_restores_original_name
+[7/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:249:1 â€º test_F_MOD_002_blur_saves_new_name_identically_to_enter
+[8/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:278:1 â€º test_F_MOD_002_empty_name_cancels_without_api_call
+[9/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:306:1 â€º test_F_MOD_002_unchanged_name_closes_editor_without_api_call
+[10/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:333:1 â€º test_F_MOD_002_api_error_shows_toast_and_rolls_back_name
+[11/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:362:1 â€º test_F_MOD_002_patch_request_body_contains_name_field
+[12/12] [chromium] â€º tests\profile-name-inline-edit.spec.ts:391:1 â€º test_F_MOD_002_no_localstorage_or_sessionstorage_during_edit
+  12 passed (1.3m)
