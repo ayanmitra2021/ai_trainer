@@ -113,7 +113,7 @@ After:
 **`frontend/src/hooks/index.ts`** — new `useUpdateProfileName` mutation:
 - `mutationFn`: calls `api.profiles.updateName(practitionerId, profileId, name)`
 - `onMutate`: snapshot old name, optimistically set new name in cache
-- `onSuccess`: `queryClient.invalidateQueries({queryKey: ['profiles', profileId]})`
+- `onSuccess`: `queryClient.invalidateQueries({queryKey: ['profiles', practitionerId]})`
 - `onError`: rollback to snapshot, show error toast
 
 **`frontend/src/api/index.ts`** — new `profiles.updateName(practitionerId, profileId, name)`:
