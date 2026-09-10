@@ -1,17 +1,10 @@
 schema_version: '1.0'
 project: mastery-pulse-frontend-uiux-audit
 complexity: prod
-archetype: enterprise-internal-webapp
-domain_ids:
-- ux-accessibility
-- ux-design-consistency
-- ux-responsive
-- ux-performance
-- ux-information-architecture
-- ux-interaction-patterns
-- ux-component-system
+archetype: ai-applications
+domain_ids: []
 archetypes:
-- enterprise-internal-webapp
+- ai-applications
 started_at: '2026-08-31'
 pre_resolved:
 - slug_id: css-design-token-system
@@ -44,6 +37,73 @@ pre_resolved:
   locked: true
   activates: []
   notes: 'source-detail: frontend/src/index.css:229-239'
+- slug_id: backend-language
+  value: python-3.11+
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/codebase-learning.md · code: ''Python
+    3.11+ used throughout backend, agents, MCP servers'''
+- slug_id: api-framework
+  value: fastapi
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/tech-stack.md · code: ''FastAPI >=0.115
+    — REST API, async request handling, CORS'''
+- slug_id: orm-choice
+  value: sqlalchemy-async
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/tech-stack.md · code: ''SQLAlchemy >=2.0
+    async ORM, 22 Alembic revisions'''
+- slug_id: data-store
+  value: postgresql
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/tech-stack.md · code: ''PostgreSQL primary
+    relational store, asyncpg driver'''
+- slug_id: frontend-language
+  value: typescript-react18-vite
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/tech-stack.md · code: ''TypeScript ^5.5.3,
+    React ^18.3.1, Vite ^5.4.2'''
+- slug_id: auth-session-mechanism
+  value: opaque-uuid-cookie-server-side-session
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/codebase-learning.md · code: ''Opaque
+    UUID cookie, server-side Session ORM row, identity_type discriminator (AdminSession
+    vs PractitionerSession)'''
+- slug_id: admin-identity-model
+  value: separate-admin-users-table-with-discriminator
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/codebase-learning.md · code: ''Separate
+    admin_users table; AdminSession vs PractitionerSession via identity_type discriminator
+    in Session ORM'''
+- slug_id: multi-tenancy-model
+  value: organization-id-scoped
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/codebase-learning.md · code: ''Phase
+    22 multi-tenancy — routes filter by organization_id; admin manages learners in
+    their own org only'''
+- slug_id: testing-approach
+  value: pytest-scenario-given-when-then-no-mocks
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/codebase-learning.md · code: ''pytest
+    + pytest-asyncio, Given/When/Then scenario tests in backend/tests/scenarios/,
+    no mocks'''
 decisions:
 - slug_id: a11y-form-label-binding
   area: ux-accessibility
@@ -223,6 +283,206 @@ decisions:
   source: inferred
   activates: []
   notes: LoginPage.tsx, QuizRunner.tsx, App.tsx (numerous hardcoded strings)
+- slug_id: cloud-vs-local
+  area: Architecture & Technical Foundation
+  question: Where will this system run?
+  options_presented:
+  - cloud
+  - local
+  options_eliminated: []
+  response: cloud
+  response_type: single-select
+  source: inferred
+  activates:
+  - ACT-ACCESS
+  notes: 'Inferred from codebase: Docker + GitHub Pages/Actions deployment confirms
+    cloud target. User confirmed.'
+- slug_id: data-storage-present
+  area: Data & State Architecture
+  question: Does this system persist data?
+  options_presented:
+  - 'yes'
+  - 'no'
+  options_eliminated: []
+  response: 'yes'
+  response_type: single-select
+  source: inferred
+  activates: []
+  notes: 'Inferred: PostgreSQL already in use. User confirmed.'
+- slug_id: custom-ui-required
+  area: UI / UX / Accessibility
+  question: Does this system need a custom user interface?
+  options_presented:
+  - 'yes'
+  - 'no'
+  options_eliminated: []
+  response: 'yes'
+  response_type: single-select
+  source: user
+  activates:
+  - ACT-UX
+  notes: New admin learner-management page required for deactivation/re-activation.
+    User confirmed yes.
+- slug_id: docker-installed
+  area: Architecture & Technical Foundation
+  question: Do you have Docker installed locally?
+  options_presented:
+  - 'yes'
+  - 'no'
+  options_eliminated: []
+  response: 'no'
+  response_type: single-select
+  source: user
+  activates: []
+  notes: User does not have Docker installed locally. Backend tests use SQLite in-memory;
+    runtime validation without Docker.
+- slug_id: compliance-regimes
+  area: Security, Privacy & Compliance
+  question: Which compliance regimes apply to this system?
+  options_presented:
+  - hipaa
+  - soc2
+  - gdpr
+  - pci-dss
+  - bsa-aml
+  - on-prem
+  - air-gapped
+  - sovereign
+  - none
+  options_eliminated: []
+  response: none
+  response_type: multi-select
+  source: user
+  activates: []
+  notes: Internal Deloitte learning platform, no special regulatory regime. User confirmed
+    none.
+- slug_id: cloud-provider
+  area: Architecture & Technical Foundation
+  question: Which cloud provider?
+  options_presented:
+  - aws
+  options_eliminated: []
+  response: aws
+  response_type: single-select
+  source: inferred
+  activates:
+  - ACT-ACCESS
+  notes: AWS is the only harness-supported cloud provider. Recorded without user choice
+    (single option).
+- slug_id: development-methodology
+  area: Architecture & Technical Foundation
+  question: How will your team develop this system across local and cloud environments?
+  options_presented:
+  - local-cloud-ready
+  - full-integrated-cloud
+  options_eliminated: []
+  response: local-cloud-ready
+  response_type: single-select
+  source: user
+  activates:
+  - ACT-ACCESS
+  notes: 'User chose local, cloud-ready: local shell for dev, no-shell fallback for
+    direct AWS connectivity.'
+- slug_id: business-domain
+  area: Domain & Archetype
+  question: Which business domain(s) does this project target?
+  options_presented:
+  - financial-services
+  options_eliminated: []
+  response: []
+  response_type: multi-select
+  source: user
+  activates: []
+  notes: No harness taxonomy node matches edtech/workforce learning platform. Domain
+    overlay skipped.
+- slug_id: technical-archetype
+  area: Domain & Archetype
+  question: Which technical archetype(s) apply?
+  options_presented:
+  - ai-applications
+  - aws-native-services
+  - ai-infra-platforms
+  options_eliminated: []
+  response:
+  - ai-applications
+  response_type: multi-select
+  source: user
+  activates: []
+  notes: Mastery Pulse is an AI-powered application with 11 LLM agents. ai-applications
+    archetype selected.
+- slug_id: active-state-representation
+  area: Data & State Architecture
+  question: How is learner active/inactive status represented in the data model?
+  options_presented:
+  - is_active-boolean
+  - deleted_at-soft-delete
+  - dedicated-status-column
+  options_eliminated: []
+  response: is_active-boolean
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: is_active (Boolean, default=True) already exists on Practitioner model (db/models.py:89).
+    Separate from deleted_at which is on PractitionerProfile for profile soft-delete.
+    No change needed.
+- slug_id: auth-enforcement-strategy
+  area: Security, Privacy & Compliance
+  question: Where is the deactivation enforced at login?
+  options_presented:
+  - login-route-guard
+  - fastapi-middleware
+  - fastapi-dependency
+  options_eliminated: []
+  response: login-route-guard
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: 'Phase 21: auth.py:248 checks if not practitioner.is_active and raises 403
+    account_deactivated. Already implemented and tested in test_phase22_multi_tenant.py:743.'
+- slug_id: admin-ui-design
+  area: UI / UX / Accessibility
+  question: What admin UI exists for learner deactivation?
+  options_presented:
+  - new-admin-page
+  - existing-practitioner-page
+  - api-only
+  options_eliminated: []
+  response: existing-practitioner-page
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: DeactivateButton component in AdminPractitionerPage.tsx:267 — confirmation
+    modal, idempotent toggle, uses useDeactivatePractitioner / useReactivatePractitioner
+    TanStack Query mutations.
+- slug_id: audit-trail
+  area: Data & State Architecture
+  question: Should admin deactivation actions be logged in an audit trail?
+  options_presented:
+  - new-audit-table
+  - existing-event-tables
+  - no-audit
+  options_eliminated: []
+  response: no-audit
+  response_type: single-select
+  source: user
+  activates: []
+  notes: 'User decision: skip audit trail. is_active flag flip is the only record
+    needed for now.'
+- slug_id: edge-case-deactivation
+  area: Business Rules & Domain Logic
+  question: What happens to a learner's data and sessions when deactivated?
+  options_presented:
+  - data-preserved-sessions-deleted
+  - data-and-sessions-preserved
+  - full-wipe
+  options_eliminated: []
+  response: data-preserved-sessions-deleted
+  response_type: single-select
+  source: codebase
+  activates: []
+  notes: 'Codebase: practitioner.is_active = False; all existing sessions are force-deleted
+    on deactivation (tested). Learning paths, profiles, quiz history are fully preserved.
+    Re-activation restores full access.'
 deferred_ideas: []
 constraint_audit:
   passed: false
@@ -237,7 +497,20 @@ constraint_audit:
   passing:
   - 'no-browser-storage: zero localStorage/sessionStorage confirmed'
 active_references:
-  computed_at: '2026-08-31'
-  guidance_references: []
+  computed_at: '2026-09-10'
+  guidance_references:
+  - source: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/what-is-bedrock-agentcore.html
+    kind: url
+    exists: true
+    activated_by:
+    - slug_id: cloud-provider
+      value: aws
+  - source: https://docs.aws.amazon.com/whitepapers/latest/aws-overview/machine-learning.html
+    kind: url
+    exists: true
+    activated_by:
+    - slug_id: cloud-provider
+      value: aws
   domain_brief_paths: []
-  archetype_playbook_paths: []
+  archetype_playbook_paths:
+  - build-playbooks/ai-applications/build-playbook.yaml

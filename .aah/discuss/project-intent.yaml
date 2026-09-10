@@ -1,36 +1,39 @@
-raw_statement: |
-  Please investigate the frontend implementation and let me know if it aligns with
-  the guidelines and recommendations from Deloitte best practices on UI/UX design.
+raw_statement: >
+  As an admin, I want to deactivate or re-activate a particular learner from the portal
+  so that they can't access the portal the next time during their login.
 
-improvement_type: enhancement  # brownfield — auditing existing code for UX compliance
+improvement_type: enhancement
 
 target_areas:
-  - accessibility              # WCAG 2.1 AA compliance — forms, ARIA, focus management
-  - design_consistency         # CSS variable usage, inline style vs. CSS class discipline
-  - responsive_design          # mobile-first, breakpoints, flexible layouts
-  - performance                # code splitting, lazy loading, bundle size
-  - information_architecture   # navigation, breadcrumbs, 404 handling, routing clarity
-  - interaction_patterns       # loading states, error states, empty states, feedback loops
-  - component_reusability      # inline styles vs. shared classes, design system discipline
+  - admin-ui              # Frontend admin page/component to view and toggle learner status
+  - auth-enforcement      # Login flow must block deactivated learners at authentication time
+  - backend-api           # PATCH /practitioners endpoint — toggle active/inactive state
+  - data-model            # Representation of active/inactive state (is_active flag vs deleted_at vs dedicated status column)
+  - audit-trail           # Record of who deactivated/reactivated, and when
 
 constraints:
-  - no_browser_storage         # no localStorage/sessionStorage — existing hard policy
-  - existing_tech_stack        # React 18 + TypeScript + Vite; no framework swap
-  - httponly_session_cookie     # auth pattern must remain unchanged
-  - tanstack_query_for_state   # server state pattern must remain unchanged
-  - no_inline_secrets          # env-based config, no hardcoded values
+  - Must integrate with existing FastAPI / React / PostgreSQL stack (no new runtime dependencies without justification)
+  - Deactivation must be enforced at login time — a deactivated learner cannot log in
+  - Re-activation must be possible by an admin (reversible operation)
+  - Admin-only operation — practitioners cannot deactivate themselves or peers
+  - Multi-tenancy aware — admin can only manage learners within their own organization
 
-integration_surface: 1  # only the backend REST API; no third-party UX SDKs yet
+technical_domains:
+  - api        # Backend route changes (PATCH /practitioners)
+  - frontend   # Admin portal UI for learner management
+  - data       # Schema / ORM changes (active state persistence)
+  - auth       # Session creation guard (deny login if deactivated)
 
-process_flow: |
-  1. User opens app → NavBar renders (sticky, role-aware)
-  2. Login → SessionContext loads /auth/me → routing decides destination
-  3. PortalLayout wraps all authenticated pages (3D background + rings)
-  4. Practitioners: Profile → Skills Dashboard → QuizRunner / SkillRadar / Charts
-  5. Admins: Practitioners list → Nudges → Observability
-  6. Product admins: separate portal with sidebar nav
+integration_surface: 1   # Internal — the existing practitioners route and auth flow; no new external systems
+
+process_flow:
+  - Admin logs in via /api/v1/auth/admin-login
+  - Admin navigates to learner management view (new frontend page or section of existing admin page)
+  - Admin finds a specific learner (by name/email) and toggles their status (deactivate or re-activate)
+  - System calls PATCH /api/v1/practitioners/{id} to update status
+  - Next time the deactivated learner attempts login, the auth route returns an error
+  - Admin can reverse the action (re-activate) to restore portal access
 
 end_users:
-  - practitioners              # Deloitte staff using the learning platform
-  - admins_and_leadership      # org-level admins managing practitioners
-  - product_admins             # Mastery Pulse platform operators
+  - Admin (portal administrator within an organization)
+  - Practitioner / Learner (affected — cannot log in when deactivated)

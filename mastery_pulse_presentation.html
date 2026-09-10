@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mastery Pulse — System Overview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0A0D18;
+    --panel:#121729;
+    --panel-2:#171D34;
+    --line:#2A3153;
+    --blue:#5B8DEF;
+    --violet:#9D6BFF;
+    --amber:#F5A623;
+    --mint:#34D399;
+    --paper:#E9EBF6;
+    --muted:#8B92B8;
+    --danger:#EF6461;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{
+    height:100%;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'Inter', sans-serif;
+    overflow:hidden;
+  }
+  body{
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(255,255,255,0.055) 1px, transparent 0);
+    background-size: 28px 28px;
+  }
+  h1,h2,h3{ font-family:'Space Grotesk', sans-serif; font-weight:600; letter-spacing:-0.01em; }
+  .mono{ font-family:'JetBrains Mono', monospace; }
+
+  /* ---------- deck shell ---------- */
+  #deck{ position:relative; width:100vw; height:100vh; }
+  .page{
+    position:absolute; inset:0;
+    display:flex; flex-direction:column;
+    padding:5.2vh 6vw 8vh 6vw;
+    opacity:0; visibility:hidden;
+    transform:translateX(28px);
+    transition:opacity .5s ease, transform .5s ease;
+    pointer-events:none;
+  }
+  .page.active{
+    opacity:1; visibility:visible; transform:translateX(0);
+    pointer-events:auto;
+  }
+
+  .kicker{
+    display:flex; align-items:center; gap:.7rem;
+    color:var(--muted); font-size:.78rem; letter-spacing:.02em;
+    margin-bottom:.6rem;
+  }
+  .kicker .dot{ width:6px; height:6px; border-radius:50%; background:var(--mint); box-shadow:0 0 8px var(--mint); }
+  .page-title{ font-size:2.05rem; line-height:1.15; margin-bottom:.35rem; }
+  .page-sub{ color:var(--muted); font-size:1rem; max-width:640px; margin-bottom:1.6rem; }
+
+  .grad-text{
+    background:linear-gradient(100deg, var(--blue), var(--violet) 65%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+
+  /* ---------- shared card ---------- */
+  .card{
+    background:linear-gradient(180deg, var(--panel), var(--panel-2));
+    border:1px solid var(--line);
+    border-radius:10px;
+  }
+
+  /* ---------- nav chrome ---------- */
+  #nav{
+    position:fixed; bottom:2.4vh; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:1.1rem;
+    background:rgba(18,23,41,0.85);
+    border:1px solid var(--line);
+    padding:.55rem 1rem; border-radius:999px;
+    backdrop-filter:blur(6px);
+    z-index:50;
+  }
+  #nav button{
+    width:30px; height:30px; border-radius:50%;
+    border:1px solid var(--line); background:var(--panel-2); color:var(--paper);
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    font-size:.9rem; transition:border-color .2s, background .2s;
+  }
+  #nav button:hover{ border-color:var(--blue); background:#1B2340; }
+  #nav .dots{ display:flex; gap:.5rem; }
+  #nav .dots span{
+    width:7px; height:7px; border-radius:50%; background:var(--line); cursor:pointer;
+    transition:background .2s, transform .2s;
+  }
+  #nav .dots span.on{ background:var(--blue); transform:scale(1.3); }
+  #pageno{ font-size:.72rem; color:var(--muted); min-width:38px; text-align:center; }
+  #brand{
+    position:fixed; top:2.2vh; left:6vw; font-size:.78rem; color:var(--muted);
+    letter-spacing:.03em; z-index:50; display:flex; align-items:center; gap:.5rem;
+  }
+  #brand .sq{ width:9px; height:9px; background:linear-gradient(135deg,var(--blue),var(--violet)); border-radius:2px; }
+
+  /* ============ PAGE 1 : COVER ============ */
+  #p1{ justify-content:center; }
+  .cover-wrap{ display:grid; grid-template-columns:1.05fr 0.95fr; gap:3vw; align-items:center; height:100%; }
+  .cover-title{ font-size:4.2rem; line-height:0.98; margin-bottom:1rem; }
+  .cover-body p{ color:#C7CBE6; font-size:1.02rem; line-height:1.65; max-width:520px; margin-bottom:1.1rem; }
+  .cover-body p:last-of-type{ margin-bottom:1.6rem; }
+  .pill-row{ display:flex; gap:.6rem; flex-wrap:wrap; }
+  .pill{
+    font-family:'JetBrains Mono', monospace; font-size:.72rem; color:var(--paper);
+    border:1px solid var(--line); padding:.32rem .65rem; border-radius:5px; background:#141A30;
+  }
+  .pill.b{ border-color:rgba(91,141,239,.5); color:#BBD0FF; }
+  .pill.v{ border-color:rgba(157,107,255,.5); color:#D8C6FF; }
+
+  .loop-caption{ text-align:center; color:var(--muted); font-size:.78rem; margin-top:.6rem; }
+
+  /* ============ PAGE 2 : AGENTS ============ */
+  #p2 .body-grid{ display:grid; grid-template-columns:1.15fr 0.85fr; gap:1.6vw; flex:1; min-height:0; }
+  .workflow-block{ padding:1.1rem 1.2rem; margin-bottom:.9rem; }
+  .workflow-block h4{ font-size:.85rem; color:var(--paper); margin-bottom:.15rem; }
+  .workflow-block .desc{ font-size:.76rem; color:var(--muted); margin-bottom:.7rem; }
+  .agent-grid{ display:grid; grid-template-columns:1fr 1fr; gap:.55rem; overflow-y:auto; padding-right:.3rem; }
+  .agent-chip{ padding:.6rem .7rem; }
+  .agent-chip .n{ font-family:'JetBrains Mono', monospace; font-size:.66rem; color:var(--blue); }
+  .agent-chip .t{ font-size:.8rem; font-weight:600; margin:.15rem 0 .2rem; }
+  .agent-chip .j{ font-size:.71rem; color:var(--muted); line-height:1.35; }
+
+  /* ============ PAGE 3 : DATA / TRUST ============ */
+  #p3 .body-grid{ display:grid; grid-template-columns:1.1fr 0.9fr; gap:1.8vw; flex:1; min-height:0; }
+  .priv-list{ display:flex; flex-direction:column; gap:.65rem; overflow-y:auto; }
+  .priv-item{ padding:.75rem .9rem; display:flex; gap:.7rem; align-items:flex-start; }
+  .priv-item .ic{ font-size:1rem; margin-top:.05rem; }
+  .priv-item .h{ font-size:.82rem; font-weight:600; margin-bottom:.15rem; }
+  .priv-item .d{ font-size:.74rem; color:var(--muted); line-height:1.4; }
+
+  /* ============ PAGE 4 : HUMAN-IN-LOOP + LIMITS ============ */
+  #p4 .body-grid{ display:grid; grid-template-columns:1.2fr 0.8fr; gap:1.8vw; flex:1; min-height:0; margin-bottom:1rem; }
+  .hitl-scroll{ overflow-y:auto; padding-right:.4rem; display:flex; flex-direction:column; gap:.55rem; }
+  .hitl-card{ padding:.7rem .85rem; display:grid; grid-template-columns:auto 1fr; gap:.65rem; align-items:flex-start; }
+  .hitl-card .badge{ font-size:.9rem; }
+  .hitl-card .h{ font-size:.8rem; font-weight:600; }
+  .hitl-card .d{ font-size:.72rem; color:var(--muted); line-height:1.4; margin-top:.1rem; }
+  .limits-scroll{ overflow-y:auto; padding-right:.3rem; display:flex; flex-direction:column; gap:.5rem; }
+  .limit-item{ padding:.65rem .8rem; font-size:.73rem; color:#C7CBE6; line-height:1.45; border-left:2px solid var(--amber); }
+  .footer-strip{
+    margin-top:1rem; display:flex; align-items:center; justify-content:space-between;
+    padding-top:.9rem; border-top:1px solid var(--line);
+    font-size:.7rem; color:var(--muted);
+  }
+  .footer-strip .stack span{ margin-right:.9rem; font-family:'JetBrains Mono', monospace; color:#9AA3D0; }
+
+  ::-webkit-scrollbar{ width:6px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:3px; }
+
+  @media (max-width: 900px){
+    .cover-wrap, #p2 .body-grid, #p3 .body-grid, #p4 .body-grid{ grid-template-columns:1fr; }
+    .cover-title{ font-size:2.4rem; }
+  }
+</style>
+</head>
+<body>
+
+<div id="brand"><span class="sq"></span> MASTERY PULSE — SYSTEM OVERVIEW</div>
+
+<div id="deck">
+
+  <!-- ============================= PAGE 1 ============================= -->
+  <section class="page active" id="p1">
+    <div class="cover-wrap">
+      <div>
+        <div class="kicker"><span class="dot"></span> INTERNAL BUILD · SOLO-MAINTAINED</div>
+        <h1 class="cover-title">Mastery<br><span class="grad-text">Pulse.</span></h1>
+        <div class="cover-body">
+          <p>Certification prep and adoption tracking usually live in two disconnected systems: a learning tool that measures whether you <em>knew</em> something on a quiz, and an analytics tool that measures whether you're <em>using</em> anything at all. Neither one tells a practice lead if training actually changed real work.</p>
+          <p>Mastery Pulse is one application built from two ideas sharing a single skill graph — a closed loop between what someone has learned and what they actually do.</p>
+        </div>
+        <div class="pill-row">
+          <span class="pill b">12 agents</span>
+          <span class="pill b">3 workflows</span>
+          <span class="pill v">4 cert providers</span>
+          <span class="pill v">Postgres + pgvector</span>
+          <span class="pill">FastAPI · React</span>
+        </div>
+      </div>
+
+      <div>
+        <svg viewBox="0 0 460 420" width="100%" height="auto">
+          <defs>
+            <linearGradient id="gradWire" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#5B8DEF"/>
+              <stop offset="100%" stop-color="#9D6BFF"/>
+            </linearGradient>
+          </defs>
+
+          <!-- Mastery Mesh box -->
+          <rect x="30" y="30" width="185" height="90" rx="8" fill="#141A30" stroke="#5B8DEF" stroke-width="1.3"/>
+          <text x="122" y="58" text-anchor="middle" fill="#BBD0FF" font-family="JetBrains Mono, monospace" font-size="10">FRONT STAGE</text>
+          <text x="122" y="80" text-anchor="middle" fill="#E9EBF6" font-family="Space Grotesk, sans-serif" font-size="16" font-weight="600">Mastery Mesh</text>
+          <text x="122" y="100" text-anchor="middle" fill="#8B92B8" font-size="10">cert → skills → learning path</text>
+
+          <!-- Adoption Pulse box -->
+          <rect x="245" y="300" width="185" height="90" rx="8" fill="#141A30" stroke="#9D6BFF" stroke-width="1.3"/>
+          <text x="337" y="328" text-anchor="middle" fill="#D8C6FF" font-family="JetBrains Mono, monospace" font-size="10">BACK STAGE</text>
+          <text x="337" y="350" text-anchor="middle" fill="#E9EBF6" font-family="Space Grotesk, sans-serif" font-size="16" font-weight="600">Adoption Pulse</text>
+          <text x="337" y="370" text-anchor="middle" fill="#8B92B8" font-size="10">usage signals → gap → nudge</text>
+
+          <!-- Skill graph, center -->
+          <circle cx="230" cy="210" r="46" fill="#171D34" stroke="url(#gradWire)" stroke-width="1.6"/>
+          <text x="230" y="205" text-anchor="middle" fill="#E9EBF6" font-family="Space Grotesk, sans-serif" font-size="12.5" font-weight="600">Shared</text>
+          <text x="230" y="221" text-anchor="middle" fill="#E9EBF6" font-family="Space Grotesk, sans-serif" font-size="12.5" font-weight="600">Skill Graph</text>
+
+          <!-- orthogonal connectors -->
+          <path d="M122 120 L122 210 L184 210" fill="none" stroke="url(#gradWire)" stroke-width="1.6"/>
+          <path d="M276 210 L337 210 L337 300" fill="none" stroke="url(#gradWire)" stroke-width="1.6"/>
+          <path d="M245 345 L60 345 L60 120" fill="none" stroke="#F5A623" stroke-width="1.4" stroke-dasharray="4 4"/>
+
+          <polygon points="184,206 184,214 194,210" fill="#5B8DEF"/>
+          <polygon points="333,296 341,296 337,306" fill="#9D6BFF"/>
+          <polygon points="56,124 64,124 60,114" fill="#F5A623"/>
+
+          <text x="60" y="235" text-anchor="middle" fill="#F5A623" font-size="9.5" font-family="JetBrains Mono, monospace" transform="rotate(-90 60 235)">feedback loop</text>
+        </svg>
+        <div class="loop-caption">Adoption gaps feed the Curriculum Planner's next recommendation — the loop that gives the product its name.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================= PAGE 2 ============================= -->
+  <section class="page" id="p2">
+    <div class="kicker"><span class="dot" style="background:var(--blue); box-shadow:0 0 8px var(--blue);"></span> ARCHITECTURE</div>
+    <h2 class="page-title">Twelve agents. Three workflows. No framework.</h2>
+    <p class="page-sub">Each agent is a single-purpose, typed unit — one input contract, one Structured-Output contract, one audited run. Plain async Python sequences them; nothing is hidden inside a graph a human has to reconstruct at 2am.</p>
+
+    <div class="body-grid">
+      <div style="display:flex; flex-direction:column; min-height:0;">
+
+        <div class="card workflow-block">
+          <h4>recommend_certification</h4>
+          <div class="desc">The front door for a new practitioner — a 4-question intake.</div>
+          <svg viewBox="0 0 520 46" width="100%" height="46">
+            <rect x="4" y="6" width="200" height="34" rx="6" fill="#171D34" stroke="#5B8DEF"/>
+            <text x="104" y="27" text-anchor="middle" fill="#E9EBF6" font-size="12" font-family="JetBrains Mono, monospace">Certification Advisor</text>
+            <path d="M204 23 L236 23" stroke="#5B8DEF" stroke-width="1.4"/>
+            <polygon points="232,19 232,27 240,23" fill="#5B8DEF"/>
+            <rect x="240" y="6" width="220" height="34" rx="6" fill="#171D34" stroke="#34D399"/>
+            <text x="350" y="27" text-anchor="middle" fill="#E9EBF6" font-size="12" font-family="JetBrains Mono, monospace">goal: recommended</text>
+          </svg>
+        </div>
+
+        <div class="card workflow-block">
+          <h4>generate_learning_path</h4>
+          <div class="desc">Sync chain, then two independent background tasks — the HTTP response returns before either finishes.</div>
+          <svg viewBox="0 0 560 120" width="100%" height="120">
+            <rect x="4" y="8" width="140" height="32" rx="6" fill="#171D34" stroke="#5B8DEF"/>
+            <text x="74" y="28" text-anchor="middle" fill="#E9EBF6" font-size="10.5" font-family="JetBrains Mono, monospace">Skill Profiler</text>
+            <path d="M144 24 L172 24" stroke="#5B8DEF" stroke-width="1.4"/>
+            <polygon points="168,20 168,28 176,24" fill="#5B8DEF"/>
+            <rect x="176" y="8" width="140" height="32" rx="6" fill="#171D34" stroke="#5B8DEF"/>
+            <text x="246" y="28" text-anchor="middle" fill="#E9EBF6" font-size="10.5" font-family="JetBrains Mono, monospace">Domain Scorer</text>
+            <path d="M316 24 L344 24" stroke="#5B8DEF" stroke-width="1.4"/>
+            <polygon points="340,20 340,28 348,24" fill="#5B8DEF"/>
+            <rect x="348" y="8" width="150" height="32" rx="6" fill="#171D34" stroke="#5B8DEF"/>
+            <text x="423" y="28" text-anchor="middle" fill="#E9EBF6" font-size="10.5" font-family="JetBrains Mono, monospace">Curriculum Planner</text>
+
+            <path d="M423 40 L423 58 L120 58 L120 76" fill="none" stroke="#9D6BFF" stroke-width="1.3" stroke-dasharray="3 3"/>
+            <polygon points="116,72 124,72 120,80" fill="#9D6BFF"/>
+            <rect x="14" y="80" width="212" height="32" rx="6" fill="#141A30" stroke="#9D6BFF"/>
+            <text x="120" y="100" text-anchor="middle" fill="#D8C6FF" font-size="10.5" font-family="JetBrains Mono, monospace">bg: quiz gen (per skill)</text>
+
+            <path d="M423 40 L423 58 L330 58 L330 76" fill="none" stroke="#F5A623" stroke-width="1.3" stroke-dasharray="3 3"/>
+            <polygon points="326,72 334,72 330,80" fill="#F5A623"/>
+            <rect x="240" y="80" width="212" height="32" rx="6" fill="#141A30" stroke="#F5A623"/>
+            <text x="346" y="100" text-anchor="middle" fill="#FFD9A0" font-size="10.5" font-family="JetBrains Mono, monospace">bg: lesson gen (per gap)</text>
+          </svg>
+        </div>
+
+        <div class="card workflow-block" style="margin-bottom:0;">
+          <h4>nudge_campaign</h4>
+          <div class="desc">Admin-initiated, on demand — never scheduled, never sees raw PII in the LLM step.</div>
+          <svg viewBox="0 0 560 46" width="100%" height="46">
+            <rect x="4" y="6" width="230" height="34" rx="6" fill="#171D34" stroke="#9D6BFF"/>
+            <text x="119" y="27" text-anchor="middle" fill="#E9EBF6" font-size="11.5" font-family="JetBrains Mono, monospace">Nudge Category Generator</text>
+            <path d="M234 23 L262 23" stroke="#9D6BFF" stroke-width="1.4"/>
+            <polygon points="258,19 258,27 266,23" fill="#9D6BFF"/>
+            <rect x="266" y="6" width="180" height="34" rx="6" fill="#171D34" stroke="#9D6BFF"/>
+            <text x="356" y="27" text-anchor="middle" fill="#E9EBF6" font-size="11.5" font-family="JetBrains Mono, monospace">Nudge Composer</text>
+            <path d="M446 23 L474 23" stroke="#9D6BFF" stroke-width="1.4"/>
+            <polygon points="470,19 470,27 478,23" fill="#9D6BFF"/>
+            <rect x="478" y="6" width="78" height="34" rx="6" fill="#141A30" stroke="#34D399"/>
+            <text x="517" y="27" text-anchor="middle" fill="#B8F2D9" font-size="10.5" font-family="JetBrains Mono, monospace">sent</text>
+          </svg>
+        </div>
+
+        <div class="card" style="padding:.9rem 1.1rem; margin-top:.9rem;">
+          <h4 style="font-size:.85rem; margin-bottom:.55rem;">Provider resilience — 3-tier fallback chain (NVIDIA-primary mode)</h4>
+          <svg viewBox="0 0 560 58" width="100%" height="58">
+            <rect x="4" y="8" width="150" height="34" rx="6" fill="#141A30" stroke="#5B8DEF"/>
+            <text x="79" y="24" text-anchor="middle" fill="#E9EBF6" font-size="10.5" font-family="JetBrains Mono, monospace">Ultra</text>
+            <text x="79" y="37" text-anchor="middle" fill="#8B92B8" font-size="8.5">10s timeout</text>
+            <path d="M154 25 L184 25" stroke="#5B8DEF" stroke-width="1.4"/>
+            <polygon points="180,21 180,29 188,25" fill="#5B8DEF"/>
+            <rect x="188" y="8" width="150" height="34" rx="6" fill="#141A30" stroke="#5B8DEF"/>
+            <text x="263" y="24" text-anchor="middle" fill="#E9EBF6" font-size="10.5" font-family="JetBrains Mono, monospace">Lightning</text>
+            <text x="263" y="37" text-anchor="middle" fill="#8B92B8" font-size="8.5">20s timeout</text>
+            <path d="M338 25 L368 25" stroke="#F5A623" stroke-width="1.4"/>
+            <polygon points="364,21 364,29 372,25" fill="#F5A623"/>
+            <rect x="372" y="8" width="150" height="34" rx="6" fill="#141A30" stroke="#F5A623"/>
+            <text x="447" y="24" text-anchor="middle" fill="#FFD9A0" font-size="10.5" font-family="JetBrains Mono, monospace">Haiku 4.5</text>
+            <text x="447" y="37" text-anchor="middle" fill="#8B92B8" font-size="8.5">20s timeout · paid</text>
+          </svg>
+          <div style="font-size:.7rem; color:var(--muted); margin-top:.4rem;">Circuit breaker: 5 consecutive both-tier NVIDIA failures → 2-min cooldown, routes straight to Haiku. Max wall time if all fail: 50s.</div>
+        </div>
+      </div>
+
+      <div class="agent-grid mono" id="agentGrid"></div>
+    </div>
+  </section>
+
+  <!-- ============================= PAGE 3 ============================= -->
+  <section class="page" id="p3">
+    <div class="kicker"><span class="dot" style="background:var(--violet); box-shadow:0 0 8px var(--violet);"></span> TRUST & ACCESS</div>
+    <h2 class="page-title">Three identities, one cookie, a privacy floor that's structural.</h2>
+    <p class="page-sub">No JWT, no external identity provider. Access boundaries are enforced server-side — a client that bypasses the frontend gets the same answer as anyone else.</p>
+
+    <div class="body-grid">
+      <div style="display:flex; flex-direction:column; gap:.7rem; min-height:0; overflow-y:auto; padding-right:.3rem;">
+        <div class="card" style="padding:.85rem 1.1rem;">
+          <h4 style="font-size:.85rem; margin-bottom:.5rem;">Identity scope</h4>
+          <svg viewBox="0 0 560 210" width="100%" height="185">
+            <rect x="10" y="10" width="165" height="55" rx="7" fill="#141A30" stroke="#5B8DEF"/>
+            <text x="92" y="32" text-anchor="middle" fill="#E9EBF6" font-size="11" font-family="JetBrains Mono, monospace">practitioner</text>
+            <text x="92" y="48" text-anchor="middle" fill="#8B92B8" font-size="9">own data only</text>
+
+            <rect x="198" y="10" width="165" height="55" rx="7" fill="#141A30" stroke="#9D6BFF"/>
+            <text x="280" y="32" text-anchor="middle" fill="#E9EBF6" font-size="11" font-family="JetBrains Mono, monospace">admin / leadership</text>
+            <text x="280" y="48" text-anchor="middle" fill="#8B92B8" font-size="9">org's practitioners</text>
+
+            <rect x="386" y="10" width="165" height="55" rx="7" fill="#141A30" stroke="#F5A623"/>
+            <text x="468" y="32" text-anchor="middle" fill="#E9EBF6" font-size="11" font-family="JetBrains Mono, monospace">product_admin</text>
+            <text x="468" y="48" text-anchor="middle" fill="#8B92B8" font-size="9">plans + orgs, aggregate only</text>
+
+            <path d="M92 65 L92 95" stroke="#5B8DEF" stroke-width="1.3"/>
+            <path d="M280 65 L280 95" stroke="#9D6BFF" stroke-width="1.3"/>
+            <path d="M468 65 L468 95" stroke="#F5A623" stroke-width="1.3"/>
+
+            <rect x="10" y="98" width="165" height="60" rx="7" fill="#0F1428" stroke="#2A3153"/>
+            <text x="92" y="120" text-anchor="middle" fill="#C7CBE6" font-size="9.5">radar · quiz</text>
+            <text x="92" y="135" text-anchor="middle" fill="#C7CBE6" font-size="9.5">nudges · mock exam</text>
+            <text x="92" y="150" text-anchor="middle" fill="#C7CBE6" font-size="9.5">no password</text>
+
+            <rect x="198" y="98" width="165" height="60" rx="7" fill="#0F1428" stroke="#2A3153"/>
+            <text x="280" y="115" text-anchor="middle" fill="#C7CBE6" font-size="9.5">leadership: aggregates only</text>
+            <text x="280" y="130" text-anchor="middle" fill="#C7CBE6" font-size="9.5">admin: + individual detail</text>
+            <text x="280" y="145" text-anchor="middle" fill="#C7CBE6" font-size="9.5">bcrypt, forced 1st change</text>
+
+            <rect x="386" y="98" width="165" height="60" rx="7" fill="#0F1428" stroke="#2A3153"/>
+            <text x="468" y="115" text-anchor="middle" fill="#C7CBE6" font-size="9.5">never sees an individual</text>
+            <text x="468" y="130" text-anchor="middle" fill="#C7CBE6" font-size="9.5">practitioner's learning data</text>
+            <text x="468" y="145" text-anchor="middle" fill="#C7CBE6" font-size="9.5">org &amp; plan CRUD</text>
+          </svg>
+        </div>
+
+        <div class="card" style="padding:.85rem 1.1rem;">
+          <h4 style="font-size:.85rem; margin-bottom:.5rem;">Deactivation → force logout, in one transaction</h4>
+          <svg viewBox="0 0 560 70" width="100%" height="60">
+            <rect x="4" y="16" width="128" height="38" rx="6" fill="#141A30" stroke="#EF6461"/>
+            <text x="68" y="39" text-anchor="middle" fill="#F5C6C4" font-size="10" font-family="JetBrains Mono, monospace">is_active=false</text>
+            <path d="M132 35 L160 35" stroke="#EF6461" stroke-width="1.4"/>
+            <polygon points="156,31 156,39 164,35" fill="#EF6461"/>
+            <rect x="164" y="16" width="150" height="38" rx="6" fill="#141A30" stroke="#EF6461"/>
+            <text x="239" y="39" text-anchor="middle" fill="#F5C6C4" font-size="10" font-family="JetBrains Mono, monospace">DELETE sessions</text>
+            <path d="M314 35 L342 35" stroke="#EF6461" stroke-width="1.4"/>
+            <polygon points="338,31 338,39 346,35" fill="#EF6461"/>
+            <rect x="346" y="16" width="100" height="38" rx="6" fill="#141A30" stroke="#EF6461"/>
+            <text x="396" y="39" text-anchor="middle" fill="#F5C6C4" font-size="10" font-family="JetBrains Mono, monospace">next req → 401</text>
+            <path d="M446 35 L474 35" stroke="#EF6461" stroke-width="1.4"/>
+            <polygon points="470,31 470,39 478,35" fill="#EF6461"/>
+            <rect x="478" y="16" width="78" height="38" rx="6" fill="#141A30" stroke="#EF6461"/>
+            <text x="517" y="39" text-anchor="middle" fill="#F5C6C4" font-size="10" font-family="JetBrains Mono, monospace">/login</text>
+          </svg>
+          <div style="font-size:.7rem; color:var(--muted); margin-top:.4rem; line-height:1.45;">The cookie is a lookup key, not a self-contained credential — deleting the row makes it permanently worthless. No client-side reconstruction is possible.</div>
+        </div>
+
+        <div class="card" style="padding:.85rem 1.1rem;">
+          <h4 style="font-size:.85rem; margin-bottom:.5rem;">Organization &amp; plan hierarchy (multi-tenant layer)</h4>
+          <svg viewBox="0 0 560 150" width="100%" height="135">
+            <rect x="200" y="6" width="160" height="34" rx="6" fill="#141A30" stroke="#5B8DEF"/>
+            <text x="280" y="27" text-anchor="middle" fill="#E9EBF6" font-size="10.5" font-family="JetBrains Mono, monospace">subscription_plans</text>
+            <path d="M280 40 L280 58" stroke="#5B8DEF" stroke-width="1.3"/>
+            <polygon points="276,54 284,54 280,62" fill="#5B8DEF"/>
+            <rect x="190" y="64" width="180" height="34" rx="6" fill="#141A30" stroke="#9D6BFF"/>
+            <text x="280" y="85" text-anchor="middle" fill="#E9EBF6" font-size="10.5" font-family="JetBrains Mono, monospace">organizations</text>
+
+            <path d="M230 98 L120 98 L120 116" stroke="#9D6BFF" stroke-width="1.2"/>
+            <polygon points="116,112 124,112 120,120" fill="#9D6BFF"/>
+            <rect x="20" y="122" width="200" height="28" rx="6" fill="#0F1428" stroke="#2A3153"/>
+            <text x="120" y="141" text-anchor="middle" fill="#C7CBE6" font-size="9">enrollment code · admin_users</text>
+
+            <path d="M330 98 L440 98 L440 116" stroke="#9D6BFF" stroke-width="1.2"/>
+            <polygon points="436,112 444,112 440,120" fill="#9D6BFF"/>
+            <rect x="340" y="122" width="200" height="28" rx="6" fill="#0F1428" stroke="#2A3153"/>
+            <text x="440" y="141" text-anchor="middle" fill="#C7CBE6" font-size="9">practitioners (enrolled via code)</text>
+          </svg>
+          <div style="font-size:.71rem; color:var(--muted); margin-top:.4rem; line-height:1.5;">Plan limits resolve at request time via a live join — a product-admin upgrade takes effect on the next API call, no data migration.</div>
+        </div>
+      </div>
+
+      <div class="priv-list" id="privList"></div>
+    </div>
+  </section>
+
+  <!-- ============================= PAGE 4 ============================= -->
+  <section class="page" id="p4">
+    <div class="kicker"><span class="dot" style="background:var(--amber); box-shadow:0 0 8px var(--amber);"></span> OVERSIGHT & STATUS</div>
+    <h2 class="page-title">Claude Code owns the plumbing. The judgment calls are owned directly.</h2>
+    <p class="page-sub">Not "write the Python yourself" — "own the prompt file, the rubric, or the policy decision." Roughly a dozen points across the build are flagged for that reason.</p>
+
+    <div class="body-grid">
+      <div class="hitl-scroll" id="hitlList"></div>
+
+      <div style="display:flex; flex-direction:column; min-height:0;">
+        <h4 style="font-size:.8rem; color:var(--muted); margin-bottom:.5rem; text-transform:none;">Known limitations — v1</h4>
+        <div class="limits-scroll" id="limitsList"></div>
+      </div>
+    </div>
+
+    <div class="footer-strip">
+      <div class="stack">
+        <span>Python 3.11</span><span>FastAPI</span><span>SQLAlchemy</span><span>Postgres+pgvector</span><span>React/TS</span><span>Render</span><span>GitHub Pages</span>
+      </div>
+      <div>ai_trainer · github.com/ayanmitra2021</div>
+    </div>
+  </section>
+
+</div>
+
+<div id="nav">
+  <button id="prevBtn" aria-label="Previous">‹</button>
+  <div class="dots" id="dots"></div>
+  <button id="nextBtn" aria-label="Next">›</button>
+  <span id="pageno" class="mono">1 / 4</span>
+</div>
+
+<script>
+  // ---- static content data (kept out of markup for readability) ----
+  const agents = [
+    ["01","Certification Advisor","4-question intake → best-fit certification + rationale"],
+    ["02","Skill Profiler","Quiz signals → broad skill mastery estimates"],
+    ["03","Curriculum Planner","Sequences what to work on next, targeting the chosen cert"],
+    ["04","Item-Writer","Generates/calibrates one practice item, tags exam domain"],
+    ["05","Quiz Batch Generator","Background, per-skill question generation"],
+    ["06","Cert Skill Mapper","Web-researches exam guide → 10–12 skills, domain-linked"],
+    ["07","Grader","Scores an attempt incl. free-text, with rationale"],
+    ["08","Usage-Signal","Ingests real usage evidence, maps to skill nodes"],
+    ["09","Correlation","Trained vs. adopting, per skill"],
+    ["10","Nudge Composer","Drafts a campaign message, tone-checked"],
+    ["11","Nudge Category Generator","Aggregate-only KPI patterns → nudge categories"],
+    ["12","Domain Scorer","Self-assessment → initial exam-domain readiness"],
+    ["13","Cert Domain Discovery","Proposes updated exam domains, admin-approved"],
+    ["14","Byte-Sized Lesson","≤5-min skill-gap write-up + curated links"],
+  ];
+  const agentGrid = document.getElementById('agentGrid');
+  agents.forEach(([n,t,j])=>{
+    const el = document.createElement('div');
+    el.className = 'card agent-chip';
+    el.innerHTML = `<div class="n">AGENT ${n}</div><div class="t">${t}</div><div class="j">${j}</div>`;
+    agentGrid.appendChild(el);
+  });
+
+  const privItems = [
+    ["🔒","Session = DB row, not JWT","Opaque HTTP-only cookie; the server-side row is the only source of truth."],
+    ["🙈","No PII reaches the nudge LLM","Category Generator sees aggregate counts only; individuals resolved after, by plain SQL."],
+    ["🚧","Plan limits enforced server-side","HTTP 402 on the API itself — bypassing the frontend changes nothing."],
+    ["🗑️","Soft delete on profiles","Cert-recycling limits stay honest even after a profile is removed from view."],
+    ["🚫","No browser storage, anywhere","No localStorage / sessionStorage in the frontend, project-wide."],
+    ["📊","Leadership sees aggregates only","Individual attempts and raw scores are admin-only, not leadership-visible."],
+  ];
+  const privList = document.getElementById('privList');
+  privItems.forEach(([ic,h,d])=>{
+    const el = document.createElement('div');
+    el.className = 'card priv-item';
+    el.innerHTML = `<div class="ic">${ic}</div><div><div class="h">${h}</div><div class="d">${d}</div></div>`;
+    privList.appendChild(el);
+  });
+
+  const hitl = [
+    ["👤","Certification Advisor's recommendation logic","A wrong call when answers don't cleanly point to one cert costs someone a real exam fee."],
+    ["👤","Item-Writer trap-reveal mechanic","The product's signature pedagogical device — what makes a good trap, what the reveal says."],
+    ["👤","Grader's free-text rubric","Partial-credit logic encodes what actually counts as a correct answer."],
+    ["👤","Correlation Agent's methodology","The most ethically load-bearing agent — decides who 'looks like' they're not adopting."],
+    ["👤","Nudge Composer's tone","Anything a practitioner reads about themselves gets extra scrutiny before it ships."],
+    ["👤","Minimum-cohort-size policy","A privacy decision with a number attached — picked deliberately, not defaulted."],
+    ["👤","Domain-discovery confidence rules","A confident fabrication is more dangerous than a visible 'couldn't find a source.'"],
+  ];
+  const hitlList = document.getElementById('hitlList');
+  hitl.forEach(([b,h,d])=>{
+    const el = document.createElement('div');
+    el.className = 'card hitl-card';
+    el.innerHTML = `<div class="badge">${b}</div><div><div class="h">${h}</div><div class="d">${d}</div></div>`;
+    hitlList.appendChild(el);
+  });
+
+  const limits = [
+    "MCP-sourced signals (Skill Profiler, Usage-Signal) are unavailable under NVIDIA — logged, not silent.",
+    "NVIDIA has no Message Batches API — batchable workflows fall back to synchronous, 2× cost.",
+    "Circuit breaker and session store are in-process — a restart resets breaker state.",
+    "Rollup Reporter and the scheduled nightly pulse are retired from the active product; code is archived, not deleted.",
+    "Byte-Sized read-aloud depends on the browser's Web Speech API, with no fallback beyond hiding the control.",
+    "Product-admin analytics are aggregate-only by design — no cross-org practitioner search, a privacy win but a support-tooling gap.",
+  ];
+  const limitsList = document.getElementById('limitsList');
+  limits.forEach(t=>{
+    const el = document.createElement('div');
+    el.className = 'limit-item';
+    el.textContent = t;
+    limitsList.appendChild(el);
+  });
+
+  // ---- pagination ----
+  const pages = Array.from(document.querySelectorAll('.page'));
+  const dotsWrap = document.getElementById('dots');
+  pages.forEach((_,i)=>{
+    const d = document.createElement('span');
+    d.addEventListener('click', ()=>go(i));
+    dotsWrap.appendChild(d);
+  });
+  let idx = 0;
+  function render(){
+    pages.forEach((p,i)=>p.classList.toggle('active', i===idx));
+    Array.from(dotsWrap.children).forEach((d,i)=>d.classList.toggle('on', i===idx));
+    document.getElementById('pageno').textContent = `${idx+1} / ${pages.length}`;
+  }
+  function go(i){ idx = Math.max(0, Math.min(pages.length-1, i)); render(); }
+  document.getElementById('prevBtn').addEventListener('click', ()=>go(idx-1));
+  document.getElementById('nextBtn').addEventListener('click', ()=>go(idx+1));
+  window.addEventListener('keydown', (e)=>{
+    if(e.key==='ArrowRight' || e.key===' ') go(idx+1);
+    if(e.key==='ArrowLeft') go(idx-1);
+  });
+  render();
+</script>
+</body>
+</html>
