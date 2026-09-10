@@ -9,6 +9,14 @@ and require a locally running Postgres instance with the mastery_pulse_test data
 from __future__ import annotations
 
 import os
+
+# Ensure DATABASE_URL is present in os.environ before any module imports app.main,
+# which calls check_env() in its lifespan startup. Tests override the actual DB
+# connection via dependency injection (SQLite), so the value here is a placeholder.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+asyncpg://test:test@localhost:5432/mastery_pulse_test_placeholder",
+)
 from collections.abc import AsyncGenerator
 from typing import Any
 

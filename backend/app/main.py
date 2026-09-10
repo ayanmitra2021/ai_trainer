@@ -14,11 +14,14 @@ _log = logging.getLogger("mastery_pulse")
 from app.config import settings
 from app.db.session import engine
 from app.db.models import Base
+from config.env_check import check_env
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Nothing to do at startup for now (migrations run via alembic, not here).
+    # Validate required environment variables before serving any requests.
+    # Fails fast with ERR_CDR_78_EX_CONFIG if any required variable is missing.
+    check_env()
     yield
     # Clean up the connection pool on shutdown.
     await engine.dispose()

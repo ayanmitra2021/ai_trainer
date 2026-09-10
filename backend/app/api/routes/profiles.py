@@ -44,6 +44,7 @@ from app.db.session import get_db
 from app.schemas.profiles import (
     ProfileCreate,
     ProfileDetail,
+    ProfileNameUpdate,
     ProfileRead,
     ProfileUpdate,
     SkillAssessmentUpsertRequest,
@@ -430,6 +431,57 @@ async def activate_profile(
 
     profile.is_active = True
     profile.updated_at = datetime.now(UTC)
+    await db.commit()
+    await db.refresh(profile)
+
+    cert_code: str | None = None
+    if profile.certification_id:
+        cert = await db.get(Certification, profile.certification_id)
+        cert_code = cert.code if cert else None
+
+    mastery_pct = await _compute_mastery_pct(db, practitioner_id, profile.certification_id)
+    return _profile_read(profile, cert_code, mastery_pct)
+
+
+@router.patch(
+    "/practitioners/{practitioner_id}/profiles/{profile_id}/name",
+    response_model=ProfileRead,
+)
+async def update_profile_name(
+    practitioner_id: str,
+    profile_id: str,
+    body: ProfileNameUpdate,
+    db: AsyncSession = Depends(get_db),
+    session: SessionInfo = Depends(require_any_authenticated),
+) -> ProfileRead:
+    """Rename an active profile — the only edit permitted on a locked profile.
+
+    This endpoint skips the is_locked gate intentionally. All other profile
+    fields and the lock semantics of the existing PATCH route are untouched.
+
+    Returns:
+        ProfileRead — the updated profile with the new name.
+
+    Raises:
+        403 — session practitioner_id does not match the URL practitioner_id.
+        404 — profile not found, wrong owner, or profile is not active.
+        422 — name is empty, blank, missing, or exceeds 500 characters.
+    """
+    enforce_self_or_admin(session, practitioner_id)
+
+    profile = await db.get(PractitionerProfile, profile_id)
+    if profile is None or profile.practitioner_id != practitioner_id:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    # Only active profiles can be renamed via this endpoint.
+    if not profile.is_active:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    # Strip surrounding whitespace before persisting (validator already rejects
+    # whitespace-only names, so the stripped value is guaranteed non-empty).
+    profile.name = body.name.strip()
+    profile.updated_at = datetime.now(UTC)
+
     await db.commit()
     await db.refresh(profile)
 

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ProfileSkillRating(BaseModel):
@@ -39,6 +39,25 @@ class ProfileUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=500)
     certification_id: str | None = None
     questionnaire_snapshot: dict | None = None
+
+
+class ProfileNameUpdate(BaseModel):
+    """Input schema for the dedicated profile-name PATCH endpoint (F-MOD-001).
+
+    Only the name field is accepted — no other profile fields are exposed.
+    The name is validated as non-empty after stripping whitespace, so callers
+    cannot silently rename a profile to blank by sending only whitespace.
+    """
+
+    name: str = Field(..., min_length=1, max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank_after_strip(cls, v: str) -> str:
+        """Reject names that are whitespace-only (empty after strip)."""
+        if not v.strip():
+            raise ValueError("name must not be blank or whitespace-only")
+        return v
 
 
 class ProfileSkillAssessmentRead(BaseModel):
