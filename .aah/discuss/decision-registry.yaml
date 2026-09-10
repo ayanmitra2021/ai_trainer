@@ -483,19 +483,79 @@ decisions:
   notes: 'Codebase: practitioner.is_active = False; all existing sessions are force-deleted
     on deactivation (tested). Learning paths, profiles, quiz history are fully preserved.
     Re-activation restores full access.'
+- slug_id: learner-notification
+  area: UI / UX / Accessibility
+  question: Should deactivated learners receive a notification?
+  options_presented:
+  - no-notification
+  - email-out-of-band
+  - in-app-banner
+  options_eliminated: []
+  response: no-notification
+  response_type: single-select
+  source: user
+  activates: []
+  notes: 'User decision: the 403 login error message is sufficient (''account deactivated
+    — contact your administrator''). No additional notification needed.'
+- slug_id: bulk-deactivation
+  area: Solution Flow & End-Users
+  question: Is bulk deactivation (multiple learners at once) needed?
+  options_presented:
+  - yes-bulk
+  - no-single-only
+  options_eliminated: []
+  response: no-single-only
+  response_type: single-select
+  source: user
+  activates: []
+  notes: 'User decision: single-learner toggle is sufficient. Bulk deactivation not
+    required.'
+- slug_id: org-scoping-guard
+  area: Security, Privacy & Compliance
+  question: Should the deactivate/reactivate routes enforce org-scoping (admin can
+    only manage their own org's learners)?
+  options_presented:
+  - fix-org-scope-guard
+  - accept-risk-trusted-admins
+  options_eliminated: []
+  response: accept-risk-trusted-admins
+  response_type: single-select
+  source: user
+  activates: []
+  notes: 'User accepted risk: all admins are Deloitte employees with controlled access.
+    Cross-org deactivation is a known risk, accepted. No org-scope guard added. Note:
+    this is a deferred security concern.'
 deferred_ideas: []
 constraint_audit:
   passed: false
+  ran_at: '2026-09-10'
+  checks:
+    A_mandatory_coverage:
+      result: fail
+      detail: '[blocking] backend-compute-platform: mandatory slug ''backend-compute-platform''
+        has no response'
+    B_forbidden_options:
+      result: pass
+      detail: clean
+    C_whitelist:
+      result: pass
+      detail: clean
+    D_service_scope:
+      result: pass
+      detail: clean
+    E_mandated_options:
+      result: pass
+      detail: clean
+    F_provenance:
+      result: pass
+      detail: clean
   violations:
-  - 'wcag-2.1-aa: missing label binding (2.4.6), no skip link (2.4.1), no aria-expanded
-    (4.1.2), no live regions (4.1.3)'
-  - 'mobile-responsive: fixed 380px login width, no hamburger nav'
-  - 'performance-budget: no code splitting, Three.js >500KB'
-  - 'design-token-consistency: PortalLayout uses hardcoded rgba(77,171,247) blues
-    not from CSS vars'
-  - 'error-state-ux: hardcoded hex colors in LoginPage errors'
-  passing:
-  - 'no-browser-storage: zero localStorage/sessionStorage confirmed'
+  - check: A
+    slug_id: backend-compute-platform
+    detail: mandatory slug 'backend-compute-platform' has no response
+    severity: blocking
+  flags: []
+  warnings: []
 active_references:
   computed_at: '2026-09-10'
   guidance_references:
