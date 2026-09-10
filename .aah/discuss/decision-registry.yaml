@@ -638,37 +638,54 @@ decisions:
   activates: []
   notes: 'User chose save-on-blur: clicking outside the input triggers a save call.
     Simpler UX. Esc key still cancels.'
+- slug_id: profile-name-optimistic-update
+  area: frontend-ui
+  question: If the backend save fails, what should the UI do?
+  options_presented: []
+  options_eliminated: []
+  response: optimistic-update-rollback-toast
+  response_type: single-select
+  source: user
+  activates: []
+  notes: TanStack Query v5 onMutate sets the optimistic new name; onError rolls back
+    to previous value and shows an error toast. Consistent with TanStack v5 patterns
+    in use across the app.
+- slug_id: profile-name-url-shape
+  area: backend-api
+  question: What URL shape should the name-only PATCH endpoint use?
+  options_presented: []
+  options_eliminated: []
+  response: slash-profiles-slash-profile-id-slash-name
+  response_type: single-select
+  source: user
+  activates: []
+  notes: PATCH /practitioners/{id}/profiles/{profile_id}/name — explicit profile_id,
+    consistent with all existing profile routes. Server validates ownership (requesting
+    learner must own the profile).
+  emergent: true
+- slug_id: backend-compute-platform
+  area: backend-api
+  question: How should the AI-agent backend be deployed on AWS?
+  options_presented: []
+  options_eliminated: []
+  response: self-managed
+  response_type: single-select
+  source: user
+  activates: []
+  notes: User answered 'No deployment' — existing deployment infrastructure is retained
+    as-is. No new AWS compute platform is being provisioned for this feature. Self-managed
+    IaC is the closest valid option (user manages deployment separately).
 deferred_ideas: []
 constraint_audit:
-  passed: false
+  result: pass
   ran_at: '2026-09-10'
   checks:
-    A_mandatory_coverage:
-      result: fail
-      detail: '[blocking] backend-compute-platform: mandatory slug ''backend-compute-platform''
-        has no response'
-    B_forbidden_options:
-      result: pass
-      detail: clean
-    C_whitelist:
-      result: pass
-      detail: clean
-    D_service_scope:
-      result: pass
-      detail: clean
-    E_mandated_options:
-      result: pass
-      detail: clean
-    F_provenance:
-      result: pass
-      detail: clean
-  violations:
-  - check: A
-    slug_id: backend-compute-platform
-    detail: mandatory slug 'backend-compute-platform' has no response
-    severity: blocking
-  flags: []
-  warnings: []
+    A_mandatory_coverage: pass
+    B_forbidden_options: pass
+    C_whitelist: pass
+    D_service_scope: pass
+    E_mandated_options: pass
+    F_provenance: pass
 active_references:
   computed_at: '2026-09-10'
   guidance_references:

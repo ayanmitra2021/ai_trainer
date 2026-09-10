@@ -10,3 +10,7 @@ Evaluate the existing React + TypeScript (Vite) frontend of Mastery Pulse (ai_tr
 ## Iteration 1 — Admin Learner Management Feature
 
 As an admin, I want to deactivate or re-activate a particular learner from the portal so that they can't access the portal the next time during their login.
+
+## Iteration 1 — Profile Name Editing Feature
+
+As a learner I should be able to edit the name of my active profile so that I can give it any name of my choice after the original name was assigned at the time of profile creation. I shouldn't be allowed to edit any other fields of my active profile. Only a pencil icon should appear in front of the profile name for editing.

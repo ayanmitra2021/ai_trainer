@@ -1,14 +1,29 @@
+# PRD Header — Profile Name Editing
+
+**Feature:** Learner Profile Name Editing
+**Iteration:** 1
+**Date:** 2026-09-10
+**Status:** Approved
+
+---
+
 ## Problem Statement
 
-As an admin of the Mastery Pulse portal, you want to deactivate a particular learner so they can no longer log in, and re-activate them to restore access. This is needed to handle personnel changes, offboarding, or temporary access restrictions. The pain today is uncertainty about whether this capability exists and whether it works correctly.
+Learner profiles in Mastery Pulse are locked after activation — all fields become read-only. However, the name assigned at profile creation is often a default or placeholder value. Learners have no way to personalise their profile name after activation without admin intervention. This friction reduces ownership and engagement with the learning journey.
+
+---
 
 ## Solution
 
-The deactivation/re-activation feature is already implemented in Phase 21. The system uses a `Practitioner.is_active` boolean column that defaults to `True`. When an admin calls `PATCH /api/v1/practitioners/{id}/deactivate`, `is_active` is set to `False` and all existing sessions for that practitioner are force-deleted. At the next login attempt, `auth.py` detects `is_active == False` and returns a 403 with `error: account_deactivated`. The admin can reverse this via `PATCH /api/v1/practitioners/{id}/reactivate`. The admin frontend exposes a `DeactivateButton` in `AdminPractitionerPage.tsx` with a confirmation modal. All data (profiles, learning paths, quiz history) is preserved through deactivation. The single known risk is that the deactivate route does not enforce org-scoping — an admin could theoretically deactivate a practitioner from another org; this risk has been accepted as admins are trusted Deloitte employees.
+A name-only edit path carved out from the existing lock. A pencil icon appears directly before the profile name in the SkillRadar header — the only entry point for editing. Clicking it turns the name into an inline text input; Enter or clicking away saves the change; Escape cancels. The backend exposes a new dedicated endpoint (`PATCH /practitioners/{id}/profiles/{profile_id}/name`) that accepts only the `name` field, bypasses the lock, and validates the existing 1–500 character constraint. The rest of the profile remains fully locked. Optimistic update shows the new name immediately; any API failure rolls back the name and shows an error toast.
+
+---
 
 ## User Stories
 
-1. As an admin, I want to deactivate a learner from the admin practitioner page so that they cannot log in to the portal.
-2. As an admin, I want to re-activate a previously deactivated learner so that they can resume using the portal.
-3. As a deactivated learner, I want to see a clear error message when I try to log in so that I know to contact my administrator.
-4. As an admin, I want the deactivation to take effect immediately (force-logout any active sessions) so that security is enforced without delay.
+1. As a learner, when I view my active profile in the SkillRadar header, I see a pencil icon next to my profile name so that I know editing is available.
+2. As a learner, when I click the pencil icon, my profile name becomes an editable inline text input so that I can type a new name without leaving the page.
+3. As a learner, when I press Enter or click away, my new name is saved immediately so that I see the change take effect without a page reload.
+4. As a learner, when I press Escape, the edit is cancelled and the original name is restored so that I can safely exit without making changes.
+5. As a learner, if the save fails, I see an error toast and my original name is restored so that I am not left with a misleading state.
+6. As a learner, I cannot edit any field other than the name so that the integrity of my certified skill profile is preserved.
