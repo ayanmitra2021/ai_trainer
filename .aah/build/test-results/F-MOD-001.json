@@ -1,0 +1,200 @@
+{
+  "feature_id": "F-MOD-001",
+  "passed": true,
+  "exit_code": 0,
+  "command": "cd backend && py -m pytest tests/scenarios/test_F_MOD_001_profile_name_patch.py -v",
+  "summary": {
+    "total": 16,
+    "passed": 16,
+    "failed": 0,
+    "skipped": 0,
+    "errors": 0,
+    "duration_s": 27.893
+  },
+  "test_cases": [
+    {
+      "name": "test_F_MOD_001_returns_200_with_updated_name",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameHappyPath",
+      "status": "passed",
+      "duration_s": 2.385
+    },
+    {
+      "name": "test_F_MOD_001_response_shape_is_profile_read",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameHappyPath",
+      "status": "passed",
+      "duration_s": 0.363
+    },
+    {
+      "name": "test_F_MOD_001_name_trimmed_before_persistence",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameWhitespaceTrimming",
+      "status": "passed",
+      "duration_s": 0.36
+    },
+    {
+      "name": "test_F_MOD_001_wrong_practitioner_returns_403",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameForbidden",
+      "status": "passed",
+      "duration_s": 0.301
+    },
+    {
+      "name": "test_F_MOD_001_inactive_profile_returns_404",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameInactiveProfile",
+      "status": "passed",
+      "duration_s": 0.31
+    },
+    {
+      "name": "test_F_MOD_001_empty_name_returns_422",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameValidation",
+      "status": "passed",
+      "duration_s": 0.359
+    },
+    {
+      "name": "test_F_MOD_001_missing_name_field_returns_422",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameValidation",
+      "status": "passed",
+      "duration_s": 0.312
+    },
+    {
+      "name": "test_F_MOD_001_name_exceeding_500_chars_returns_422",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameValidation",
+      "status": "passed",
+      "duration_s": 0.32
+    },
+    {
+      "name": "test_F_MOD_001_whitespace_only_name_returns_422",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameValidation",
+      "status": "passed",
+      "duration_s": 0.333
+    },
+    {
+      "name": "test_F_MOD_001_locked_active_profile_returns_200",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameLockedProfile",
+      "status": "passed",
+      "duration_s": 0.361
+    },
+    {
+      "name": "test_F_MOD_001_no_session_returns_401",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameNoAuth",
+      "status": "passed",
+      "duration_s": 0.314
+    },
+    {
+      "name": "test_F_MOD_001_nonexistent_profile_returns_404",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameNotFound",
+      "status": "passed",
+      "duration_s": 0.312
+    },
+    {
+      "name": "test_F_MOD_001_other_fields_unchanged_after_rename",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestPatchProfileNameFieldPreservation",
+      "status": "passed",
+      "duration_s": 0.346
+    },
+    {
+      "name": "test_F_MOD_001_existing_patch_still_returns_403_on_locked_profile",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestExistingPatchStillBlocksLockedProfiles",
+      "status": "passed",
+      "duration_s": 0.308
+    },
+    {
+      "name": "test_F_MOD_001_check_env_raises_when_database_url_absent",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestStartupEnvChecker",
+      "status": "passed",
+      "duration_s": 0.001
+    },
+    {
+      "name": "test_F_MOD_001_check_env_passes_when_database_url_present",
+      "classname": "tests.scenarios.test_F_MOD_001_profile_name_patch.TestStartupEnvChecker",
+      "status": "passed",
+      "duration_s": 0.003
+    }
+  ],
+  "failures": [],
+  "stdout": "meValidation::test_F_MOD_001_name_exceeding_500_chars_returns_422 PASSED [ 50%]\r\ntests/scenarios/test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameValidation::test_F_MOD_001_whitespace_only_name_returns_422 PASSED [ 56%]\r\ntests/scenarios/test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameLockedProfile::test_F_MOD_001_locked_active_profile_returns_200 PASSED [ 62%]\r\ntests/scenarios/test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameNoAuth::test_F_MOD_001_no_session_returns_401 PASSED [ 68%]\r\ntests/scenarios/test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameNotFound::test_F_MOD_001_nonexistent_profile_returns_404 PASSED [ 75%]\r\ntests/scenarios/test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameFieldPreservation::test_F_MOD_001_other_fields_unchanged_after_rename PASSED [ 81%]\r\ntests/scenarios/test_F_MOD_001_profile_name_patch.py::TestExistingPatchStillBlocksLockedProfiles::test_F_MOD_001_existing_patch_still_returns_403_on_locked_profile PASSED [ 87%]\r\ntests/scenarios/test_F_MOD_001_profile_name_patch.py::TestStartupEnvChecker::test_F_MOD_001_check_env_raises_when_database_url_absent PASSED [ 93%]\r\ntests/scenarios/test_F_MOD_001_profile_name_patch.py::TestStartupEnvChecker::test_F_MOD_001_check_env_passes_when_database_url_present PASSED [100%]\r\n\r\n============================== warnings summary ===============================\r\n..\\..\\..\\Users\\aymitra\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\starlette\\formparsers.py:12\r\n  C:\\Users\\aymitra\\AppData\\Local\\Programs\\Python\\Python313\\Lib\\site-packages\\starlette\\formparsers.py:12: PendingDeprecationWarning: Please use `import python_multipart` instead.\r\n    import multipart\r\n\r\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\r\n- generated xml file: C:\\Users\\aymitra\\AppData\\Local\\Temp\\aah-ai-trainer-w-f-mod-001-implementer-f-mod-001-attempt-1-88bab0dc-_oeyi1q2\\junit.xml -\r\n======================= 16 passed, 1 warning in 27.91s ========================\r\n",
+  "stderr": "",
+  "timestamp": "2026-09-10T12:37:33.214299+00:00",
+  "subject_unchanged": true,
+  "schema_version": 2,
+  "producer": "run_feature_tests",
+  "subject": {
+    "schema_version": 2,
+    "rel_path": ".",
+    "branch": "master",
+    "commit_sha": "5f62898731c6e5e050b33279dbd528bae242335ba1b17957e148c3994f7973ac",
+    "head_sha": "3c55e4c3a3ac2a79dc2dcbbf252482a417be500d",
+    "clean": true
+  },
+  "inputs": {
+    "contract_hash": "8d762028ba47ceac14de43e40f4f8e4cb785e62cfada506d7f213d0f6d838881",
+    "test_input_hash": "500434b481e35c2f255e7967c9fe30799c135f6788b4d015d927688ba10c85ce",
+    "test_paths": [
+      "backend/tests/scenarios/test_F_MOD_001_profile_name_patch.py"
+    ]
+  },
+  "execution": {
+    "actor": "implementer",
+    "attempt_id": "F-MOD-001-attempt-1",
+    "argv": [
+      "cd",
+      "backend",
+      "&&",
+      "py",
+      "-m",
+      "pytest",
+      "tests/scenarios/test_F_MOD_001_profile_name_patch.py",
+      "-v"
+    ],
+    "cwd": ".",
+    "started_at": "2026-09-10T12:36:04.784354+00:00",
+    "finished_at": "2026-09-10T12:37:38.391687+00:00",
+    "exit_code": 0
+  },
+  "status": "pass",
+  "artifacts": {
+    "junit_xml": {
+      "present": true,
+      "name": "junit.xml",
+      "count": 1,
+      "sha256": "9416f1d23e703a49472e7c15e5b43318ac8edca7caec74d260f626835dc5618e"
+    }
+  },
+  "run_id": "aah-ai-trainer-w-f-mod-001-implementer-f-mod-001-attempt-1-88bab0dc",
+  "setup_status": "ready",
+  "cleanup": {
+    "transport": "none",
+    "action": "cleanup_namespace",
+    "namespace": "aah-ai-trainer-w-f-mod-001-implementer-f-mod-001-attempt-1-88bab0dc",
+    "removed": [],
+    "leftover": [],
+    "errors": [],
+    "stopped": true,
+    "timestamp": "2026-09-10T12:37:38.391687+00:00"
+  },
+  "attestation": {
+    "method": "subprocess",
+    "command": [
+      "aah",
+      "run",
+      "core.build.run_feature_tests",
+      "--feature-id",
+      "F-MOD-001",
+      "--project-path",
+      "C:/claude/ai_trainer",
+      "--subject-branch",
+      "master",
+      "--actor",
+      "implementer",
+      "--attempt-id",
+      "F-MOD-001-attempt-1"
+    ],
+    "exit_code": 0,
+    "stdout_sha256": "7844864c007c1003a072125ecf6cfc75e8c095638ffc2d31fb911859ef878ded",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "duration_ms": 88405,
+    "host_pid": 37580,
+    "timestamp": "2026-09-10T12:37:42.476450+00:00",
+    "session_secret_sha256": "c2d7be78862e13453d2fead5440b4f9bf0dd7a1ca6a676052cfd9507a4c8416d",
+    "schema_version": 1,
+    "signature": "a83d90c02a366fbc8cb7d93fe5e7a0cb09e0e1bb5d30f1223147f947a57e3ae9"
+  }
+}
