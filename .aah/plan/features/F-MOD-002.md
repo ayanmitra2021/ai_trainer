@@ -53,8 +53,6 @@ Applicable standards from `.aah/plan/resolved-standards.yaml`: RX-A11Y-001 (inte
 ## Dependencies
 - F-MOD-001
 
-## API Contracts
-
 ## Required Env Variables
 
 ## Lint Config
@@ -109,3 +107,6 @@ Applicable standards from `.aah/plan/resolved-standards.yaml`: RX-A11Y-001 (inte
   - PY-CONV-002
   - PY-CONV-003
   - TS-CONV-001
+
+## Status
+planned

@@ -1,7 +1,7 @@
 {
   "features": [
     {
-      "status": "pending",
+      "status": "planned",
       "id": "F-MOD-001",
       "title": "Profile Name PATCH Endpoint",
       "module_ref": "MOD-001",
@@ -69,7 +69,7 @@
       "passes": false
     },
     {
-      "status": "pending",
+      "status": "planned",
       "id": "F-MOD-002",
       "title": "Profile Name Inline Edit UI",
       "module_ref": "MOD-002",
