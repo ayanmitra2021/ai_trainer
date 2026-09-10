@@ -104,6 +104,35 @@ pre_resolved:
   notes: 'source-detail: .aah/codebase-intel/codebase-learning.md · code: ''pytest
     + pytest-asyncio, Given/When/Then scenario tests in backend/tests/scenarios/,
     no mocks'''
+- slug_id: profile-name-field-exists
+  value: PractitionerProfile.name-String500
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/codebase-learning.md · code: ''PractitionerProfile.name:
+    Mapped[str] = mapped_column(sa.String(500), nullable=False) — already in DB'''
+- slug_id: profile-update-schema
+  value: ProfileUpdate.name-optional-str
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: backend/app/schemas/profiles.py · code: ''ProfileUpdate.name:
+    str | None = Field(None, min_length=1, max_length=500)'''
+- slug_id: profile-lock-model
+  value: is_locked-true-on-active-profiles
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: backend/app/api/routes/profiles.py · code: ''Phase 9.3 —
+    locked profiles are immutable; name edit on active profile currently returns 403
+    — must be bypassed for name-only change'''
+- slug_id: frontend-query-pattern
+  value: tanstack-query-v5-mutations
+  source: codebase
+  locked: true
+  activates: []
+  notes: 'source-detail: .aah/codebase-intel/tech-stack.md · code: ''TanStack Query
+    v5 for all server state; useMutation + queryClient.invalidateQueries pattern'''
 decisions:
 - slug_id: a11y-form-label-binding
   area: ux-accessibility
@@ -525,6 +554,90 @@ decisions:
   notes: 'User accepted risk: all admins are Deloitte employees with controlled access.
     Cross-org deactivation is a known risk, accepted. No org-scope guard added. Note:
     this is a deferred security concern.'
+- slug_id: profile-name-backend-approach
+  area: Architecture & Technical Foundation
+  question: How should the name-only edit on a locked/active profile be implemented?
+  options_presented:
+  - new-dedicated-endpoint-slash-name
+  - modify-existing-patch-allow-name-only-on-locked
+  options_eliminated: []
+  response: new-dedicated-endpoint-slash-name
+  response_type: single-select
+  source: user
+  activates: []
+  notes: 'User chose dedicated endpoint: PATCH /practitioners/{id}/profiles/{profile_id}/name.
+    Narrow contract, lock exception explicit, easier to test.'
+- slug_id: profile-name-access-control
+  area: Security, Privacy & Compliance
+  question: Who can rename an active profile?
+  options_presented:
+  - self-only
+  - self-or-admin
+  options_eliminated: []
+  response: self-only
+  response_type: single-select
+  source: user
+  activates: []
+  notes: 'Self-only: only the practitioner who owns the profile. Uses enforce_self
+    (not enforce_self_or_admin). Admin UI does not show the pencil icon.'
+- slug_id: profile-name-frontend-placement
+  area: UI / UX / Accessibility
+  question: Where should the pencil icon for profile name editing appear?
+  options_presented:
+  - skillradar-profile-header-only
+  - all-learner-facing-displays
+  - buildprofilepage-only
+  options_eliminated: []
+  response: skillradar-profile-header-only
+  response_type: single-select
+  source: user
+  activates: []
+  notes: Pencil icon in SkillRadar.tsx only, next to profile.name in the radar header.
+    This is the learner's primary dashboard view.
+- slug_id: profile-name-edit-ux
+  area: UI / UX / Accessibility
+  question: What is the UX for editing the profile name after clicking the pencil
+    icon?
+  options_presented:
+  - inline-input-enter-save-esc-cancel
+  - inline-input-save-cancel-buttons
+  - popover-modal-with-save
+  options_eliminated: []
+  response: inline-input-enter-save-esc-cancel
+  response_type: single-select
+  source: user
+  activates: []
+  notes: 'Inline edit: profile name text becomes input in-place. Enter = save, Esc
+    = cancel and restore. No modal chrome. ARIA: role=textbox, aria-label=''Edit profile
+    name'', onBlur triggers save or cancel.'
+- slug_id: profile-name-validation
+  area: Business Rules & Domain Logic
+  question: What name constraints apply to the profile name?
+  options_presented:
+  - keep-existing-1-500-trimmed-any-printable
+  - stricter-shorter-max-no-special-chars
+  - no-backend-validation-beyond-not-empty
+  options_eliminated: []
+  response: keep-existing-1-500-trimmed-any-printable
+  response_type: single-select
+  source: user
+  activates: []
+  notes: 'Keep existing ProfileUpdate.name schema: min_length=1, max_length=500. Backend
+    trims whitespace, rejects empty-after-trim. Any printable chars. Duplicate names
+    OK (cosmetic field).'
+- slug_id: profile-name-blur-behaviour
+  area: UI / UX / Accessibility
+  question: What happens when the learner clicks outside the profile name input (on-blur)?
+  options_presented:
+  - cancel-edit-dont-save
+  - save-on-blur
+  options_eliminated: []
+  response: save-on-blur
+  response_type: single-select
+  source: user
+  activates: []
+  notes: 'User chose save-on-blur: clicking outside the input triggers a save call.
+    Simpler UX. Esc key still cancels.'
 deferred_ideas: []
 constraint_audit:
   passed: false

@@ -1,39 +1,38 @@
 raw_statement: >
-  As an admin, I want to deactivate or re-activate a particular learner from the portal
-  so that they can't access the portal the next time during their login.
+  As a learner I should be able to edit the name of my active profile so that I can give
+  it any name of my choice after the original name was assigned at the time of profile
+  creation. I shouldn't be allowed to edit any other fields of my active profile. Only a
+  pencil icon should appear in front of the profile name for editing.
 
 improvement_type: enhancement
 
 target_areas:
-  - admin-ui              # Frontend admin page/component to view and toggle learner status
-  - auth-enforcement      # Login flow must block deactivated learners at authentication time
-  - backend-api           # PATCH /practitioners endpoint — toggle active/inactive state
-  - data-model            # Representation of active/inactive state (is_active flag vs deleted_at vs dedicated status column)
-  - audit-trail           # Record of who deactivated/reactivated, and when
+  - backend-api        # New or modified endpoint: allow name-only patch on locked/active profiles
+  - frontend-ui        # Pencil icon inline edit for profile name — only in the active profile view
+  - access-control     # Only the learner themselves can rename their own active profile
 
 constraints:
-  - Must integrate with existing FastAPI / React / PostgreSQL stack (no new runtime dependencies without justification)
-  - Deactivation must be enforced at login time — a deactivated learner cannot log in
-  - Re-activation must be possible by an admin (reversible operation)
-  - Admin-only operation — practitioners cannot deactivate themselves or peers
-  - Multi-tenancy aware — admin can only manage learners within their own organization
+  - Only the profile name field is editable — no other fields (cert, questionnaire, skill ratings)
+  - Editing is only allowed on the active profile
+  - A pencil icon (not a button label) is the sole entry point for editing
+  - The profile must remain locked — name change does not unlock or alter skill/cert data
+  - No browser storage (localStorage/sessionStorage) — all state via TanStack Query + server
 
 technical_domains:
-  - api        # Backend route changes (PATCH /practitioners)
-  - frontend   # Admin portal UI for learner management
-  - data       # Schema / ORM changes (active state persistence)
-  - auth       # Session creation guard (deny login if deactivated)
+  - api       # Backend: PATCH route for name-only on locked profile
+  - frontend  # Inline edit UX with pencil icon, optimistic update, TanStack Query invalidation
 
-integration_surface: 1   # Internal — the existing practitioners route and auth flow; no new external systems
+integration_surface: 0   # Internal only — no external systems
 
 process_flow:
-  - Admin logs in via /api/v1/auth/admin-login
-  - Admin navigates to learner management view (new frontend page or section of existing admin page)
-  - Admin finds a specific learner (by name/email) and toggles their status (deactivate or re-activate)
-  - System calls PATCH /api/v1/practitioners/{id} to update status
-  - Next time the deactivated learner attempts login, the auth route returns an error
-  - Admin can reverse the action (re-activate) to restore portal access
+  - Learner views their active profile (SkillRadar or profile page)
+  - A pencil icon appears immediately before/beside the profile name
+  - Learner clicks pencil icon — name text becomes an editable input field
+  - Learner types a new name and confirms (Enter key or Save button)
+  - Frontend calls PATCH endpoint with only the name field
+  - Backend validates name (not empty, within 500 char limit) and persists
+  - TanStack Query invalidates the profile cache; UI refreshes with new name
+  - If the learner presses Escape or clicks away, the edit is cancelled
 
 end_users:
-  - Admin (portal administrator within an organization)
-  - Practitioner / Learner (affected — cannot log in when deactivated)
+  - Practitioner / Learner (the profile owner — the one who can rename)
