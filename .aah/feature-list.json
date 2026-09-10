@@ -87,7 +87,7 @@
         "F-MOD-001"
       ],
       "test_config": {
-        "command": "py scripts/run_playwright.py",
+        "command": "node scripts/run_playwright.js",
         "test_paths": [
           "frontend/tests/profile-name-inline-edit.spec.ts"
         ]
