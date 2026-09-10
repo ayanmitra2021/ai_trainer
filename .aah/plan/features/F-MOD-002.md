@@ -59,6 +59,10 @@ Applicable standards from `.aah/plan/resolved-standards.yaml`: RX-A11Y-001 (inte
 
 ## Test Config
 
+- command: cd frontend && npm run build
+- test_paths:
+  - frontend/tests/profile-name-inline-edit.spec.ts
+
 ## Constraints
 
 ## Applicable Standards

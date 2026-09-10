@@ -86,6 +86,12 @@
       "dependencies": [
         "F-MOD-001"
       ],
+      "test_config": {
+        "command": "cd frontend && npm run build",
+        "test_paths": [
+          "frontend/tests/profile-name-inline-edit.spec.ts"
+        ]
+      },
       "applicable_standards": [
         {
           "total_rules": 40,
