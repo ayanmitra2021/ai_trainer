@@ -13,6 +13,12 @@
       "required_env": [
         "DATABASE_URL"
       ],
+      "test_config": {
+        "command": "cd backend && py -m pytest tests/scenarios/test_F_MOD_001_profile_name_patch.py -v",
+        "test_paths": [
+          "backend/tests/scenarios/test_F_MOD_001_profile_name_patch.py"
+        ]
+      },
       "applicable_standards": [
         {
           "total_rules": 40,

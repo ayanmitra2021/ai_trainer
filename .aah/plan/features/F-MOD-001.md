@@ -83,6 +83,10 @@ produces:
 
 ## Test Config
 
+- command: cd backend && py -m pytest tests/scenarios/test_F_MOD_001_profile_name_patch.py -v
+- test_paths:
+  - backend/tests/scenarios/test_F_MOD_001_profile_name_patch.py
+
 ## Constraints
 
 ## Applicable Standards
