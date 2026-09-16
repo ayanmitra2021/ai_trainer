@@ -320,13 +320,13 @@ def gen_sql() -> str:
     # certification_skills → certifications → certification_providers → skills (children → parents)
     lines.append("-- 1. Deletes (FK-safe order: most-dependent first)")
     lines.append(
-        f"DELETE FROM certification_skills WHERE certification_id IN "
+        f"DELETE FROM certification_skills WHERE certification_id IN "  # nosec B608
         f"(SELECT id FROM certifications WHERE code IN ({cert_codes_sql}));"
     )
-    lines.append(f"DELETE FROM certifications WHERE code IN ({cert_codes_sql});")
-    lines.append(f"DELETE FROM certification_providers WHERE name IN ({provider_names_sql});")
-    lines.append(f"DELETE FROM skills WHERE name IN ({child_names_sql});")
-    lines.append(f"DELETE FROM skills WHERE name IN ({parent_names_sql});")
+    lines.append(f"DELETE FROM certifications WHERE code IN ({cert_codes_sql});")  # nosec B608
+    lines.append(f"DELETE FROM certification_providers WHERE name IN ({provider_names_sql});")  # nosec B608
+    lines.append(f"DELETE FROM skills WHERE name IN ({child_names_sql});")  # nosec B608
+    lines.append(f"DELETE FROM skills WHERE name IN ({parent_names_sql});")  # nosec B608
     lines.append("")
 
     # ── 2. Skills ────────────────────────────────────────────────────────
@@ -337,7 +337,7 @@ def gen_sql() -> str:
         if spec["parent"] is not None:
             continue
         lines.append(
-            f"INSERT INTO skills (id, name, category, parent_skill_id, description) VALUES "
+            f"INSERT INTO skills (id, name, category, parent_skill_id, description) VALUES "  # nosec B608
             f"({q(skill_ids[spec['name']])}, {q(spec['name'])}, {q(spec['category'])}, NULL, {q(spec['desc'])});"
         )
 
@@ -349,7 +349,7 @@ def gen_sql() -> str:
             continue
         parent_id = skill_ids[spec["parent"]]
         lines.append(
-            f"INSERT INTO skills (id, name, category, parent_skill_id, description) VALUES "
+            f"INSERT INTO skills (id, name, category, parent_skill_id, description) VALUES "  # nosec B608
             f"({q(skill_ids[spec['name']])}, {q(spec['name'])}, {q(spec['category'])}, {q(parent_id)}, {q(spec['desc'])});"
         )
 
