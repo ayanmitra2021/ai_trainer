@@ -106,7 +106,7 @@ class BaseModelClient(ABC, Generic[TOutput]):
                     continue
                 break
 
-        assert last_exc is not None
+        assert last_exc is not None  # nosec B101
         raise last_exc
 
 

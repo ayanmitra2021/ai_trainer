@@ -265,7 +265,7 @@ def upgrade() -> None:
             "email": "product@mastery-pulse.io",
             "password_hash": _temp_pw_hash,
             "first_name": "Platform",
-            "must_change_password": True,
+            "must_change_password": True,  # nosec B105
         },
     ])
 

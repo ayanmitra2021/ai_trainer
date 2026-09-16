@@ -185,7 +185,7 @@ class Agent(ABC, Generic[TInput, TOutput]):
                 break  # non-transient error, or transient but retries exhausted
 
         # All retries exhausted, or a non-transient error broke out of the loop.
-        assert last_exc is not None  # always set when we reach this point
+        assert last_exc is not None  # nosec B101 — always set when we reach this point
         latency_ms = (time.perf_counter_ns() - start_ns) // 1_000_000
         await self._persist_run(
             run_id=run_id,
