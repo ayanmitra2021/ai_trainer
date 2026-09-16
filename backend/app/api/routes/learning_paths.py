@@ -142,7 +142,7 @@ def _assign_question_counts(skill_specs: list, target_min: int = 10, target_max:
         for spec in skill_specs:
             spec.question_count = 1
         return
-    target = random.randint(lo, hi)
+    target = random.randint(lo, hi)  # nosec B311
     extra = target - n
     for spec in skill_specs:
         spec.question_count = 1
@@ -153,12 +153,12 @@ def _assign_question_counts(skill_specs: list, target_min: int = 10, target_max:
     double: set[int] = set()
     c = min(extra, len(cert_idx))
     if c > 0:
-        double.update(random.sample(cert_idx, c))
+        double.update(random.sample(cert_idx, c))  # nosec B311
     extra -= c
     if extra > 0 and supp_idx:
         s2 = min(extra, len(supp_idx))
         if s2 > 0:
-            double.update(random.sample(supp_idx, s2))
+            double.update(random.sample(supp_idx, s2))  # nosec B311
     for i, spec in enumerate(skill_specs):
         if i in double:
             spec.question_count = 2

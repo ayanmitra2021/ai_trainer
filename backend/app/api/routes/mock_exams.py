@@ -488,7 +488,7 @@ async def _generate_exam_questions_bg(
                     if session_obj is not None:
                         session_obj.status = "failed"
                         await err_db.commit()
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
 
