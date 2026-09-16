@@ -1,0 +1,9 @@
+services:
+  - name: backend
+    cwd: backend
+    command: uv run --with python-dotenv python -m uvicorn app.main:app --port 8000 --env-file ../.env
+    health: http://127.0.0.1:8000/healthz
+  - name: frontend
+    cwd: frontend
+    command: npm run dev
+    health: http://127.0.0.1:5173
