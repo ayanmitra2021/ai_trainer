@@ -603,7 +603,7 @@ class FallbackModelClient:
             )
 
         if self._fallback is None:
-            assert primary_exc is not None
+            assert primary_exc is not None  # nosec B101
             raise ProviderUnavailableError(primary_exc)
 
         try:
@@ -623,7 +623,7 @@ class FallbackModelClient:
             )
             return result
         except Exception as fallback_exc:
-            assert primary_exc is not None
+            assert primary_exc is not None  # nosec B101
             raise ProviderUnavailableError(primary_exc, fallback_exc)
 
     @property
@@ -904,8 +904,8 @@ def create_model_client() -> ModelClient:
     if provider == "NVIDIA":
         if not s.nvidia_api_key:
             raise ValueError("NVIDIA_API_KEY is required when APP_BRAIN_MODEL=NVIDIA")
-        assert ultra_client is not None
-        assert lightning_client is not None
+        assert ultra_client is not None  # nosec B101
+        assert lightning_client is not None  # nosec B101
 
         # Initialise the module-level circuit breaker (once per process)
         if _nvidia_circuit_breaker is None:
@@ -931,7 +931,7 @@ def create_model_client() -> ModelClient:
     # Haiku is required; NVIDIA models are optional fallbacks (no circuit breaker).
     if not s.anthropic_api_key:
         raise ValueError("ANTHROPIC_API_KEY is required when APP_BRAIN_MODEL=ANTHROPIC")
-    assert haiku_client is not None
+    assert haiku_client is not None  # nosec B101
 
     anthro_tiers: list[tuple[Any, float]] = [
         (haiku_client, float(s.nvidia_tier1_timeout_secs)),
