@@ -1,0 +1,11 @@
+feedback_id: "UF-01-02"
+wave: 1
+source: "build"
+started_at: "2026-09-16T10:43:00Z"
+feedback_details: "fix_standards: End-of-build standards gate failed. Python/backend: 502 ruff errors (unused imports, line length, unsorted imports — 306 auto-fixable). Node/frontend: 2 unused-var warnings in practitioner-journey.spec.ts. Bandit B608 LOW/MEDIUM in seed/generate_sql.py (lines 366, 379, 402) — seed script with quoting helper."
+steps:
+  - phase: direct_repair
+    input: "1. ruff check --fix on backend. 2. Prefix unused vars with _ in frontend/tests/practitioner-journey.spec.ts lines 22, 141. 3. Add # nosec B608 to seed/generate_sql.py lines 366, 379, 402. Delete stale standards evidence."
+    output: null
+    completed_at: null
+status: in_progress

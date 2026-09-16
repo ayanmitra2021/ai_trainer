@@ -134,5 +134,6 @@
       ]
     }
   ],
-  "checkpoint_history": []
+  "checkpoint_history": [],
+  "snapshot_timestamp": "2026-09-16T10:53:46.029456+00:00"
 }

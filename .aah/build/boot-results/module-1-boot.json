@@ -1,0 +1,5 @@
+{"module": 1, "all_healthy": true, "logs": ".aah/build/boot-logs/",
+ "services": [
+   {"name": "backend", "url": "http://127.0.0.1:8000/healthz", "http_code": 200, "healthy": true, "pid": 958},
+   {"name": "frontend", "url": "http://127.0.0.1:5173", "http_code": 302, "healthy": true, "pid": 984}
+ ]}
