@@ -72,7 +72,7 @@
           ]
         }
       ],
-      "passes": false
+      "passes": true
     },
     {
       "status": "done",
@@ -145,7 +145,7 @@
           ]
         }
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }
