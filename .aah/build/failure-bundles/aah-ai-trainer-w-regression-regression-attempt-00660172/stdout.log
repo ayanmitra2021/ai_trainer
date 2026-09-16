@@ -1,0 +1,516 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.13, pytest-9.1.1, pluggy-1.6.0 -- C:\claude\ai_trainer\backend\.venv\Scripts\python.exe
+cachedir: C:\Users\aymitra\AppData\Local\Temp\aah-ai-trainer-w-regression-regression-attempt-00660172-q1jbecvt\cache\pytest
+rootdir: C:\claude\ai_trainer\backend
+configfile: pyproject.toml
+plugins: anyio-4.15.1, Faker-40.39.0, asyncio-1.4.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 282 items / 11 deselected / 1 skipped / 271 selected
+
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameHappyPath::test_F_MOD_001_returns_200_with_updated_name PASSED [  0%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameHappyPath::test_F_MOD_001_response_shape_is_profile_read PASSED [  0%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameWhitespaceTrimming::test_F_MOD_001_name_trimmed_before_persistence PASSED [  1%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameForbidden::test_F_MOD_001_wrong_practitioner_returns_403 PASSED [  1%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameInactiveProfile::test_F_MOD_001_inactive_profile_returns_404 PASSED [  1%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameValidation::test_F_MOD_001_empty_name_returns_422 PASSED [  2%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameValidation::test_F_MOD_001_missing_name_field_returns_422 PASSED [  2%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameValidation::test_F_MOD_001_name_exceeding_500_chars_returns_422 PASSED [  2%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameValidation::test_F_MOD_001_whitespace_only_name_returns_422 PASSED [  3%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameLockedProfile::test_F_MOD_001_locked_active_profile_returns_200 PASSED [  3%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameNoAuth::test_F_MOD_001_no_session_returns_401 PASSED [  4%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameNotFound::test_F_MOD_001_nonexistent_profile_returns_404 PASSED [  4%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestPatchProfileNameFieldPreservation::test_F_MOD_001_other_fields_unchanged_after_rename PASSED [  4%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestExistingPatchStillBlocksLockedProfiles::test_F_MOD_001_existing_patch_still_returns_403_on_locked_profile PASSED [  5%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestStartupEnvChecker::test_F_MOD_001_check_env_raises_when_database_url_absent PASSED [  5%]
+backend\tests\scenarios\test_F_MOD_001_profile_name_patch.py::TestStartupEnvChecker::test_F_MOD_001_check_env_passes_when_database_url_present PASSED [  5%]
+backend\tests\scenarios\test_admin_users_api.py::TestListAdminUsers::test_list_returns_all_admin_users PASSED [  6%]
+backend\tests\scenarios\test_admin_users_api.py::TestCreateAdminUser::test_create_admin_user_succeeds PASSED [  6%]
+backend\tests\scenarios\test_admin_users_api.py::TestCreateAdminUser::test_create_leadership_user PASSED [  7%]
+backend\tests\scenarios\test_admin_users_api.py::TestCreateAdminUser::test_duplicate_email_returns_409 PASSED [  7%]
+backend\tests\scenarios\test_admin_users_api.py::TestCreateAdminUser::test_short_password_returns_422 PASSED [  7%]
+backend\tests\scenarios\test_admin_users_api.py::TestLeadershipCannotManageAdmins::test_leadership_cannot_create_admin_user PASSED [  8%]
+backend\tests\scenarios\test_admin_users_api.py::TestDeleteAdminUser::test_delete_removes_user PASSED [  8%]
+backend\tests\scenarios\test_admin_users_api.py::TestDeleteAdminUser::test_cannot_delete_self PASSED [  8%]
+backend\tests\scenarios\test_admin_users_api.py::TestDeleteAdminUser::test_delete_nonexistent_returns_404 PASSED [  9%]
+backend\tests\scenarios\test_agent_framework.py::TestSuccessfulRunPersistsAgentRunRow::test_complete_agent_run_row_on_success PASSED [  9%]
+backend\tests\scenarios\test_agent_framework.py::TestMalformedResponseIsCaught::test_validation_error_recorded_in_agent_runs PASSED [  9%]
+backend\tests\scenarios\test_agent_framework.py::TestAgentWithNoMcpNeverTouchesMcpMachinery::test_no_mcp_subprocess_spawned PASSED [ 10%]
+backend\tests\scenarios\test_agent_framework.py::TestTransientErrorIsRetriedAndSucceeds::test_retry_on_transient_error_succeeds PASSED [ 10%]
+backend\tests\scenarios\test_agent_framework.py::TestNonTransientErrorIsNotRetried::test_non_transient_error_does_not_retry PASSED [ 11%]
+backend\tests\scenarios\test_agent_framework.py::TestExhaustedRetriesRecordsError::test_all_retries_exhausted_records_error PASSED [ 11%]
+backend\tests\scenarios\test_auth.py::TestPractitionerLoginFlow::test_login_creates_session_and_returns_identity PASSED [ 11%]
+backend\tests\scenarios\test_auth.py::TestPractitionerLoginFlow::test_relogin_same_email_restores_learning_history PASSED [ 12%]
+backend\tests\scenarios\test_auth.py::TestPractitionerSelfEnforcement::test_practitioner_cannot_fetch_another_practitioner_profile PASSED [ 12%]
+backend\tests\scenarios\test_auth.py::TestLeadershipAdminAccess::test_leadership_cannot_access_individual_attempts PASSED [ 12%]
+backend\tests\scenarios\test_auth.py::TestLeadershipAdminAccess::test_leadership_rollups_endpoint_returns_404_phase91 PASSED [ 13%]
+backend\tests\scenarios\test_auth.py::TestAdminPasswordEnforcement::test_admin_with_must_change_password_blocked_from_data PASSED [ 13%]
+backend\tests\scenarios\test_auth.py::TestAdminPasswordEnforcement::test_admin_wrong_password_returns_401 PASSED [ 14%]
+backend\tests\scenarios\test_auth.py::TestAdminPasswordEnforcement::test_change_password_clears_must_change_flag PASSED [ 14%]
+backend\tests\scenarios\test_cert_domain_discovery.py::TestDiscoverEndpoint::test_discover_persists_pending_proposal_linked_to_agent_run PASSED [ 14%]
+backend\tests\scenarios\test_cert_domain_discovery.py::TestApproveEndpoint::test_approve_creates_new_version_and_domain_rows PASSED [ 15%]
+backend\tests\scenarios\test_cert_domain_discovery.py::TestApproveEndpoint::test_approve_proposal_for_new_cert_code_creates_inactive_cert PASSED [ 15%]
+backend\tests\scenarios\test_cert_domain_discovery.py::TestRejectEndpoint::test_reject_sets_status_and_does_not_touch_domain_rows PASSED [ 15%]
+backend\tests\scenarios\test_cert_skill_mapper.py::TestCertSkillMapperAgent::test_maps_10_skills_with_domain_linkage PASSED [ 16%]
+backend\tests\scenarios\test_cert_skill_mapper.py::TestCertSkillMapperAgent::test_reruns_replaces_agent_discovered_skills PASSED [ 16%]
+backend\tests\scenarios\test_cert_skill_mapper_hook.py::TestCertSkillMapperHook::test_generate_learning_path_prefers_agent_discovered_skills PASSED [ 16%]
+backend\tests\scenarios\test_certification_advisor.py::TestCertificationAdvisorScenarios::test_non_coder_anthropic_preference_gets_ccao_f PASSED [ 17%]
+backend\tests\scenarios\test_certification_advisor.py::TestCertificationAdvisorScenarios::test_experienced_architect_no_preference_gets_rationale_with_tradeoff PASSED [ 17%]
+backend\tests\scenarios\test_certification_advisor.py::TestCertificationAdvisorScenarios::test_answers_are_persisted_independent_of_subsequent_actions PASSED [ 18%]
+backend\tests\scenarios\test_certification_domains.py::TestProfileCertificationRequired::test_create_profile_without_cert_id_returns_422 PASSED [ 18%]
+backend\tests\scenarios\test_certification_domains.py::TestProfileCertificationRequired::test_create_profile_with_explicit_null_cert_id_returns_422 PASSED [ 18%]
+backend\tests\scenarios\test_correlation.py::TestCorrelationScenarios::test_high_mastery_no_usage_produces_visible_gap PASSED [ 19%]
+backend\tests\scenarios\test_correlation.py::TestCorrelationScenarios::test_high_mastery_regular_usage_produces_near_zero_gap PASSED [ 19%]
+backend\tests\scenarios\test_correlation.py::TestCorrelationScenarios::test_low_mastery_is_not_reported_as_adoption_gap PASSED [ 19%]
+backend\tests\scenarios\test_curriculum_planner.py::TestCurriculumPlannerScenarios::test_weak_skill_is_placed_first_in_path PASSED [ 20%]
+backend\tests\scenarios\test_curriculum_planner.py::TestCurriculumPlannerScenarios::test_active_cert_goal_weights_path_toward_cert_skills PASSED [ 20%]
+backend\tests\scenarios\test_curriculum_planner.py::TestCurriculumPlannerScenarios::test_fully_mastered_practitioner_gets_maintenance_path_not_error PASSED [ 21%]
+backend\tests\scenarios\test_domain_gap_scoring.py::TestComputeDomainScores::test_three_correct_answers_yield_positive_domain_mastery PASSED [ 21%]
+backend\tests\scenarios\test_domain_gap_scoring.py::TestComputeDomainScores::test_non_cert_evaluated_item_does_not_create_domain_score PASSED [ 21%]
+backend\tests\scenarios\test_domain_gap_scoring.py::TestCertDomainGapChartAPI::test_domains_returned_in_sequence_order PASSED [ 22%]
+backend\tests\scenarios\test_domain_gap_scoring.py::TestCertDomainGapChartAPI::test_all_quiz_derived_scores_means_no_estimate_rows PASSED [ 22%]
+backend\tests\scenarios\test_domain_scorer.py::TestDomainScorerHighSignal::test_advanced_self_assessment_yields_score_above_0_3 PASSED [ 22%]
+backend\tests\scenarios\test_domain_scorer.py::TestDomainScorerZeroSignal::test_zero_signal_yields_scores_at_or_below_0_1 PASSED [ 23%]
+backend\tests\scenarios\test_domain_scorer.py::TestDomainScorerQuizDerivedProtection::test_quiz_derived_score_not_overwritten_by_estimate PASSED [ 23%]
+backend\tests\scenarios\test_domain_versioning.py::TestCertDomainVersionsAPI::test_get_versions_requires_admin_role PASSED [ 23%]
+backend\tests\scenarios\test_domain_versioning.py::TestCertDomainVersionsAPI::test_get_versions_returns_empty_list_when_no_versions PASSED [ 24%]
+backend\tests\scenarios\test_domain_versioning.py::TestCertDomainVersionsAPI::test_get_proposals_filters_by_status PASSED [ 24%]
+backend\tests\scenarios\test_domain_versioning.py::TestCertDomainVersionsAPI::test_get_proposals_requires_admin_role PASSED [ 25%]
+backend\tests\scenarios\test_grader.py::TestGraderScenarios::test_correct_mcq_response_scores_full_marks PASSED [ 25%]
+backend\tests\scenarios\test_grader.py::TestGraderScenarios::test_trap_option_response_is_flagged_and_explained PASSED [ 25%]
+backend\tests\scenarios\test_grader.py::TestGraderScenarios::test_partially_correct_free_text_gets_partial_credit_with_rationale PASSED [ 26%]
+backend\tests\scenarios\test_item_writer.py::TestItemWriterScenarios::test_generated_mcq_has_one_correct_option_and_trap_explanation PASSED [ 26%]
+backend\tests\scenarios\test_item_writer.py::TestItemWriterScenarios::test_recalibration_responds_to_low_accuracy_rate PASSED [ 26%]
+backend\tests\scenarios\test_learning_path_workflow.py::TestGenerateLearningPathWorkflow::test_full_workflow_creates_workflow_run_and_two_agent_runs PASSED [ 27%]
+backend\tests\scenarios\test_learning_path_workflow.py::TestGenerateLearningPathWorkflow::test_failure_partway_through_marks_workflow_failed PASSED [ 27%]
+backend\tests\scenarios\test_learning_path_workflow.py::TestGenerateLearningPathWorkflow::test_submitting_attempt_updates_calibration_stats PASSED [ 28%]
+backend\tests\scenarios\test_mcp_learning_portal.py::TestGetCertificationsKnownPractitioner::test_known_practitioner_certification_returned FAILED [ 28%]
+backend\tests\scenarios\test_mcp_learning_portal.py::***REDACTED***::test_all_tools_return_empty_for_unknown_practitioner FAILED [ 28%]
+backend\tests\scenarios\test_mcp_usage_signals.py::TestMappedSessionProducesSkillMapping::test_rag_session_maps_to_rag_fundamentals FAILED [ 29%]
+backend\tests\scenarios\test_mcp_usage_signals.py::TestAmbiguousSessionReturnedUnmapped::test_neutral_session_has_null_skill_mapping FAILED [ 29%]
+backend\tests\scenarios\test_model_client.py::TestModelClientFactory::test_factory_returns_anthropic_client_when_configured PASSED [ 29%]
+backend\tests\scenarios\test_model_client.py::TestModelClientFactory::test_factory_returns_nvidia_client_when_configured PASSED [ 30%]
+backend\tests\scenarios\test_model_client.py::TestModelClientFactory::test_factory_returns_fallback_client_when_both_keys_configured PASSED [ 30%]
+backend\tests\scenarios\test_model_client.py::TestModelClientFactory::test_factory_raises_error_for_invalid_provider PASSED [ 30%]
+backend\tests\scenarios\test_model_client.py::TestModelClientFactory::test_factory_raises_error_when_anthropic_key_missing PASSED [ 31%]
+backend\tests\scenarios\test_model_client.py::TestModelClientFactory::test_factory_raises_error_when_nvidia_key_missing PASSED [ 31%]
+backend\tests\scenarios\test_model_client.py::TestModelClientFactory::test_both_clients_implement_model_client_protocol PASSED [ 32%]
+backend\tests\scenarios\test_model_client.py::TestNVIDIAModelClientWithStub::test_structured_outputs_parsing_works PASSED [ 32%]
+backend\tests\scenarios\test_model_client.py::TestNVIDIAModelClientWithStub::test_token_counts_extracted_correctly PASSED [ 32%]
+backend\tests\scenarios\test_model_client.py::TestNVIDIAModelClientWithStub::test_malformed_response_raises_validation_error PASSED [ 33%]
+backend\tests\scenarios\test_model_client.py::TestNVIDIAModelClientWithStub::test_transient_error_triggers_retry PASSED [ 33%]
+backend\tests\scenarios\test_model_client.py::TestNVIDIAModelClientWithStub::test_non_transient_error_fails_immediately PASSED [ 33%]
+backend\tests\scenarios\test_model_client.py::TestNVIDIAModelClientWithStub::test_works_with_stub_fixture_pattern PASSED [ 34%]
+backend\tests\scenarios\test_model_client.py::TestAnthropicModelClientWithStub::test_structured_outputs_parsing_works PASSED [ 34%]
+backend\tests\scenarios\test_model_client.py::TestAnthropicModelClientWithStub::test_token_counts_extracted_correctly PASSED [ 35%]
+backend\tests\scenarios\test_model_client.py::TestAnthropicModelClientWithStub::test_transient_errors_include_anthropic_types PASSED [ 35%]
+backend\tests\scenarios\test_model_client.py::TestConfiguration::test_settings_loads_all_new_env_vars PASSED [ 35%]
+backend\tests\scenarios\test_model_client.py::TestConfiguration::test_settings_default_values_are_sensible PASSED [ 36%]
+backend\tests\scenarios\test_nightly_pulse_workflow.py::TestNightlyPulseRemovedInPhase91::test_nightly_pulse_raises_not_implemented PASSED [ 36%]
+backend\tests\scenarios\test_nightly_pulse_workflow.py::TestNightlyPulseRemovedInPhase91::test_nightly_pulse_raises_even_with_no_args PASSED [ 36%]
+backend\tests\scenarios\test_nudge_composer.py::TestNudgeComposerScenarios::test_meaningful_gap_produces_drafted_nudge PASSED [ 37%]
+backend\tests\scenarios\test_nudge_composer.py::TestNudgeComposerScenarios::test_near_zero_gap_produces_no_nudge PASSED [ 37%]
+backend\tests\scenarios\test_observability.py::TestObservabilityScenarios::test_recent_agent_error_is_surfaced_with_message PASSED [ 38%]
+backend\tests\scenarios\test_observability.py::TestObservabilityScenarios::test_per_agent_breakdown_included PASSED [ 38%]
+backend\tests\scenarios\test_observability.py::TestObservabilityScenarios::test_observability_requires_admin_auth PASSED [ 38%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestHaikuPinnedAnthropicClient::test_anthropic_client_model_id_defaults_to_haiku PASSED [ 39%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestHaikuPinnedAnthropicClient::test_anthropic_client_respects_explicit_model_id PASSED [ 39%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestHaikuPinnedAnthropicClient::test_effective_model_reflects_client_model_id PASSED [ 39%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestHaikuPinnedAnthropicClient::test_anthropic_messages_client_uses_model_id_not_arg PASSED [ 40%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestFallbackModelClient::test_primary_succeeds_fallback_never_called PASSED [ 40%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestFallbackModelClient::test_primary_fails_fallback_succeeds PASSED [ 40%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestFallbackModelClient::test_both_fail_raises_provider_unavailable_error PASSED [ 41%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestFallbackModelClient::test_no_fallback_raises_provider_unavailable_with_primary_error PASSED [ 41%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestFallbackModelClient::test_effective_model_reflects_fallback_tier PASSED [ 42%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestFallbackModelClient::test_effective_model_pre_call_returns_primary_model PASSED [ 42%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestDegradedDomainScoring::test_degraded_scores_written_when_provider_unavailable PASSED [ 42%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestDegradedDomainScoring::test_degraded_scores_cap_at_0_5 PASSED [ 43%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestDegradedDomainScoring::test_degraded_does_not_overwrite_quiz_derived PASSED [ 43%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestDomainScoringStatusDefault::test_new_profile_defaults_to_pending PASSED [ 43%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestDomainScoringStatusDefault::test_domain_scoring_status_can_be_set_to_degraded PASSED [ 44%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestDomainScoringStatusDefault::test_domain_scoring_status_can_be_set_to_lm_scored PASSED [ 44%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestProviderUnavailableError::test_carries_primary_and_fallback_errors PASSED [ 45%]
+backend\tests\scenarios\test_phase14_provider_resilience.py::TestProviderUnavailableError::test_fallback_error_optional PASSED [ 45%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestAllProvidersUnavailableError::test_carries_list_of_errors PASSED [ 45%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestAllProvidersUnavailableError::test_single_error PASSED [ 46%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestAllProvidersUnavailableError::test_is_runtime_error PASSED [ 46%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestAllProvidersUnavailableError::test_provider_unavailable_error_unchanged PASSED [ 46%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestMultiTierModelClient::test_tier1_success_never_calls_lower_tiers PASSED [ 47%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestMultiTierModelClient::test_tier1_fails_tier2_succeeds PASSED [ 47%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestMultiTierModelClient::test_tiers_1_and_2_fail_tier3_succeeds PASSED [ 47%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestMultiTierModelClient::test_all_tiers_fail_raises_all_providers_unavailable PASSED [ 48%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestMultiTierModelClient::test_last_model_used_none_before_call PASSED [ 48%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestMultiTierModelClient::test_primary_property_returns_first_tier_client PASSED [ 49%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestMultiTierModelClient::test_asyncio_timeout_fires_and_next_tier_used PASSED [ 49%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestNvidiaCircuitBreaker::test_starts_closed PASSED [ 49%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestNvidiaCircuitBreaker::test_trips_after_threshold_failures PASSED [ 50%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestNvidiaCircuitBreaker::test_below_threshold_stays_closed PASSED [ 50%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestNvidiaCircuitBreaker::test_partial_success_resets_counter PASSED [ 50%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestNvidiaCircuitBreaker::test_resets_after_cooldown_expires PASSED [ 51%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestNvidiaCircuitBreaker::test_still_open_within_cooldown PASSED [ 51%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCircuitBreakerIntegration::test_open_breaker_skips_nvidia_tiers PASSED [ 52%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCircuitBreakerIntegration::test_breaker_trips_after_threshold_consecutive_all_fail PASSED [ 52%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCircuitBreakerIntegration::test_partial_nvidia_success_resets_breaker_counter PASSED [ 52%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCircuitBreakerIntegration::test_no_circuit_breaker_in_anthropic_mode PASSED [ 53%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestAnthropicModeChain::test_haiku_first_in_anthropic_mode PASSED [ 53%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestAnthropicModeChain::test_haiku_fails_ultra_answers PASSED [ 53%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestAnthropicModeChain::test_anthropic_mode_all_fail PASSED [ 54%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCreateModelClientFactory::test_nvidia_mode_returns_multi_tier_with_circuit_breaker PASSED [ 54%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCreateModelClientFactory::test_nvidia_mode_without_anthropic_key_two_tiers PASSED [ 54%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCreateModelClientFactory::test_anthropic_mode_returns_multi_tier_haiku_first PASSED [ 55%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCreateModelClientFactory::test_anthropic_mode_without_nvidia_key_single_tier PASSED [ 55%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCreateModelClientFactory::test_invalid_brain_model_raises_value_error PASSED [ 56%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCreateModelClientFactory::test_nvidia_mode_missing_api_key_raises PASSED [ 56%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCreateModelClientFactory::test_nvidia_tier_timeouts_match_config PASSED [ 56%]
+backend\tests\scenarios\test_phase15_multi_tier.py::TestCreateModelClientFactory::test_haiku_model_id_comes_from_config PASSED [ 57%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_correct_answer_scores_1 PASSED [ 57%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_incorrect_answer_scores_0 PASSED [ 57%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_correct_answer_returns_correct_rationale PASSED [ 58%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_incorrect_answer_returns_incorrect_rationale PASSED [ 58%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_trap_selection_flagged PASSED [ 59%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_non_trap_wrong_answer_not_flagged PASSED [ 59%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_correct_answer_is_trap_selected_none PASSED [ 59%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_no_trap_index_wrong_answer_returns_none PASSED [ 60%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_returns_none_when_correct_rationale_missing PASSED [ 60%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_returns_none_when_incorrect_rationale_missing PASSED [ 60%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_returns_none_when_both_rationales_missing PASSED [ 61%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_returns_none_for_missing_selected_index PASSED [ 61%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_returns_grader_output_instance PASSED [ 61%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_score_boundaries_are_exact PASSED [ 62%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_works_with_all_four_option_indices PASSED [ 62%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestGradeMcqInstantly::test_correct_when_correct_index_is_last_option PASSED [ 63%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestMCQAnswerKeySchema::test_legacy_key_validates_without_rationales PASSED [ 63%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestMCQAnswerKeySchema::test_full_phase16_key_validates PASSED [ 63%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestMCQAnswerKeySchema::test_model_dump_includes_rationale_fields PASSED [ 64%]
+backend\tests\scenarios\test_phase16_instant_mcq_grading.py::TestMCQAnswerKeySchema::test_validate_from_dict_legacy PASSED [ 64%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestCheckQuizExhaustion::test_no_items_returns_first_generation PASSED [ 64%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestCheckQuizExhaustion::test_unanswered_items_returns_skip PASSED [ 65%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestCheckQuizExhaustion::test_partially_answered_items_returns_skip PASSED [ 65%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestCheckQuizExhaustion::test_all_items_answered_returns_exhausted PASSED [ 66%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestCheckQuizExhaustion::test_empty_skill_ids_returns_false PASSED [ 66%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestCheckQuizExhaustion::test_other_practitioner_attempts_do_not_count PASSED [ 66%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestAssignQuestionCounts::test_total_in_range_10_to_12 PASSED [ 67%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestAssignQuestionCounts::test_each_skill_gets_1_or_2 PASSED [ 67%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestAssignQuestionCounts::test_cert_skills_prioritised_for_double_slots PASSED [ 67%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestAssignQuestionCounts::test_small_path_fewer_than_10_skills_gets_extras PASSED [ 68%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestAssignQuestionCounts::test_large_path_more_than_12_skills_gives_one_each PASSED [ 68%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestAssignQuestionCounts::test_empty_specs_does_not_crash PASSED [ 69%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestComputeSkillAvgScores::test_returns_correct_averages PASSED [ 69%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestComputeSkillAvgScores::test_only_counts_this_practitioner PASSED [ 69%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestComputeSkillAvgScores::test_skill_with_no_attempts_absent_from_result PASSED [ 70%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestDifficultyAdjustment::test_perfect_score_bumps_mastery_up PASSED [ 70%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestDifficultyAdjustment::test_perfect_score_capped_at_0_95 PASSED [ 70%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestDifficultyAdjustment::test_poor_score_reduces_mastery PASSED [ 71%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestDifficultyAdjustment::test_poor_score_floored_at_0_05 PASSED [ 71%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestDifficultyAdjustment::test_mid_range_score_unchanged PASSED [ 71%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestDifficultyAdjustment::test_exactly_50_percent_is_unchanged PASSED [ 72%]
+backend\tests\scenarios\test_phase17_quiz_generation.py::TestDifficultyAdjustment::test_none_avg_leaves_mastery_unchanged PASSED [ 72%]
+backend\tests\scenarios\test_phase17b_progressive_quiz.py::test_build_quiz_spec_list_empty_skill_ids PASSED [ 73%]
+backend\tests\scenarios\test_phase17b_progressive_quiz.py::test_generate_quizzes_progressively_marks_ready_on_success PASSED [ 73%]
+backend\tests\scenarios\test_phase17b_progressive_quiz.py::test_generate_quizzes_progressively_marks_failed_on_exception PASSED [ 73%]
+backend\tests\scenarios\test_phase17b_progressive_quiz.py::test_generate_quizzes_progressively_continues_after_per_skill_failure PASSED [ 74%]
+backend\tests\scenarios\test_phase17b_progressive_quiz.py::test_assign_question_counts_single_skill PASSED [ 74%]
+backend\tests\scenarios\test_phase17b_progressive_quiz.py::test_assign_question_counts_does_not_exceed_12 PASSED [ 74%]
+backend\tests\scenarios\test_phase17b_progressive_quiz.py::test_generate_learning_path_sets_quiz_generating PASSED [ 75%]
+backend\tests\scenarios\test_phase17b_progressive_quiz.py::test_quiz_batch_generator_max_tokens PASSED [ 75%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep221DBSchema::test_org_with_valid_plan_can_be_created_and_fetched PASSED [ 76%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep221DBSchema::test_two_active_codes_for_same_org_rejected_by_api PASSED [ 76%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep221DBSchema::test_soft_deleted_profile_excluded_from_normal_list PASSED [ 76%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep222ProductAdminAuth::test_valid_credentials_create_product_admin_session PASSED [ 77%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep222ProductAdminAuth::test_invalid_credentials_return_401 PASSED [ 77%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep222ProductAdminAuth::test_require_product_admin_rejects_org_admin PASSED [ 77%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep222ProductAdminAuth::test_require_product_admin_rejects_practitioner PASSED [ 78%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep223PlanManagement::test_create_valid_paid_plan PASSED [ 78%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep223PlanManagement::test_create_plan_with_zero_limit_returns_422 PASSED [ 78%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep223PlanManagement::test_deactivate_plan_with_no_active_orgs PASSED [ 79%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep223PlanManagement::test_deactivate_plan_with_active_orgs_returns_409 PASSED [ 79%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep224OrgManagement::test_creating_org_generates_one_16char_code PASSED [ 80%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep224OrgManagement::test_regenerate_code_deactivates_old_returns_new PASSED [ 80%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep224OrgManagement::test_deactivating_enterprise_org_returns_enterprise_message PASSED [ 80%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep224OrgManagement::test_deactivating_free_plan_org_returns_plan_message PASSED [ 81%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep224OrgManagement::test_reactivating_org_allows_practitioner_login PASSED [ 81%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep224OrgManagement::test_deactivate_practitioner_returns_403_on_login PASSED [ 81%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep224OrgManagement::test_force_logout_practitioner_sessions_deleted_on_deactivation PASSED [ 82%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep224OrgManagement::test_force_logout_org_all_practitioner_sessions_deleted PASSED [ 82%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep224OrgManagement::test_activation_precedence_account_deactivated_wins PASSED [ 83%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep225Enrollment::test_new_practitioner_with_valid_code_linked_to_org PASSED [ 83%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep225Enrollment::test_new_practitioner_no_code_linked_to_free_tier PASSED [ 83%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep225Enrollment::test_new_practitioner_invalid_code_returns_400 PASSED [ 84%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep225Enrollment::test_existing_practitioner_code_ignored_on_second_login PASSED [ 84%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep225Enrollment::test_free_plan_cert_recycling_blocked_after_delete PASSED [ 84%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep225Enrollment::test_paid_plan_cert_recycling_allowed_after_delete PASSED [ 85%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep226PlanEnforcement::test_free_plan_profile_limit_blocks_third_profile PASSED [ 85%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep226PlanEnforcement::test_enterprise_plan_profile_limit_unlimited PASSED [ 85%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestStep226PlanEnforcement::test_free_plan_learning_path_limit_blocks_third PASSED [ 86%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestProductAdminPasswordRotation::test_first_login_with_must_change_password_true_returns_must_change PASSED [ 86%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestProductAdminPasswordRotation::test_login_with_stale_password_triggers_rotation PASSED [ 87%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestProductAdminPasswordRotation::test_login_with_null_password_changed_at_triggers_rotation PASSED [ 87%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestProductAdminPasswordRotation::test_login_with_fresh_password_does_not_trigger_rotation PASSED [ 87%]
+backend\tests\scenarios\test_phase22_multi_tenant.py::TestProductAdminPasswordRotation::test_change_password_resets_rotation_clock PASSED [ 88%]
+backend\tests\scenarios\test_practitioners_api.py::TestCreateAndFetchPractitioner::test_create_then_fetch_returns_matching_data PASSED [ 88%]
+backend\tests\scenarios\test_practitioners_api.py::TestNotFoundReturns404::test_fetching_nonexistent_practitioner_returns_404 PASSED [ 88%]
+backend\tests\scenarios\test_practitioners_api.py::TestSkillGraphHierarchy::test_skill_graph_preserves_parent_child_references PASSED [ 89%]
+backend\tests\scenarios\test_profile_lockdown.py::TestSkillSaveLocksProfile::test_skill_save_locks_profile_then_patch_returns_403 PASSED [ 89%]
+backend\tests\scenarios\test_profile_lockdown.py::TestLockedProfileExposedInGet::test_get_profile_returns_is_locked_true PASSED [ 90%]
+backend\tests\scenarios\test_profile_lockdown.py::TestSecondSkillSaveOnLockedProfileReturns403::test_second_skill_save_on_locked_profile_returns_403 PASSED [ 90%]
+backend\tests\scenarios\test_profile_lockdown.py::TestLockedProfileActivateAndDeleteUnaffected::test_activate_and_delete_unaffected_by_lock PASSED [ 90%]
+backend\tests\scenarios\test_pulse_api.py::TestPulseApiScenarios::test_approving_drafted_nudge_changes_status PASSED [ 91%]
+backend\tests\scenarios\test_pulse_api.py::TestPulseApiScenarios::test_approving_already_sent_nudge_returns_409 PASSED [ 91%]
+backend\tests\scenarios\test_pulse_api.py::TestPulseApiScenarios::test_rollups_endpoint_returns_404 PASSED [ 91%]
+backend\tests\scenarios\test_pulse_api.py::TestPulseApiScenarios::test_rollup_by_id_endpoint_returns_404 PASSED [ 92%]
+backend\tests\scenarios\test_pulse_api.py::TestPulseApiScenarios::test_nightly_pulse_trigger_endpoint_returns_404 PASSED [ 92%]
+backend\tests\scenarios\test_pulse_api.py::TestPulseApiScenarios::test_list_nudges_by_status_filter PASSED [ 92%]
+backend\tests\scenarios\test_quiz_batch_generator.py::TestQuizBatchGeneratorAgent::test_batch_generates_one_item_per_skill PASSED [ 93%]
+backend\tests\scenarios\test_quiz_batch_generator.py::TestQuizBatchGeneratorAgent::test_batch_difficulty_calibrated_to_mastery_band PASSED [ 93%]
+backend\tests\scenarios\test_quiz_batch_ratio.py::TestQuizBatchRatio::test_cert_question_pct_computed_correctly PASSED [ 94%]
+backend\tests\scenarios\test_quiz_batch_ratio.py::TestQuizBatchRatio::test_warning_logged_when_cert_ratio_below_80 PASSED [ 94%]
+backend\tests\scenarios\test_quiz_only_mastery.py::TestSelfAssessmentSeedsRadarInitially::test_self_assessment_seeds_radar_when_no_quiz_rounds PASSED [ 94%]
+backend\tests\scenarios\test_quiz_only_mastery.py::TestQuizAttemptsDoAffectRadar::test_quiz_attempt_increases_mastery_score PASSED [ 95%]
+backend\tests\scenarios\test_quiz_only_mastery.py::TestSelfAssessmentEventsInDbAreIgnored::test_self_assessment_events_ignored_in_snapshot PASSED [ 95%]
+backend\tests\scenarios\test_round_metrics.py::TestRoundMetricsCeiling::test_all_gen1_correct_yields_mastery_at_most_0_50 PASSED [ 95%]
+backend\tests\scenarios\test_round_metrics.py::TestRoundMetricsCeiling::test_compute_ceiling_formula PASSED [ 96%]
+backend\tests\scenarios\test_round_metrics.py::TestRoundMetricsTwoRounds::test_two_perfect_rounds_yield_mastery_between_0_50_and_0_75 PASSED [ 96%]
+backend\tests\scenarios\test_round_metrics.py::TestRoundMetricsTwoRounds::test_compute_weighted_accuracy_two_perfect_rounds PASSED [ 97%]
+backend\tests\scenarios\test_round_metrics.py::TestRoundMetricsDecline::test_bad_round_3_reduces_mastery_below_round_2_score PASSED [ 97%]
+backend\tests\scenarios\test_round_metrics.py::TestRoundMetricsDecline::test_weighted_accuracy_bad_third_round PASSED [ 97%]
+backend\tests\scenarios\test_round_metrics.py::TestRoundMetricsDecline::test_incomplete_round_is_not_counted PASSED [ 98%]
+backend\tests\scenarios\test_skill_profiler.py::TestSkillProfilerScenarios::test_new_practitioner_with_quiz_attempt_gets_initial_profile PASSED [ 98%]
+backend\tests\scenarios\test_skill_profiler.py::TestSkillProfilerScenarios::test_multiple_quiz_attempts_are_weighted_by_recency_and_consistency PASSED [ 98%]
+backend\tests\scenarios\test_skill_profiler.py::TestSkillProfilerScenarios::test_re_running_without_new_signals_is_idempotent PASSED [ 99%]
+backend\tests\scenarios\test_usage_signal.py::TestUsageSignalScenarios::test_mapped_session_produces_event_with_skill_id PASSED [ 99%]
+backend\tests\scenarios\test_usage_signal.py::TestUsageSignalScenarios::test_unmapped_session_produces_record_without_skill_id PASSED [100%]
+
+================================== FAILURES ===================================
+_ TestGetCertificationsKnownPractitioner.test_known_practitioner_certification_returned _
+  + Exception Group Traceback (most recent call last):
+  |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_learning_portal.py", line 53, in test_known_practitioner_certification_returned
+  |     async with stdio_client(_server_params()) as (read, write):
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\Users\aymitra\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\stdio.py", line 200, in stdio_client
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Exception Group Traceback (most recent call last):
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\stdio.py", line 204, in stdio_client
+    |     yield read_stream, write_stream
+    |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_learning_portal.py", line 54, in test_known_practitioner_certification_returned
+    |     async with ClientSession(read, write) as session:
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 514, in __aexit__
+    |     result = await self._task_group.__aexit__(exc_type, exc_val, exc_tb)
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+    |     raise BaseExceptionGroup(
+    | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+    +-+---------------- 1 ----------------
+      | Traceback (most recent call last):
+      |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_learning_portal.py", line 55, in test_known_practitioner_certification_returned
+      |     await session.initialize()
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 654, in initialize
+      |     result = await self.send_request(
+      |              ^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 586, in send_request
+      |     raw = await self._dispatcher.send_raw_request(method, data.get("params"), opts)
+      |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\shared\jsonrpc_dispatcher.py", line 444, in send_raw_request
+      |     raise MCPError(code=outcome.code, message=outcome.message, data=outcome.data)
+      | mcp.shared.exceptions.MCPError: Connection closed
+      +------------------------------------
+---------------------------- Captured stderr call -----------------------------
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\claude\ai_trainer\backend\app\mcp_servers\learning_portal\server.py", line 15, in <module>
+    from mcp.server.fastmcp import FastMCP
+  File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\server\fastmcp.py", line 16, in <module>
+    raise ModuleNotFoundError(_MESSAGE, name=__name__)
+ModuleNotFoundError: No module named 'mcp.server.fastmcp'. This is mcp 2.x, where FastMCP was renamed to MCPServer (from mcp.server.mcpserver import MCPServer) and other APIs changed; see the migration guide at https://py.sdk.modelcontextprotocol.io/v2/migration/#fastmcp-renamed-to-mcpserver or pin 'mcp<2' to keep running v1 code.
+_ ***REDACTED***.test_all_tools_return_empty_for_unknown_practitioner _
+  + Exception Group Traceback (most recent call last):
+  |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_learning_portal.py", line 80, in test_all_tools_return_empty_for_unknown_practitioner
+  |     async with stdio_client(_server_params()) as (read, write):
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\Users\aymitra\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\stdio.py", line 200, in stdio_client
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Exception Group Traceback (most recent call last):
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\stdio.py", line 204, in stdio_client
+    |     yield read_stream, write_stream
+    |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_learning_portal.py", line 81, in test_all_tools_return_empty_for_unknown_practitioner
+    |     async with ClientSession(read, write) as session:
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 514, in __aexit__
+    |     result = await self._task_group.__aexit__(exc_type, exc_val, exc_tb)
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+    |     raise BaseExceptionGroup(
+    | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+    +-+---------------- 1 ----------------
+      | Traceback (most recent call last):
+      |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_learning_portal.py", line 82, in test_all_tools_return_empty_for_unknown_practitioner
+      |     await session.initialize()
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 654, in initialize
+      |     result = await self.send_request(
+      |              ^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 586, in send_request
+      |     raw = await self._dispatcher.send_raw_request(method, data.get("params"), opts)
+      |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\shared\jsonrpc_dispatcher.py", line 444, in send_raw_request
+      |     raise MCPError(code=outcome.code, message=outcome.message, data=outcome.data)
+      | mcp.shared.exceptions.MCPError: Connection closed
+      +------------------------------------
+---------------------------- Captured stderr call -----------------------------
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\claude\ai_trainer\backend\app\mcp_servers\learning_portal\server.py", line 15, in <module>
+    from mcp.server.fastmcp import FastMCP
+  File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\server\fastmcp.py", line 16, in <module>
+    raise ModuleNotFoundError(_MESSAGE, name=__name__)
+ModuleNotFoundError: No module named 'mcp.server.fastmcp'. This is mcp 2.x, where FastMCP was renamed to MCPServer (from mcp.server.mcpserver import MCPServer) and other APIs changed; see the migration guide at https://py.sdk.modelcontextprotocol.io/v2/migration/#fastmcp-renamed-to-mcpserver or pin 'mcp<2' to keep running v1 code.
+_ TestMappedSessionProducesSkillMapping.test_rag_session_maps_to_rag_fundamentals _
+  + Exception Group Traceback (most recent call last):
+  |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_usage_signals.py", line 51, in test_rag_session_maps_to_rag_fundamentals
+  |     async with stdio_client(_server_params()) as (read, write):
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\Users\aymitra\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\stdio.py", line 200, in stdio_client
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Exception Group Traceback (most recent call last):
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\stdio.py", line 204, in stdio_client
+    |     yield read_stream, write_stream
+    |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_usage_signals.py", line 52, in test_rag_session_maps_to_rag_fundamentals
+    |     async with ClientSession(read, write) as session:
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 514, in __aexit__
+    |     result = await self._task_group.__aexit__(exc_type, exc_val, exc_tb)
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+    |     raise BaseExceptionGroup(
+    | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+    +-+---------------- 1 ----------------
+      | Traceback (most recent call last):
+      |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_usage_signals.py", line 53, in test_rag_session_maps_to_rag_fundamentals
+      |     await session.initialize()
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 654, in initialize
+      |     result = await self.send_request(
+      |              ^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 586, in send_request
+      |     raw = await self._dispatcher.send_raw_request(method, data.get("params"), opts)
+      |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\shared\jsonrpc_dispatcher.py", line 444, in send_raw_request
+      |     raise MCPError(code=outcome.code, message=outcome.message, data=outcome.data)
+      | mcp.shared.exceptions.MCPError: Connection closed
+      +------------------------------------
+---------------------------- Captured stderr call -----------------------------
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\claude\ai_trainer\backend\app\mcp_servers\usage_signals\server.py", line 72, in <module>
+    from mcp.server.fastmcp import FastMCP
+  File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\server\fastmcp.py", line 16, in <module>
+    raise ModuleNotFoundError(_MESSAGE, name=__name__)
+ModuleNotFoundError: No module named 'mcp.server.fastmcp'. This is mcp 2.x, where FastMCP was renamed to MCPServer (from mcp.server.mcpserver import MCPServer) and other APIs changed; see the migration guide at https://py.sdk.modelcontextprotocol.io/v2/migration/#fastmcp-renamed-to-mcpserver or pin 'mcp<2' to keep running v1 code.
+_ TestAmbiguousSessionReturnedUnmapped.test_neutral_session_has_null_skill_mapping _
+  + Exception Group Traceback (most recent call last):
+  |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_usage_signals.py", line 80, in test_neutral_session_has_null_skill_mapping
+  |     async with stdio_client(_server_params()) as (read, write):
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\Users\aymitra\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none\Lib\contextlib.py", line 231, in __aexit__
+  |     await self.gen.athrow(value)
+  |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\stdio.py", line 200, in stdio_client
+  |     async with anyio.create_task_group() as tg:
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+  |     raise BaseExceptionGroup(
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Exception Group Traceback (most recent call last):
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\stdio.py", line 204, in stdio_client
+    |     yield read_stream, write_stream
+    |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_usage_signals.py", line 81, in test_neutral_session_has_null_skill_mapping
+    |     async with ClientSession(read, write) as session:
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 514, in __aexit__
+    |     result = await self._task_group.__aexit__(exc_type, exc_val, exc_tb)
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\anyio\_backends\_asyncio.py", line 847, in __aexit__
+    |     raise BaseExceptionGroup(
+    | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+    +-+---------------- 1 ----------------
+      | Traceback (most recent call last):
+      |   File "C:\claude\ai_trainer\backend\tests\scenarios\test_mcp_usage_signals.py", line 82, in test_neutral_session_has_null_skill_mapping
+      |     await session.initialize()
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 654, in initialize
+      |     result = await self.send_request(
+      |              ^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\client\session.py", line 586, in send_request
+      |     raw = await self._dispatcher.send_raw_request(method, data.get("params"), opts)
+      |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |   File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\shared\jsonrpc_dispatcher.py", line 444, in send_raw_request
+      |     raise MCPError(code=outcome.code, message=outcome.message, data=outcome.data)
+      | mcp.shared.exceptions.MCPError: Connection closed
+      +------------------------------------
+---------------------------- Captured stderr call -----------------------------
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\claude\ai_trainer\backend\app\mcp_servers\usage_signals\server.py", line 72, in <module>
+    from mcp.server.fastmcp import FastMCP
+  File "C:\claude\ai_trainer\backend\.venv\Lib\site-packages\mcp\server\fastmcp.py", line 16, in <module>
+    raise ModuleNotFoundError(_MESSAGE, name=__name__)
+ModuleNotFoundError: No module named 'mcp.server.fastmcp'. This is mcp 2.x, where FastMCP was renamed to MCPServer (from mcp.server.mcpserver import MCPServer) and other APIs changed; see the migration guide at https://py.sdk.modelcontextprotocol.io/v2/migration/#fastmcp-renamed-to-mcpserver or pin 'mcp<2' to keep running v1 code.
+============================== warnings summary ===============================
+tests/scenarios/test_auth.py::TestPractitionerSelfEnforcement::test_practitioner_cannot_fetch_another_practitioner_profile
+tests/scenarios/test_auth.py::TestLeadershipAdminAccess::test_leadership_cannot_access_individual_attempts
+tests/scenarios/test_auth.py::TestLeadershipAdminAccess::test_leadership_rollups_endpoint_returns_404_phase91
+tests/scenarios/test_auth.py::TestAdminPasswordEnforcement::test_admin_with_must_change_password_blocked_from_data
+tests/scenarios/test_phase22_multi_tenant.py::TestStep221DBSchema::test_soft_deleted_profile_excluded_from_normal_list
+tests/scenarios/test_phase22_multi_tenant.py::TestStep222ProductAdminAuth::test_require_product_admin_rejects_org_admin
+tests/scenarios/test_phase22_multi_tenant.py::TestStep222ProductAdminAuth::test_require_product_admin_rejects_practitioner
+  C:\claude\ai_trainer\backend\.venv\Lib\site-packages\httpx\_client.py:1768: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return await self.request(
+
+tests/scenarios/test_auth.py: 1 warning
+tests/scenarios/test_phase22_multi_tenant.py: 10 warnings
+  C:\claude\ai_trainer\backend\.venv\Lib\site-packages\httpx\_client.py:1859: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return await self.request(
+
+tests/scenarios/test_phase22_multi_tenant.py::TestStep223PlanManagement::test_deactivate_plan_with_no_active_orgs
+tests/scenarios/test_phase22_multi_tenant.py::TestStep223PlanManagement::test_deactivate_plan_with_active_orgs_returns_409
+  C:\claude\ai_trainer\backend\.venv\Lib\site-packages\httpx\_client.py:1966: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return await self.request(
+
+tests/scenarios/test_phase22_multi_tenant.py::TestStep224OrgManagement::test_deactivating_enterprise_org_returns_enterprise_message
+tests/scenarios/test_phase22_multi_tenant.py::TestStep224OrgManagement::test_deactivating_free_plan_org_returns_plan_message
+tests/scenarios/test_phase22_multi_tenant.py::TestStep224OrgManagement::test_reactivating_org_allows_practitioner_login
+tests/scenarios/test_phase22_multi_tenant.py::TestStep224OrgManagement::test_deactivate_practitioner_returns_403_on_login
+tests/scenarios/test_phase22_multi_tenant.py::TestStep224OrgManagement::test_force_logout_practitioner_sessions_deleted_on_deactivation
+tests/scenarios/test_phase22_multi_tenant.py::TestStep224OrgManagement::test_force_logout_org_all_practitioner_sessions_deleted
+  C:\claude\ai_trainer\backend\.venv\Lib\site-packages\httpx\_client.py:1933: DeprecationWarning: Setting per-request cookies=<...> is being deprecated, because the expected behaviour on cookie persistence is ambiguous. Set cookies directly on the client instance instead.
+    return await self.request(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+- generated xml file: C:\Users\aymitra\AppData\Local\Temp\aah-regression-10cau3xk.xml -
+=========================== short test summary info ===========================
+FAILED backend\tests\scenarios\test_mcp_learning_portal.py::TestGetCertificationsKnownPractitioner::test_known_practitioner_certification_returned
+FAILED backend\tests\scenarios\test_mcp_learning_portal.py::***REDACTED***::test_all_tools_return_empty_for_unknown_practitioner
+FAILED backend\tests\scenarios\test_mcp_usage_signals.py::TestMappedSessionProducesSkillMapping::test_rag_session_maps_to_rag_fundamentals
+FAILED backend\tests\scenarios\test_mcp_usage_signals.py::TestAmbiguousSessionReturnedUnmapped::test_neutral_session_has_null_skill_mapping
+= 4 failed, 267 passed, 1 skipped, 11 deselected, 26 warnings in 106.44s (0:01:46) =

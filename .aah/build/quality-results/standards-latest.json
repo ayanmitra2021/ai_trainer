@@ -13,17 +13,17 @@
       "files": []
     }
   ],
-  "overall_passed": false,
-  "verdict": "BLOCK",
-  "status": "fail",
+  "overall_passed": true,
+  "verdict": "PASS",
+  "status": "pass",
   "linting": {
-    "passed": false,
-    "status": "fail",
+    "passed": true,
+    "status": "pass",
     "message": "linting completed for 2 package scopes"
   },
   "static_analysis": {
-    "passed": false,
-    "status": "fail",
+    "passed": true,
+    "status": "pass",
     "message": "static_analysis completed for 2 package scopes"
   },
   "coverage": {
@@ -35,8 +35,8 @@
     "status": "not_applicable"
   },
   "findings": {
-    "linting": "=== python:backend ===\nry.py:42:40: F401 [*] `app.schemas.learning_paths.SkillProfilerInput` imported but unused\ntests\\scenarios\\test_quiz_only_mastery.py:88:101: E501 Line too long (104 > 100)\ntests\\scenarios\\test_quiz_only_mastery.py:224:101: E501 Line too long (114 > 100)\ntests\\scenarios\\test_quiz_only_mastery.py:356:9: F841 Local variable `profiler_messages` is assigned to but never used\ntests\\scenarios\\test_quiz_only_mastery.py:362:9: F841 Local variable `profiler_only_stub` is assigned to but never used\ntests\\scenarios\\test_quiz_only_mastery.py:370:9: I001 [*] Import block is un-sorted or un-formatted\ntests\\scenarios\\test_quiz_only_mastery.py:370:16: F401 [*] `pytest` imported but unused\ntests\\scenarios\\test_quiz_only_mastery.py:371:47: F401 [*] `app.agents.skill_profiler.SkillProfilerAgent` imported but unused\ntests\\scenarios\\test_round_metrics.py:14:1: I001 [*] Import block is un-sorted or un-formatted\ntests\\scenarios\\test_round_metrics.py:19:8: F401 [*] `pytest` imported but unused\ntests\\scenarios\\test_round_metrics.py:20:8: F401 [*] `pytest_asyncio` imported but unused\ntests\\scenarios\\test_round_metrics.py:188:101: E501 Line too long (102 > 100)\ntests\\scenarios\\test_seed.py:22:1: I001 [*] Import block is un-sorted or un-formatted\ntests\\scenarios\\test_seed.py:24:8: F401 [*] `os` imported but unused\ntests\\scenarios\\test_seed.py:27:8: F401 [*] `pytest_asyncio` imported but unused\ntests\\scenarios\\test_seed.py:29:49: F401 [*] `sqlalchemy.ext.asyncio.AsyncSession` imported but unused\ntests\\scenarios\\test_skill_profiler.py:12:1: I001 [*] Import block is un-sorted or un-formatted\ntests\\scenarios\\test_skill_profiler.py:17:8: F401 [*] `pytest` imported but unused\ntests\\scenarios\\test_skill_profiler.py:19:24: F401 [*] `sqlalchemy.select` imported but unused\ntests\\scenarios\\test_skill_profiler.py:23:48: F401 [*] `app.db.models.SkillProfileEvent` imported but unused\ntests\\scenarios\\test_skill_profiler.py:23:67: F401 [*] `app.db.models.SkillProfileSnapshot` imported but unused\ntests\\scenarios\\test_skill_profiler.py:24:60: F401 [*] `app.schemas.learning_paths.SkillProfilerOutput` imported but unused\ntests\\scenarios\\test_skill_profiler.py:82:101: E501 Line too long (105 > 100)\ntests\\scenarios\\test_skill_profiler.py:109:101: E501 Line too long (104 > 100)\ntests\\scenarios\\test_skill_profiler.py:136:101: E501 Line too long (104 > 100)\ntests\\scenarios\\test_usage_signal.py:12:8: F401 [*] `pytest` imported but unused\ntests\\scenarios\\test_usage_signal.py:16:60: F401 [*] `app.schemas.pulse.UsageSignalOutput` imported but unused\ntests\\scenarios\\test_usage_signal.py:70:101: E501 Line too long (103 > 100)\ntests\\scenarios\\test_usage_signal.py:122:101: E501 Line too long (106 > 100)\ntools\\check_nvidia.py:69:102: E501 Line too long (106 > 100)\ntools\\check_nvidia.py:103:102: E501 Line too long (110 > 100)\ntools\\check_nvidia.py:105:102: E501 Line too long (105 > 100)\nFound 502 errors.\n[*] 306 fixable with the `--fix` option (13 hidden fixes can be enabled with the `--unsafe-fixes` option).\n\n=== node:frontend ===\n\n> mastery-pulse-frontend@0.1.0 lint\n> eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0\n\n\nC:\\claude\\ai_trainer\\frontend\\tests\\practitioner-journey.spec.ts\n   22:18  warning  'getFirstPractitioner' is defined but never used. Allowed unused vars must match /^_/u  @typescript-eslint/no-unused-vars\n  141:11  warning  'quizCard' is assigned a value but never used. Allowed unused vars must match /^_/u     @typescript-eslint/no-unused-vars\n\n\u00e2\u0153\u2013 2 problems (0 errors, 2 warnings)\n\n",
-    "static_analysis": "=== python:backend ===\nssue_confidence\": \"LOW\",\r\n      \"issue_cwe\": {\r\n        \"id\": 89,\r\n        \"link\": \"https://cwe.mitre.org/data/definitions/89.html\"\r\n      },\r\n      \"issue_severity\": \"MEDIUM\",\r\n      \"issue_text\": \"Possible SQL injection vector through string-based query construction.\",\r\n      \"line_number\": 366,\r\n      \"line_range\": [\r\n        366,\r\n        367\r\n      ],\r\n      \"more_info\": \"https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html\",\r\n      \"test_id\": \"B608\",\r\n      \"test_name\": \"hardcoded_sql_expressions\"\r\n    },\r\n    {\r\n      \"code\": \"378         lines.append(\\n379             f\\\"INSERT INTO certifications \\\"\\n380             f\\\"(id, provider_id, code, name, level, requires_coding_background, \\\"\\n381             f\\\"typical_audience, focus_area, exam_format, eligibility_notes, \\\"\\n382             f\\\"external_url, is_active, last_verified_at) VALUES (\\\"\\n383             f\\\"{q(cid)}, {q(pid)}, {q(cspec['code'])}, {q(cspec['name'])}, \\\"\\n384             f\\\"{q(cspec['level'])}, {b(cspec['requires_coding_background'])}, \\\"\\n385             f\\\"{q(cspec.get('typical_audience'))}, {q(cspec.get('focus_area'))}, \\\"\\n386             f\\\"{q(cspec.get('exam_format'))}, {q(cspec.get('eligibility_notes'))}, \\\"\\n387             f\\\"{q(cspec.get('external_url'))}, TRUE, {q(today)});\\\"\\n388         )\\n\",\r\n      \"col_offset\": 14,\r\n      \"end_col_offset\": 65,\r\n      \"filename\": \".\\\\seed\\\\generate_sql.py\",\r\n      \"issue_confidence\": \"LOW\",\r\n      \"issue_cwe\": {\r\n        \"id\": 89,\r\n        \"link\": \"https://cwe.mitre.org/data/definitions/89.html\"\r\n      },\r\n      \"issue_severity\": \"MEDIUM\",\r\n      \"issue_text\": \"Possible SQL injection vector through string-based query construction.\",\r\n      \"line_number\": 379,\r\n      \"line_range\": [\r\n        379,\r\n        380,\r\n        381,\r\n        382,\r\n        383,\r\n        384,\r\n        385,\r\n        386,\r\n        387\r\n      ],\r\n      \"more_info\": \"https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html\",\r\n      \"test_id\": \"B608\",\r\n      \"test_name\": \"hardcoded_sql_expressions\"\r\n    },\r\n    {\r\n      \"code\": \"401             lines.append(\\n402                 f\\\"INSERT INTO certification_skills (certification_id, skill_id, weight) VALUES \\\"\\n403                 f\\\"({q(cid)}, {q(sid)}, {round(weight, 3)});\\\"\\n404             )\\n\",\r\n      \"col_offset\": 18,\r\n      \"end_col_offset\": 19,\r\n      \"filename\": \".\\\\seed\\\\generate_sql.py\",\r\n      \"issue_confidence\": \"LOW\",\r\n      \"issue_cwe\": {\r\n        \"id\": 89,\r\n        \"link\": \"https://cwe.mitre.org/data/definitions/89.html\"\r\n      },\r\n      \"issue_severity\": \"MEDIUM\",\r\n      \"issue_text\": \"Possible SQL injection vector through string-based query construction.\",\r\n      \"line_number\": 402,\r\n      \"line_range\": [\r\n        402,\r\n        403\r\n      ],\r\n      \"more_info\": \"https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html\",\r\n      \"test_id\": \"B608\",\r\n      \"test_name\": \"hardcoded_sql_expressions\"\r\n    }\r\n  ]\r\n}\n=== node:frontend ===\n"
+    "linting": "=== python:backend ===\nAll checks passed!\n\n=== node:frontend ===\n\n> mastery-pulse-frontend@0.1.0 lint\n> eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0\n\n",
+    "static_analysis": "=== python:backend ===\n\n      \"CONFIDENCE.MEDIUM\": 0,\r\n      \"CONFIDENCE.UNDEFINED\": 0,\r\n      \"SEVERITY.HIGH\": 0,\r\n      \"SEVERITY.LOW\": 0,\r\n      \"SEVERITY.MEDIUM\": 0,\r\n      \"SEVERITY.UNDEFINED\": 0,\r\n      \"loc\": 18,\r\n      \"nosec\": 0,\r\n      \"skipped_tests\": 0\r\n    },\r\n    \".\\\\config\\\\__init__.py\": {\r\n      \"CONFIDENCE.HIGH\": 0,\r\n      \"CONFIDENCE.LOW\": 0,\r\n      \"CONFIDENCE.MEDIUM\": 0,\r\n      \"CONFIDENCE.UNDEFINED\": 0,\r\n      \"SEVERITY.HIGH\": 0,\r\n      \"SEVERITY.LOW\": 0,\r\n      \"SEVERITY.MEDIUM\": 0,\r\n      \"SEVERITY.UNDEFINED\": 0,\r\n      \"loc\": 0,\r\n      \"nosec\": 0,\r\n      \"skipped_tests\": 0\r\n    },\r\n    \".\\\\config\\\\env_check.py\": {\r\n      \"CONFIDENCE.HIGH\": 0,\r\n      \"CONFIDENCE.LOW\": 0,\r\n      \"CONFIDENCE.MEDIUM\": 0,\r\n      \"CONFIDENCE.UNDEFINED\": 0,\r\n      \"SEVERITY.HIGH\": 0,\r\n      \"SEVERITY.LOW\": 0,\r\n      \"SEVERITY.MEDIUM\": 0,\r\n      \"SEVERITY.UNDEFINED\": 0,\r\n      \"loc\": 29,\r\n      \"nosec\": 0,\r\n      \"skipped_tests\": 0\r\n    },\r\n    \".\\\\seed\\\\__init__.py\": {\r\n      \"CONFIDENCE.HIGH\": 0,\r\n      \"CONFIDENCE.LOW\": 0,\r\n      \"CONFIDENCE.MEDIUM\": 0,\r\n      \"CONFIDENCE.UNDEFINED\": 0,\r\n      \"SEVERITY.HIGH\": 0,\r\n      \"SEVERITY.LOW\": 0,\r\n      \"SEVERITY.MEDIUM\": 0,\r\n      \"SEVERITY.UNDEFINED\": 0,\r\n      \"loc\": 0,\r\n      \"nosec\": 0,\r\n      \"skipped_tests\": 0\r\n    },\r\n    \".\\\\seed\\\\certification_domains.py\": {\r\n      \"CONFIDENCE.HIGH\": 0,\r\n      \"CONFIDENCE.LOW\": 0,\r\n      \"CONFIDENCE.MEDIUM\": 0,\r\n      \"CONFIDENCE.UNDEFINED\": 0,\r\n      \"SEVERITY.HIGH\": 0,\r\n      \"SEVERITY.LOW\": 0,\r\n      \"SEVERITY.MEDIUM\": 0,\r\n      \"SEVERITY.UNDEFINED\": 0,\r\n      \"loc\": 722,\r\n      \"nosec\": 0,\r\n      \"skipped_tests\": 0\r\n    },\r\n    \".\\\\seed\\\\generate.py\": {\r\n      \"CONFIDENCE.HIGH\": 0,\r\n      \"CONFIDENCE.LOW\": 0,\r\n      \"CONFIDENCE.MEDIUM\": 0,\r\n      \"CONFIDENCE.UNDEFINED\": 0,\r\n      \"SEVERITY.HIGH\": 0,\r\n      \"SEVERITY.LOW\": 0,\r\n      \"SEVERITY.MEDIUM\": 0,\r\n      \"SEVERITY.UNDEFINED\": 0,\r\n      \"loc\": 569,\r\n      \"nosec\": 0,\r\n      \"skipped_tests\": 11\r\n    },\r\n    \".\\\\seed\\\\generate_sql.py\": {\r\n      \"CONFIDENCE.HIGH\": 0,\r\n      \"CONFIDENCE.LOW\": 0,\r\n      \"CONFIDENCE.MEDIUM\": 0,\r\n      \"CONFIDENCE.UNDEFINED\": 0,\r\n      \"SEVERITY.HIGH\": 0,\r\n      \"SEVERITY.LOW\": 0,\r\n      \"SEVERITY.MEDIUM\": 0,\r\n      \"SEVERITY.UNDEFINED\": 0,\r\n      \"loc\": 371,\r\n      \"nosec\": 0,\r\n      \"skipped_tests\": 10\r\n    },\r\n    \".\\\\tools\\\\check_nvidia.py\": {\r\n      \"CONFIDENCE.HIGH\": 0,\r\n      \"CONFIDENCE.LOW\": 0,\r\n      \"CONFIDENCE.MEDIUM\": 0,\r\n      \"CONFIDENCE.UNDEFINED\": 0,\r\n      \"SEVERITY.HIGH\": 0,\r\n      \"SEVERITY.LOW\": 0,\r\n      \"SEVERITY.MEDIUM\": 0,\r\n      \"SEVERITY.UNDEFINED\": 0,\r\n      \"loc\": 154,\r\n      \"nosec\": 0,\r\n      \"skipped_tests\": 0\r\n    },\r\n    \"_totals\": {\r\n      \"CONFIDENCE.HIGH\": 0,\r\n      \"CONFIDENCE.LOW\": 0,\r\n      \"CONFIDENCE.MEDIUM\": 0,\r\n      \"CONFIDENCE.UNDEFINED\": 0,\r\n      \"SEVERITY.HIGH\": 0,\r\n      \"SEVERITY.LOW\": 0,\r\n      \"SEVERITY.MEDIUM\": 0,\r\n      \"SEVERITY.UNDEFINED\": 0,\r\n      \"loc\": 17314,\r\n      \"nosec\": 0,\r\n      \"skipped_tests\": 33\r\n    }\r\n  },\r\n  \"results\": []\r\n}\n=== node:frontend ===\n"
   },
   "commands": {
     "linting": [
@@ -52,8 +52,8 @@
     "schema_version": 2,
     "rel_path": ".",
     "branch": "master",
-    "commit_sha": "64ec3e1e5cedcd49c01f27b17c898052658ee84aeb614a9d81e10ce7e1d3cdcf",
-    "head_sha": "ac62fb510256c0db9d558eaf9673987cf6005369",
+    "commit_sha": "823e3960413d4c6ac597a1e4d62ca1eac37303f55cb364eb3ce0d11c49d1e335",
+    "head_sha": "fc4191d8db7d41f4b8b07377e4b5967d59fd5aa9",
     "clean": true
   },
   "schema_version": 1,
@@ -69,14 +69,14 @@
       "--subject-branch",
       "master"
     ],
-    "exit_code": 1,
-    "stdout_sha256": "6c04c71c73a10e7e139ef5a68ec07c36a675ad7d9492cf70ce3c79ee95adf404",
-    "stderr_sha256": "d9720c664883d8cf4ab93d72a163fcd611408654e1b61244ca8e6c581aba5b2a",
-    "duration_ms": 69889,
-    "host_pid": 4460,
-    "timestamp": "2026-09-16T10:43:07.979546+00:00",
+    "exit_code": 0,
+    "stdout_sha256": "682723f68b14a9e82239a632f197838c1273dedee6231aba44f325b67b97a1ca",
+    "stderr_sha256": "1e51a9b66f83cb0fba5961c1b750d990cf0cca4806ed6ac9af63eb629aedf225",
+    "duration_ms": 48734,
+    "host_pid": 13252,
+    "timestamp": "2026-09-16T11:10:48.199607+00:00",
     "session_secret_sha256": "c2d7be78862e13453d2fead5440b4f9bf0dd7a1ca6a676052cfd9507a4c8416d",
     "schema_version": 1,
-    "signature": "51c2e9a9f24adf69b13a072037f5f0f941eed631b378cca4f0d2a9297e4d2c92"
+    "signature": "91aed037bffca76bd843b96a902bcc0ca6c5a3d12e11424386e4d5d82422acbb"
   }
 }

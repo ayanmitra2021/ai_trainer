@@ -1,0 +1,72 @@
+{
+  "schema_version": 2,
+  "run_id": "aah-ai-trainer-w-regression-regression-attempt-00660172",
+  "created_at": "2026-09-16T11:13:47.433569+00:00",
+  "subject": {
+    "commit_sha": "823e3960413d4c6ac597a1e4d62ca1eac37303f55cb364eb3ce0d11c49d1e335",
+    "branch": "master",
+    "rel_path": "."
+  },
+  "execution": {
+    "argv": [
+      "uv",
+      "run",
+      "--python",
+      "3.12",
+      "--project",
+      "backend",
+      "--all-extras",
+      "--all-groups",
+      "--with",
+      "pytest",
+      "python",
+      "-m",
+      "pytest",
+      "backend/tests/",
+      "frontend/tests/",
+      "-v",
+      "--tb=short",
+      "--junitxml=C:UsersaymitraAppDataLocalTempaah-regression-10cau3xk.xml"
+    ],
+    "cwd": ".",
+    "adapter": null,
+    "seed": null,
+    "started_at": "2026-09-16T11:13:47.395086+00:00",
+    "finished_at": "2026-09-16T11:13:47.395086+00:00",
+    "exit_code": 1
+  },
+  "tool_versions": {
+    "python": "3.12.13",
+    "pytest": null,
+    "docker": null
+  },
+  "cleanup": {
+    "transport": "none",
+    "action": "cleanup_namespace",
+    "namespace": "aah-ai-trainer-w-regression-regression-attempt-00660172",
+    "removed": [],
+    "leftover": [],
+    "errors": [],
+    "stopped": true,
+    "timestamp": "2026-09-16T11:13:47.395086+00:00"
+  },
+  "diagnostic": null,
+  "logs": {
+    "stderr": {
+      "file": "stderr.log",
+      "sha256": "ee7dfb636001a4f08899fb01f3276db3aa907ccc687cd186458736fb7df33e74",
+      "bytes": 171
+    },
+    "stdout": {
+      "file": "stdout.log",
+      "sha256": "e80c756ffcaf5ce759c8250c42e39713b64470c2b43ae095100ab85d85ed2cd0",
+      "bytes": 58984
+    }
+  },
+  "dropped_log_streams": [],
+  "retention": {
+    "local_log_days": 30,
+    "metadata_retention": "milestone",
+    "source": "fixed"
+  }
+}
