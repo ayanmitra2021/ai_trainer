@@ -360,9 +360,9 @@ def gen_sql() -> str:
 
     for pspec in CERTIFICATION_PROVIDERS:
         lines.append(
-            f"INSERT INTO certification_providers (id, name, website, notes) VALUES "
+            f"INSERT INTO certification_providers (id, name, website, notes) VALUES "  # nosec B608
             f"({q(provider_ids[pspec['name']])}, {q(pspec['name'])}, {q(pspec.get('website'))}, {q(pspec.get('notes'))});"
-        )  # nosec B608
+        )
 
     lines.append("")
 
@@ -373,7 +373,7 @@ def gen_sql() -> str:
         cid = cert_ids[cspec["code"]]
         pid = provider_ids[cspec["provider"]]
         lines.append(
-            f"INSERT INTO certifications "
+            f"INSERT INTO certifications "  # nosec B608
             f"(id, provider_id, code, name, level, requires_coding_background, "
             f"typical_audience, focus_area, exam_format, eligibility_notes, "
             f"external_url, is_active, last_verified_at) VALUES ("
@@ -382,7 +382,7 @@ def gen_sql() -> str:
             f"{q(cspec.get('typical_audience'))}, {q(cspec.get('focus_area'))}, "
             f"{q(cspec.get('exam_format'))}, {q(cspec.get('eligibility_notes'))}, "
             f"{q(cspec.get('external_url'))}, TRUE, {q(today)});"
-        )  # nosec B608
+        )
 
     lines.append("")
 
@@ -396,9 +396,9 @@ def gen_sql() -> str:
                 lines.append(f"-- WARNING: skill '{skill_name}' not found, skipped")
                 continue
             lines.append(
-                f"INSERT INTO certification_skills (certification_id, skill_id, weight) VALUES "
+                f"INSERT INTO certification_skills (certification_id, skill_id, weight) VALUES "  # nosec B608
                 f"({q(cid)}, {q(sid)}, {round(weight, 3)});"
-            )  # nosec B608
+            )
 
     lines.append("")
 
