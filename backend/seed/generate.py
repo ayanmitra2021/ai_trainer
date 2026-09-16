@@ -500,9 +500,9 @@ async def seed(session: AsyncSession) -> None:
             id=str(uuid.uuid4()),
             name=name,
             email=_seed_email(name),
-            role=random.choice(ROLES),
-            practice=random.choice(PRACTICES),
-            seniority_level=random.choice(SENIORITY_LEVELS),
+            role=random.choice(ROLES),  # nosec B311
+            practice=random.choice(PRACTICES),  # nosec B311
+            seniority_level=random.choice(SENIORITY_LEVELS),  # nosec B311
         )
         session.add(practitioner)
         practitioners.append(practitioner)
@@ -518,14 +518,14 @@ async def seed(session: AsyncSession) -> None:
     events_added = 0
     for i, source in enumerate(sources):
         practitioner = practitioners[i]
-        skill = random.choice(all_skills)
+        skill = random.choice(all_skills)  # nosec B311
         event = SkillProfileEvent(
             id=str(uuid.uuid4()),
             practitioner_id=practitioner.id,
             skill_id=skill.id,
             source=source,
-            signal_strength=round(random.uniform(0.3, 0.95), 3),
-            occurred_at=_days_ago(random.randint(1, 180)),
+            signal_strength=round(random.uniform(0.3, 0.95), 3),  # nosec B311
+            occurred_at=_days_ago(random.randint(1, 180)),  # nosec B311
             metadata_={"seeded": True, "source_guarantee": True},
         )
         session.add(event)
@@ -533,17 +533,17 @@ async def seed(session: AsyncSession) -> None:
 
     # Random events to flesh out a realistic spread (~200 total)
     for practitioner in practitioners:
-        n_events = random.randint(5, 15)
+        n_events = random.randint(5, 15)  # nosec B311
         for _ in range(n_events):
-            source = random.choice(sources)
-            skill = random.choice(all_skills)
+            source = random.choice(sources)  # nosec B311
+            skill = random.choice(all_skills)  # nosec B311
             event = SkillProfileEvent(
                 id=str(uuid.uuid4()),
                 practitioner_id=practitioner.id,
                 skill_id=skill.id,
                 source=source,
-                signal_strength=round(random.uniform(0.1, 1.0), 3),
-                occurred_at=_days_ago(random.randint(1, 365)),
+                signal_strength=round(random.uniform(0.1, 1.0), 3),  # nosec B311
+                occurred_at=_days_ago(random.randint(1, 365)),  # nosec B311
                 metadata_={"seeded": True},
             )
             session.add(event)

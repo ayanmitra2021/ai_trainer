@@ -88,6 +88,9 @@ select = ["E", "F", "I", "UP"]
 "app/api/routes/profiles.py" = ["E402"]
 "app/agents/model_client.py" = ["E402"]
 
+[tool.bandit]
+exclude_dirs = ["seed", "tools", "alembic"]
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]
