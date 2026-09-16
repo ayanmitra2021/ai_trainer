@@ -1,0 +1,11 @@
+feedback_id: "UF-01-01"
+wave: 1
+source: "build"
+started_at: "2026-09-16T09:57:30Z"
+feedback_details: "Backend boot failure: httpx is imported by backend/app/api/routes/notification_settings.py at module level (line 14) but is only listed under [project.optional-dependencies] dev in backend/pyproject.toml. Move httpx>=0.27 into the main [project.dependencies] list in backend/pyproject.toml, then run uv sync in the backend/ directory to install it into the venv."
+steps:
+  - phase: direct_repair
+    input: "Move httpx>=0.27 from [project.optional-dependencies] dev to [project.dependencies] in backend/pyproject.toml. Run uv sync in backend/. Fully contained: no spec change, no interface change, no blast radius."
+    output: "Moved httpx>=0.27 from [project.optional-dependencies] dev to [project.dependencies] in backend/pyproject.toml. Ran uv sync — httpx==0.28.1 installed. Committed as fix(deps): move httpx to main dependencies."
+    completed_at: "2026-09-16T10:05:00Z"
+status: completed
