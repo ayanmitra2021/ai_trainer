@@ -67,7 +67,7 @@ class PlanEnforcer:
                     "plan_limit": self._plan.max_profiles_per_practitioner,
                     "plan_name": self._plan.name,
                     "upgrade_message": (
-                        f"You have reached the {self._plan.name} plan limit for certification profiles. "
+                        f"You have reached the {self._plan.name} plan limit for certification profiles. "  # noqa: E501
                         "Delete an existing profile or upgrade your plan to create a new one."
                     ),
                 },
@@ -93,7 +93,7 @@ class PlanEnforcer:
                     "plan_limit": self._plan.max_learning_paths,
                     "plan_name": self._plan.name,
                     "upgrade_message": (
-                        f"You have reached the {self._plan.name} plan limit for learning path generations. "
+                        f"You have reached the {self._plan.name} plan limit for learning path generations. "  # noqa: E501
                         "Upgrade your plan to generate more learning paths."
                     ),
                 },
@@ -128,7 +128,7 @@ class PlanEnforcer:
                     "plan_limit": self._plan.max_mock_exams_per_profile,
                     "plan_name": self._plan.name,
                     "upgrade_message": (
-                        f"You have reached the {self._plan.name} plan limit for mock exams on this profile. "
+                        f"You have reached the {self._plan.name} plan limit for mock exams on this profile. "  # noqa: E501
                         "Upgrade your plan to take more mock exams."
                     ),
                 },

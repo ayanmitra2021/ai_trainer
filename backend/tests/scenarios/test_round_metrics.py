@@ -16,8 +16,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import pytest
-import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.round_metrics import (
@@ -26,7 +24,6 @@ from app.agents.round_metrics import (
     compute_weighted_accuracy,
 )
 from app.db.models import Attempt, Item, Practitioner, Skill
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

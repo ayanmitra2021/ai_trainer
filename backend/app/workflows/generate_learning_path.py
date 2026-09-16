@@ -23,12 +23,12 @@ from sqlalchemy.orm import selectinload
 from app.agents.base import ModelClient
 from app.agents.curriculum_planner import CurriculumPlannerAgent
 from app.agents.model_client import create_model_client
-from app.agents.skill_profiler import SkillProfilerAgent
 from app.agents.round_metrics import compute_domain_scores, compute_round_metrics
+from app.agents.skill_profiler import SkillProfilerAgent
 from app.db.models import (
     Certification,
-    CertificationDomain,
     CertificationSkill,
+    Item,
     LearningPath,
     LearningPathItem,
     MasteryHistory,
@@ -39,7 +39,6 @@ from app.db.models import (
     Skill,
     SkillProfileEvent,
     SkillProfileSnapshot,
-    Item,
     WorkflowRun,
 )
 from app.schemas.learning_paths import (

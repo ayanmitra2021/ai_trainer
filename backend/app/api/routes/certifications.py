@@ -31,7 +31,6 @@ from app.db.models import (
     Certification,
     CertificationAdvisorResponse,
     CertificationProvider,
-    CertificationSkill,
     Practitioner,
     PractitionerCertificationGoal,
     PractitionerProfile,
@@ -107,8 +106,10 @@ async def run_certification_advisor(
         for c in certs
     ]
 
-    from app.agents.certification_advisor import CertificationAdvisorAgent
-    from app.agents.certification_advisor import CertificationAdvisorInput
+    from app.agents.certification_advisor import (
+        CertificationAdvisorAgent,
+        CertificationAdvisorInput,
+    )
 
     agent_input = CertificationAdvisorInput(
         practitioner_id=body.practitioner_id,

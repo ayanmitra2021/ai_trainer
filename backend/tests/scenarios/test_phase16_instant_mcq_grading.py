@@ -6,10 +6,8 @@ Given/When/Then pattern, SQLite in-memory DB, no live API calls.
 
 from __future__ import annotations
 
-import pytest
 from app.api.routes.learning_paths import _grade_mcq_instantly
 from app.schemas.items import GraderOutput, MCQAnswerKey
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 

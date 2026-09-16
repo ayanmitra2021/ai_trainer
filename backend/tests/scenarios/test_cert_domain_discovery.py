@@ -32,7 +32,6 @@ import uuid
 from datetime import UTC, datetime
 from unittest.mock import patch
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -52,7 +51,6 @@ from tests.conftest import (  # noqa: F401
     admin_session_info,
     apply_admin_auth_overrides,
 )
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

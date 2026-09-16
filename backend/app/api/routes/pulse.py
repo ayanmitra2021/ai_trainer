@@ -117,7 +117,7 @@ async def approve_nudge(
     if nudge.status != "drafted":
         raise HTTPException(
             status_code=409,
-            detail=f"Cannot approve a nudge with status '{nudge.status}' — only 'drafted' nudges can be approved",
+            detail=f"Cannot approve a nudge with status '{nudge.status}' — only 'drafted' nudges can be approved",  # noqa: E501
         )
 
     now = datetime.now(UTC)

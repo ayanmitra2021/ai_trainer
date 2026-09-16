@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,20 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.certification_advisor import CertificationAdvisorAgent, CertificationAdvisorInput
 from app.db.models import (
     Certification,
-    CertificationAdvisorResponse,
     CertificationProvider,
-    CertificationSkill,
-    PractitionerCertificationGoal,
     Practitioner,
-    Skill,
 )
 from app.schemas.certifications import (
-    AdvisorOutput,
     CertificationContext,
     QuestionnaireAnswers,
 )
 from tests.fixtures.stub_claude_client import StubClaudeClient
-
 
 # ── Shared fixtures ────────────────────────────────────────────────────────────
 
@@ -226,12 +219,14 @@ class TestCertificationAdvisorScenarios:
         scenario is about the DB side-effects, not the HTTP contract.
         """
         # Given
+        from datetime import UTC, datetime
+
         from app.db.models import (
             CertificationAdvisorResponse as CARModel,
-            PractitionerCertificationGoal as PCGModel,
-            Certification as CertModel,
         )
-        from datetime import UTC, datetime
+        from app.db.models import (
+            PractitionerCertificationGoal as PCGModel,
+        )
 
         # Set up a minimal cert in DB that the recommendation references
         provider = CertificationProvider(

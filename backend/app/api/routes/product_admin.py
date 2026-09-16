@@ -45,19 +45,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.session import (
     SessionInfo,
-    get_session,
     require_product_admin,
 )
 from app.config import settings
 from app.db.models import (
-    AdminUser,
     Organization,
     OrgEnrollmentCode,
-    OrgNotificationSettings,
     Practitioner,
     ProductAdminUser,
-    Session as SessionModel,
     SubscriptionPlan,
+)
+from app.db.models import (
+    Session as SessionModel,
 )
 from app.db.session import get_db
 
@@ -140,7 +139,7 @@ class SubscriptionPlanCreate(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_tier_constraints(self) -> "SubscriptionPlanCreate":
+    def validate_tier_constraints(self) -> SubscriptionPlanCreate:
         if self.tier == "free":
             self.allow_cert_recycling = False
             self.nudges_enabled = False
@@ -744,8 +743,6 @@ async def analytics_usage(
     """Usage breakdown by plan tier."""
     from app.db.models import Attempt, LessonRead, MockExamSession
 
-    now = datetime.now(UTC)
-
     # Practitioners per tier
     tier_result = await db.execute(
         select(
@@ -805,7 +802,7 @@ async def analytics_usage(
                 "plan_name": row.tier.capitalize(),  # no plan_name in this query; use tier as label
                 "org_count": 0,  # not queried here; use analytics/plans for org breakdown
                 "practitioner_count": row.practitioner_count or 0,
-                "active_practitioner_count": row.practitioner_count or 0,  # all are active by default
+                "active_practitioner_count": row.practitioner_count or 0,  # all are active by default  # noqa: E501
                 "total_quiz_attempts": attempt_rows.get(row.tier, 0),
                 "total_lesson_reads": lesson_rows.get(row.tier, 0),
                 "total_mock_exams_completed": exam_rows.get(row.tier, 0),

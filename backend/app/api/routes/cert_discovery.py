@@ -10,7 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.cert_skill_mapper import CertSkillMapperAgent, CertSkillMapperInput, CertSkillMapperDomain
+from app.agents.cert_skill_mapper import (
+    CertSkillMapperAgent,
+    CertSkillMapperDomain,
+    CertSkillMapperInput,
+)
 from app.agents.model_client import create_model_client
 from app.api.deps.session import SessionInfo, require_admin
 from app.db.models import Certification, CertificationDomain, CertificationDomainVersion

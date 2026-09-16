@@ -13,8 +13,9 @@ before this migration). The login route treats NULL + must_change_password=False
 as "needs rotation" — effectively, the 30-day clock started at account creation.
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers
 revision = "025"

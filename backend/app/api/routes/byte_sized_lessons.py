@@ -20,7 +20,9 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func as sa_func, select, update as sa_update
+from sqlalchemy import func as sa_func
+from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.byte_sized_lesson import (
@@ -143,7 +145,7 @@ async def _collect_wrong_quiz_evidence(
         user_idx: int | None = (attempt.response or {}).get("selected_index")
         correct_idx: int = item.answer_key.get("correct_index", 0)
 
-        user_text = opts[user_idx] if (user_idx is not None and 0 <= user_idx < len(opts)) else "Unknown"
+        user_text = opts[user_idx] if (user_idx is not None and 0 <= user_idx < len(opts)) else "Unknown"  # noqa: E501
         correct_text = opts[correct_idx] if 0 <= correct_idx < len(opts) else "Unknown"
 
         # Best available explanation of the misconception, in priority order:
@@ -225,7 +227,7 @@ async def _collect_wrong_mock_evidence(
         user_idx: int | None = (q.response or {}).get("selected_index")
         correct_idx: int = q.answer_key.get("correct_index", 0)
 
-        user_text = opts[user_idx] if (user_idx is not None and 0 <= user_idx < len(opts)) else "Unknown"
+        user_text = opts[user_idx] if (user_idx is not None and 0 <= user_idx < len(opts)) else "Unknown"  # noqa: E501
         correct_text = opts[correct_idx] if 0 <= correct_idx < len(opts) else "Unknown"
 
         misconception = (
@@ -485,7 +487,7 @@ async def _generate_byte_sized_lessons(
             # Top-level failure — mark ALL remaining pending lessons as failed
             # so they never get stuck in 'pending' forever.
             _logger.error(
-                "byte_sized_lesson: top-level task failure for seq=%d: %s — marking all pending as failed",
+                "byte_sized_lesson: top-level task failure for seq=%d: %s — marking all pending as failed",  # noqa: E501
                 path_generation_seq, top_exc,
             )
             try:
@@ -689,15 +691,15 @@ async def list_byte_sized_lessons(
     if not lessons:
         return LessonListResponse(current=[], history=[])
 
-    max_seq = max(l.path_generation_seq for l in lessons)
+    max_seq = max(lesson.path_generation_seq for lesson in lessons)
 
     current_path_id: str | None = next(
-        (l.learning_path_id for l in lessons if l.path_generation_seq == max_seq),
+        (lesson.learning_path_id for lesson in lessons if lesson.path_generation_seq == max_seq),
         None,
     )
 
     # Fetch all read sessions for this practitioner's lessons
-    lesson_ids = [l.id for l in lessons]
+    lesson_ids = [lesson.id for lesson in lessons]
     reads_result = await db.execute(
         select(LessonRead).where(LessonRead.lesson_id.in_(lesson_ids))
     )
@@ -707,7 +709,7 @@ async def list_byte_sized_lessons(
 
     current = []
     history = []
-    for lesson in sorted(lessons, key=lambda l: (-l.path_generation_seq, -l.gap_pct)):
+    for lesson in sorted(lessons, key=lambda les: (-les.path_generation_seq, -les.gap_pct)):
         summary = _build_lesson_summary(lesson, reads_by_lesson.get(lesson.id, []))
         if lesson.path_generation_seq == max_seq:
             current.append(summary)
@@ -720,15 +722,15 @@ async def list_byte_sized_lessons(
     # seqs for the same path would otherwise cause every skill to repeat once
     # per retry attempt.
     latest_seq_by_prev_path: dict[str, int] = {}
-    for l in lessons:
+    for lesson in lessons:
         if (
-            l.path_generation_seq < max_seq
-            and l.learning_path_id != current_path_id
-            and l.generation_status == "ready"
+            lesson.path_generation_seq < max_seq
+            and lesson.learning_path_id != current_path_id
+            and lesson.generation_status == "ready"
         ):
-            pid = l.learning_path_id
-            if pid not in latest_seq_by_prev_path or l.path_generation_seq > latest_seq_by_prev_path[pid]:
-                latest_seq_by_prev_path[pid] = l.path_generation_seq
+            pid = lesson.learning_path_id
+            if pid not in latest_seq_by_prev_path or lesson.path_generation_seq > latest_seq_by_prev_path[pid]:  # noqa: E501
+                latest_seq_by_prev_path[pid] = lesson.path_generation_seq
 
     history_eligible_seqs: set[int] = set(latest_seq_by_prev_path.values())
     history = [s for s in history if s.path_generation_seq in history_eligible_seqs]

@@ -9,17 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
 
 import anthropic
 import openai
 from pydantic import BaseModel
-
-from app.config import settings
 
 # ── Type parameters ───────────────────────────────────────────────────────────
 
@@ -93,7 +89,7 @@ class BaseModelClient(ABC, Generic[TOutput]):
         """Exception types that represent transient infrastructure failures."""
         ...
 
-    async def _retry_call(self, call_fn, *args, max_retries: int = 3, retry_base_delay_s: float = 1.0, **kwargs) -> Any:
+    async def _retry_call(self, call_fn, *args, max_retries: int = 3, retry_base_delay_s: float = 1.0, **kwargs) -> Any:  # noqa: E501
         """Execute call with exponential backoff retry on transient errors."""
         last_exc: BaseException | None = None
 
@@ -631,7 +627,7 @@ class FallbackModelClient:
             raise ProviderUnavailableError(primary_exc, fallback_exc)
 
     @property
-    def messages(self) -> "FallbackModelClient":
+    def messages(self) -> FallbackModelClient:
         return self
 
 
@@ -736,7 +732,7 @@ class MultiTierModelClient:
     def __init__(
         self,
         tiers: list[tuple[Any, float]],
-        circuit_breaker: "NvidiaCircuitBreaker | None" = None,
+        circuit_breaker: NvidiaCircuitBreaker | None = None,
         nvidia_tier_count: int = 2,
     ) -> None:
         if not tiers:
@@ -752,7 +748,7 @@ class MultiTierModelClient:
         return self._tiers[0][0] if self._tiers else None
 
     @property
-    def messages(self) -> "MultiTierModelClient":
+    def messages(self) -> MultiTierModelClient:
         """No-op messages attr so callers that do client.messages.parse() still work."""
         return self
 
@@ -830,7 +826,7 @@ class MultiTierModelClient:
 
 # Created lazily on first NVIDIA-mode create_model_client() call.
 # Lives for the process lifetime — a restart intentionally resets state.
-_nvidia_circuit_breaker: "NvidiaCircuitBreaker | None" = None
+_nvidia_circuit_breaker: NvidiaCircuitBreaker | None = None
 
 
 # ── Factory function ──────────────────────────────────────────────────────────

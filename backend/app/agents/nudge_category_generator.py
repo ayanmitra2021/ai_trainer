@@ -42,7 +42,7 @@ class NudgeCategoryGeneratorAgent(Agent[NudgeCategoryInput, NudgeCategoryOutput]
                     f"- No quiz activity in 7 days: {input.practitioners_no_quiz_7d}\n"
                     f"- No quiz activity in 14 days: {input.practitioners_no_quiz_14d}\n"
                     f"- No active profile: {input.practitioners_no_profile}\n"
-                    f"- Profile exists but no skill ratings: {input.practitioners_profile_unrated}\n"
+                    f"- Profile exists but no skill ratings: {input.practitioners_profile_unrated}\n"  # noqa: E501
                     f"- Mastery stalled 14+ days: {input.practitioners_stalled}\n"
                     f"- Near cert-ready (≥80% avg mastery): {input.practitioners_near_cert_ready}\n"
                     f"- Nudges sent in last 7 days: {input.nudges_sent_last_7d}\n\n"

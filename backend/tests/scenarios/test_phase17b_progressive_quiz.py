@@ -26,15 +26,10 @@ WHEN the polling loop checks quiz_status
 THEN the refetchInterval returns false (no further polling)
 """
 
-import asyncio
 import uuid
-from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
@@ -305,7 +300,6 @@ async def test_generate_learning_path_sets_quiz_generating():
     THEN the response includes quiz_generating=True and HTTP 202."""
     # This is a smoke test against the route logic; heavy DB interaction is
     # covered by integration tests — here we just verify the flag is propagated.
-    from app.api.routes.learning_paths import _assign_question_counts, _build_quiz_spec_list
 
     skill_id = str(uuid.uuid4())
     specs_result = ([], "UNKNOWN", "Unknown Certification", None)

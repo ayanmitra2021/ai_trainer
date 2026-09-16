@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.cert_skill_mapper import (
     CertSkillMapperAgent,
-    CertSkillMapperInput,
     CertSkillMapperDomain,
+    CertSkillMapperInput,
 )
 from app.db.models import (
     Certification,

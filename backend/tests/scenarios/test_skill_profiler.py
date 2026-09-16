@@ -14,16 +14,13 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import pytest
 import pytest_asyncio
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.skill_profiler import SkillProfilerAgent
-from app.db.models import Practitioner, Skill, SkillProfileEvent, SkillProfileSnapshot
-from app.schemas.learning_paths import SkillProfilerInput, SkillProfilerOutput
+from app.db.models import Practitioner, Skill
+from app.schemas.learning_paths import SkillProfilerInput
 from tests.fixtures.stub_claude_client import StubClaudeClient
-
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 

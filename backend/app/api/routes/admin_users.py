@@ -13,15 +13,14 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
 import bcrypt as _bcrypt_lib
-
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response as FastAPIResponse
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Literal
 
 from app.api.deps.session import SessionInfo, require_admin
 from app.db.models import AdminUser

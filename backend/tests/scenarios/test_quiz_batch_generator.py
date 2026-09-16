@@ -7,26 +7,21 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 import pytest_asyncio
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import (
-    Item,
-    LearningPath,
-    LearningPathItem,
-    Practitioner,
-    Skill,
-    SkillProfileSnapshot,
-)
 from app.agents.quiz_batch_generator import (
     QuizBatchGeneratorAgent,
     QuizBatchGeneratorInput,
     SkillQuizSpec,
 )
+from app.db.models import (
+    LearningPath,
+    LearningPathItem,
+    Practitioner,
+    Skill,
+)
 from tests.fixtures.stub_claude_client import StubClaudeClient
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 

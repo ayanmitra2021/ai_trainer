@@ -16,7 +16,6 @@ from pydantic import BaseModel
 
 from app.agents.base import Agent
 
-
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class MockExamQuestionSpec(BaseModel):
@@ -29,8 +28,8 @@ class MockExamQuestionSpec(BaseModel):
     correct_index: int        # 0–3
     trap_index: int | None    # 0–3, or null if no distinguishable trap
     trap_explanation: str | None = None
-    explanation: str | None = None   # why the correct answer is correct; shown to user after a wrong answer
-    difficulty: float | None = 0.85  # 0.70–1.00 hard; None-safe so NVIDIA null doesn't fail Pydantic
+    explanation: str | None = None   # why the correct answer is correct; shown to user after a wrong answer  # noqa: E501
+    difficulty: float | None = 0.85  # 0.70–1.00 hard; None-safe so NVIDIA null doesn't fail Pydantic  # noqa: E501
 
 
 class MockExamGeneratorInput(BaseModel):

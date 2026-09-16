@@ -21,7 +21,6 @@ from pydantic import BaseModel, Field
 
 from app.agents.base import Agent
 
-
 # ── I/O models ────────────────────────────────────────────────────────────────
 
 
@@ -63,8 +62,8 @@ class ByteSizedLessonInput(BaseModel):
 
 class ByteSizedLessonOutput(BaseModel):
     """Output from the ByteSizedLessonAgent."""
-    what_missing: str = Field(..., description="1-2 sentence plain-English gap summary for table column (no Markdown)")
-    content_md: str = Field(..., description="Full Markdown write-up ≤750 words with hook, key concepts, pitfalls, quick check, sign-off")
+    what_missing: str = Field(..., description="1-2 sentence plain-English gap summary for table column (no Markdown)")  # noqa: E501
+    content_md: str = Field(..., description="Full Markdown write-up ≤750 words with hook, key concepts, pitfalls, quick check, sign-off")  # noqa: E501
     external_links: list[ExternalLink] = Field(..., min_length=3, max_length=5)
     estimated_read_minutes: int = Field(..., ge=1, le=5)
 

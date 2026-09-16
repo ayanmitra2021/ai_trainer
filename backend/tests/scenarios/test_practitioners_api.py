@@ -7,15 +7,14 @@ Scenario: The skill graph endpoint preserves hierarchy.
 
 from __future__ import annotations
 
-import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.main import app
 from app.db.models import Skill
 from app.db.session import get_db
-from tests.conftest import apply_admin_auth_overrides, admin_session_info  # noqa: F401
+from app.main import app
+from tests.conftest import admin_session_info, apply_admin_auth_overrides  # noqa: F401
 
 
 @pytest_asyncio.fixture

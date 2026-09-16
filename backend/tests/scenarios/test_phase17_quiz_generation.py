@@ -9,19 +9,15 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-import pytest_asyncio
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.quiz_batch_generator import SkillQuizSpec
 from app.api.routes.learning_paths import (
     _assign_question_counts,
     _check_quiz_exhaustion,
     _compute_skill_avg_scores,
 )
-from app.agents.quiz_batch_generator import SkillQuizSpec
-from app.db.models import Attempt, Item, Skill
-
+from app.db.models import Attempt, Item
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 

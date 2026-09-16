@@ -1,8 +1,7 @@
 """FastAPI application entrypoint."""
 
-from contextlib import asynccontextmanager
-
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -13,7 +12,6 @@ _log = logging.getLogger("mastery_pulse")
 
 from app.config import settings
 from app.db.session import engine
-from app.db.models import Base
 from config.env_check import check_env
 
 
@@ -61,7 +59,7 @@ app.add_middleware(
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # Log the full validation error so it appears in Render logs for debugging.
-    _log.warning("422 Validation error on %s %s: %s", request.method, request.url.path, exc.errors())
+    _log.warning("422 Validation error on %s %s: %s", request.method, request.url.path, exc.errors())  # noqa: E501
     # Pydantic v2 includes non-JSON-serialisable objects (e.g. ValueError instances)
     # inside ctx.error — stringify them so json.dumps never raises.
     safe_errors = []
@@ -114,7 +112,7 @@ async def health_check() -> dict[str, str]:
 
 
 # ── Phase 2 routes ────────────────────────────────────────────────────────────
-from app.api.routes import practitioners, skills, certifications, learning_paths
+from app.api.routes import certifications, learning_paths, practitioners, skills
 
 app.include_router(practitioners.router, prefix="/api/v1")
 app.include_router(skills.router, prefix="/api/v1")
@@ -127,7 +125,7 @@ from app.api.routes import pulse
 app.include_router(pulse.router, prefix="/api/v1")
 
 # ── Phase 5 routes ────────────────────────────────────────────────────────────
-from app.api.routes import auth, observability, admin_users
+from app.api.routes import admin_users, auth, observability
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(observability.router, prefix="/api/v1")
@@ -164,7 +162,7 @@ from app.api.routes import byte_sized_lessons
 app.include_router(byte_sized_lessons.router, prefix="/api/v1")
 
 # ── Phase 22 routes ────────────────────────────────────────────────────────────
-from app.api.routes import product_admin, notification_settings
+from app.api.routes import notification_settings, product_admin
 
 app.include_router(product_admin.router, prefix="/api/v1")
 app.include_router(notification_settings.router, prefix="/api/v1")

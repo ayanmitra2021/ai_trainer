@@ -18,10 +18,10 @@ Phase 21 additions:
 """
 
 import uuid
-from datetime import UTC, datetime, date
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, func, case
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps.session import (
@@ -38,8 +38,6 @@ from app.db.models import (
     CertificationDomain,
     CertificationSkill,
     Item,
-    LearningPath,
-    LearningPathItem,
     LessonRead,
     MockExamSession,
     Practitioner,
@@ -404,8 +402,8 @@ async def get_activity_summary(
     skill_activity: list[ActivitySkillRow] = []
     for sid in sorted(all_skill_ids):
         mastery, skill_name, gap_pct = skill_meta.get(sid, (0.0, sid, 100))
-        att = attempt_by_skill.get(sid, {"quiz_rounds": 0, "correct_count": 0, "wrong_count": 0, "total_count": 0})
-        les = lesson_by_skill.get(sid, {"total_seconds": 0, "lesson_count": 0, "last_read_at": None})
+        att = attempt_by_skill.get(sid, {"quiz_rounds": 0, "correct_count": 0, "wrong_count": 0, "total_count": 0})  # noqa: E501
+        les = lesson_by_skill.get(sid, {"total_seconds": 0, "lesson_count": 0, "last_read_at": None})  # noqa: E501
         total = att["total_count"]
         correct_pct = round(att["correct_count"] / total * 100) if total else 0
         skill_activity.append(ActivitySkillRow(

@@ -15,7 +15,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import bcrypt as _bcrypt_lib
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import Response as FastAPIResponse
 from pydantic import BaseModel
@@ -25,17 +24,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps.session import (
     SessionInfo,
     get_session,
-    require_admin,
 )
 from app.config import settings
-from app.db.models import AdminUser
-from app.db.models import Certification
-from app.db.models import Organization
-from app.db.models import OrgEnrollmentCode
-from app.db.models import PractitionerProfile
+from app.db.models import (
+    AdminUser,
+    Certification,
+    Organization,
+    OrgEnrollmentCode,
+    Practitioner,
+    PractitionerProfile,
+    SubscriptionPlan,
+)
 from app.db.models import Session as SessionModel
-from app.db.models import Practitioner
-from app.db.models import SubscriptionPlan
 from app.db.session import get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -223,7 +223,7 @@ async def practitioner_login(
                         status_code=400,
                         detail={
                             "error": "org_capacity_reached",
-                            "message": "This organization has reached its maximum practitioner count.",
+                            "message": "This organization has reached its maximum practitioner count.",  # noqa: E501
                         },
                     )
             org_id = org.id
@@ -250,7 +250,7 @@ async def practitioner_login(
                 status_code=403,
                 detail={
                     "error": "account_deactivated",
-                    "message": "Your account has been deactivated — please contact your administrator.",
+                    "message": "Your account has been deactivated — please contact your administrator.",  # noqa: E501
                 },
             )
 

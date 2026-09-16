@@ -15,16 +15,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import bcrypt as _bcrypt_lib
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AdminUser, Attempt, Item, Nudge, Practitioner
+from app.db.models import AdminUser, Attempt, Item, Practitioner
 from app.db.models import Session as SessionModel
 from app.db.session import get_db
 from app.main import app
-
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 

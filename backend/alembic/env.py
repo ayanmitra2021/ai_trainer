@@ -1,20 +1,21 @@
 """Alembic environment — uses async SQLAlchemy engine (asyncpg)."""
 
 import asyncio
-import sys
 import os
+import sys
 from logging.config import fileConfig
 from pathlib import Path
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
+
 from alembic import context
 
 # Make sure `app` is importable from here.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.db.models import Base  # noqa: E402  (after sys.path manipulation)
 from app.config import settings  # noqa: E402
+from app.db.models import Base  # noqa: E402  (after sys.path manipulation)
 
 # ── Alembic config object ─────────────────────────────────────────────────────
 config = context.config

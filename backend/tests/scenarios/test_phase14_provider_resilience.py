@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import uuid
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
@@ -33,13 +32,11 @@ from app.db.models import (
     CertificationDomainVersion,
     CertificationProvider,
     CertificationSkill,
+    Practitioner,
     PractitionerProfile,
     ProfileSkillAssessment,
     Skill,
-    Practitioner,
 )
-from tests.fixtures.stub_claude_client import StubClaudeClient
-
 
 # ── Minimal Pydantic output model for test agents ──────────────────────────────
 
@@ -482,6 +479,7 @@ class TestDegradedDomainScoring:
                  mastery_score <= 0.5 (capped)
         """
         from datetime import UTC, datetime
+
         from app.api.routes.profiles import _compute_degraded_domain_scores
 
         profile = profile_with_assessments["profile"]
@@ -522,6 +520,7 @@ class TestDegradedDomainScoring:
           Then   every domain score is exactly 0.5
         """
         from datetime import UTC, datetime
+
         from app.api.routes.profiles import _compute_degraded_domain_scores
 
         practitioner = base_entities["practitioner"]
@@ -604,6 +603,7 @@ class TestDegradedDomainScoring:
           Then   the quiz_derived row is unchanged (not replaced with degraded_estimate)
         """
         from datetime import UTC, datetime
+
         from app.api.routes.profiles import _compute_degraded_domain_scores
 
         profile = profile_with_assessments["profile"]

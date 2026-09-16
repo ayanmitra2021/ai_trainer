@@ -33,7 +33,7 @@ class NudgeComposerAgent(Agent[NudgeComposerInput, NudgeComposerOutput]):
             f"## Skill adoption gaps for {input.practitioner_name}\n\n"
             f"```json\n{gaps_json}\n```"
             if input.skill_gaps
-            else "## Skill adoption gaps\n\n(No gaps with has_adoption_gap=true — all scores within healthy range.)"
+            else "## Skill adoption gaps\n\n(No gaps with has_adoption_gap=true — all scores within healthy range.)"  # noqa: E501
         )
 
         return [

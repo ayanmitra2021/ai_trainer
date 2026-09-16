@@ -209,11 +209,12 @@ async def create_profile(
 
     # Phase 22: cert recycling guard — block re-creation of a soft-deleted cert profile
     if body.certification_id is not None:
-        from app.db.models import Organization, SubscriptionPlan as SubPlan
-        from sqlalchemy import and_
+
+        from app.db.models import Organization
 
         # Determine allow_cert_recycling for this practitioner's plan
         from app.db.models import Practitioner as _Practitioner
+        from app.db.models import SubscriptionPlan as SubPlan
         prac = await db.get(_Practitioner, practitioner_id)
         allow_recycling = True  # default permissive
         if prac and prac.organization_id:
@@ -718,8 +719,14 @@ async def upsert_skill_assessments(
     # (60 s timeout — timeout does not fail the lock).
     if profile.certification_id is not None:
         import asyncio
+
         from sqlalchemy import func as sql_func
-        from app.agents.cert_skill_mapper import CertSkillMapperAgent, CertSkillMapperInput, CertSkillMapperDomain
+
+        from app.agents.cert_skill_mapper import (
+            CertSkillMapperAgent,
+            CertSkillMapperDomain,
+            CertSkillMapperInput,
+        )
         from app.services.cert_skill_mapper_service import persist_cert_skill_mapping
 
         skill_count_result = await db.execute(
@@ -765,8 +772,8 @@ async def upsert_skill_assessments(
                 import logging as _logging
                 _plog = _logging.getLogger(__name__)
                 await asyncio.wait_for(_run_mapper(), timeout=60.0)
-                _plog.info("CertSkillMapper completed for cert %s at profile lock", profile.certification_id)
-            except asyncio.TimeoutError:
+                _plog.info("CertSkillMapper completed for cert %s at profile lock", profile.certification_id)  # noqa: E501
+            except TimeoutError:
                 import logging as _log2
                 _log2.getLogger(__name__).warning(
                     "CertSkillMapper timed out for cert %s — using seed skills for first path",
@@ -801,7 +808,7 @@ async def delete_profile(
     enforce_self_or_admin(session, practitioner_id)
 
     profile = await db.get(PractitionerProfile, profile_id)
-    if profile is None or profile.practitioner_id != practitioner_id or profile.deleted_at is not None:
+    if profile is None or profile.practitioner_id != practitioner_id or profile.deleted_at is not None:  # noqa: E501
         raise HTTPException(status_code=404, detail="Profile not found")
 
     was_active = profile.is_active

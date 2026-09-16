@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     )
 
     # ── NVIDIA Nemotron ───────────────────────────────────────────────────
-    nvidia_api_key: str = Field(default="", description="NVIDIA API key (required when APP_BRAIN_MODEL=NVIDIA).")
+    nvidia_api_key: str = Field(default="", description="NVIDIA API key (required when APP_BRAIN_MODEL=NVIDIA).")  # noqa: E501
     nvidia_base_url: str = Field(
         default="https://integrate.api.nvidia.com/v1",
         description="NVIDIA API base URL (OpenAI-compatible).",
@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # NVIDIA_MODEL_ID (singular) is deprecated — use the PRIMARY/SECONDARY vars.
     nvidia_model_id_primary: str = Field(
         default="nvidia/nemotron-3-ultra-550b-a55b",
-        description="NVIDIA Tier-1 model (Ultra). Used as primary in NVIDIA mode, last fallback in ANTHROPIC mode.",
+        description="NVIDIA Tier-1 model (Ultra). Used as primary in NVIDIA mode, last fallback in ANTHROPIC mode.",  # noqa: E501
     )
     nvidia_model_id_secondary: str = Field(
         default="nvidia/nemotron-3.5-lightning-30b-a3b",
@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     # ── Phase 15 timeouts ─────────────────────────────────────────────────
     nvidia_tier1_timeout_secs: int = Field(
         default=10,
-        description="asyncio.wait_for timeout for Tier-1 (Ultra in NVIDIA mode, Haiku in ANTHROPIC mode).",
+        description="asyncio.wait_for timeout for Tier-1 (Ultra in NVIDIA mode, Haiku in ANTHROPIC mode).",  # noqa: E501
     )
     nvidia_tier2_timeout_secs: int = Field(
         default=20,
@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     )
     anthropic_tier_timeout_secs: int = Field(
         default=20,
-        description="asyncio.wait_for timeout for the Anthropic/Haiku tier (any position in chain).",
+        description="asyncio.wait_for timeout for the Anthropic/Haiku tier (any position in chain).",  # noqa: E501
     )
 
     # ── Phase 15 circuit breaker ──────────────────────────────────────────

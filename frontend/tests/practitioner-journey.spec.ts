@@ -19,7 +19,7 @@ import { expect, test } from "@playwright/test";
 
 test.describe("Practitioner journey", () => {
   /** Grab the first practitioner card from the home page. */
-  async function getFirstPractitioner(page: import("@playwright/test").Page) {
+  async function _getFirstPractitioner(page: import("@playwright/test").Page) {
     await page.goto("/");
     const cards = page.locator(".card a, a > .card");
     await expect(cards.first()).toBeVisible({ timeout: 10_000 });
@@ -138,7 +138,7 @@ test.describe("Practitioner journey", () => {
     await page.getByRole("button", { name: "Quiz" }).click();
 
     const emptyState = page.locator(".empty-state");
-    const quizCard = page.locator(".card").filter({ has: page.locator("[data-testid='trap-reveal-panel'], [data-testid='correct-answer-panel'], input[type='radio']") });
+    const _quizCard = page.locator(".card").filter({ has: page.locator("[data-testid='trap-reveal-panel'], [data-testid='correct-answer-panel'], input[type='radio']") });
 
     // If no learning path, only the empty state renders — acceptable
     const hasEmpty = await emptyState.isVisible({ timeout: 5_000 }).catch(() => false);

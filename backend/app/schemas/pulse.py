@@ -15,7 +15,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, model_validator
 
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # Usage-Signal Agent I/O  (Step 3.1)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -131,13 +130,13 @@ class SkillCorrelationResult(BaseModel):
     reasoning: str
 
     @model_validator(mode="after")
-    def _enforce_gap_rules(self) -> "SkillCorrelationResult":
+    def _enforce_gap_rules(self) -> SkillCorrelationResult:
         """Enforce: low mastery (< 0.5) is a training need, not an adoption gap."""
         if self.trained_score < 0.5:
             # Low mastery → not an adoption gap regardless of adoption_score
             if self.has_adoption_gap:
                 raise ValueError(
-                    f"Skill {self.skill_id}: has_adoption_gap cannot be True when trained_score < 0.5"
+                    f"Skill {self.skill_id}: has_adoption_gap cannot be True when trained_score < 0.5"  # noqa: E501
                 )
             if self.gap_score > 0.0:
                 raise ValueError(

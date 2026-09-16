@@ -36,8 +36,7 @@ from app.db.models import (
 from app.db.session import get_db
 from app.main import app
 from seed.generate import seed
-from tests.conftest import apply_admin_auth_overrides, admin_session_info  # noqa: F401
-
+from tests.conftest import admin_session_info, apply_admin_auth_overrides  # noqa: F401
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

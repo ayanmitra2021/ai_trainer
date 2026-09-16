@@ -9,11 +9,10 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.usage_signal import UsageSignalAgent
-from app.schemas.pulse import RawSignal, UsageSignalInput, UsageSignalOutput
+from app.schemas.pulse import RawSignal, UsageSignalInput
 from tests.fixtures.stub_claude_client import StubClaudeClient
 
 

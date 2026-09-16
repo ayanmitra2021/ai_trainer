@@ -23,11 +23,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from unittest.mock import patch
 
-import pytest
-import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,18 +36,14 @@ from app.db.models import (
     CertificationProvider,
     Practitioner,
     PractitionerProfile,
-    ProfileSkillAssessment,
     Skill,
 )
-from app.db.session import get_db
-from app.main import app
 from tests.conftest import (  # noqa: F401
     admin_session_info,
     apply_admin_auth_overrides,
     make_practitioner_session,
 )
 from tests.fixtures.stub_claude_client import StubClaudeClient
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

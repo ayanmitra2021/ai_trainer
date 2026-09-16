@@ -22,12 +22,10 @@ from pydantic import BaseModel
 
 from app.agents.model_client import (
     AllProvidersUnavailableError,
-    FallbackModelClient,
     MultiTierModelClient,
     NvidiaCircuitBreaker,
     ProviderUnavailableError,
 )
-
 
 # ── Shared stubs ──────────────────────────────────────────────────────────────
 
@@ -628,8 +626,8 @@ class TestCreateModelClientFactory:
                  _circuit_breaker is a NvidiaCircuitBreaker
                  has 3 tiers (ultra, lightning, haiku)
         """
-        from app.agents.model_client import create_model_client
         import app.agents.model_client as mc_module
+        from app.agents.model_client import create_model_client
 
         fake_settings = self._make_settings(app_brain_model="NVIDIA")
         # Reset global breaker so test is deterministic
@@ -654,8 +652,8 @@ class TestCreateModelClientFactory:
           When   create_model_client() is called
           Then   returns MultiTierModelClient with 2 tiers (ultra, lightning)
         """
-        from app.agents.model_client import create_model_client
         import app.agents.model_client as mc_module
+        from app.agents.model_client import create_model_client
 
         fake_settings = self._make_settings(
             app_brain_model="NVIDIA",
@@ -679,7 +677,11 @@ class TestCreateModelClientFactory:
           Then   returns MultiTierModelClient; no circuit breaker
                  Tier-1 is Haiku; Tier-2 is Ultra; Tier-3 is Lightning
         """
-        from app.agents.model_client import create_model_client, AnthropicModelClient, NVIDIAModelClient
+        from app.agents.model_client import (
+            AnthropicModelClient,
+            NVIDIAModelClient,
+            create_model_client,
+        )
 
         fake_settings = self._make_settings(app_brain_model="ANTHROPIC")
 
@@ -743,8 +745,8 @@ class TestCreateModelClientFactory:
           When   create_model_client() is called
           Then   ValueError raised mentioning NVIDIA_API_KEY
         """
-        from app.agents.model_client import create_model_client
         import app.agents.model_client as mc_module
+        from app.agents.model_client import create_model_client
 
         fake_settings = self._make_settings(
             app_brain_model="NVIDIA",
@@ -763,8 +765,8 @@ class TestCreateModelClientFactory:
           When   create_model_client() is called in NVIDIA mode
           Then   Tier-1 timeout is 7.0; Tier-2 timeout is 15.0
         """
-        from app.agents.model_client import create_model_client
         import app.agents.model_client as mc_module
+        from app.agents.model_client import create_model_client
 
         fake_settings = self._make_settings(
             app_brain_model="NVIDIA",
@@ -789,8 +791,8 @@ class TestCreateModelClientFactory:
           When   create_model_client() is called
           Then   Haiku tier uses exactly that model ID in all modes
         """
-        from app.agents.model_client import create_model_client
         import app.agents.model_client as mc_module
+        from app.agents.model_client import create_model_client
 
         for mode in ("NVIDIA", "ANTHROPIC"):
             mc_module._nvidia_circuit_breaker = None

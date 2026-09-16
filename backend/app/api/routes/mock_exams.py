@@ -17,9 +17,9 @@ import random
 import uuid
 from datetime import UTC, datetime
 
+import sqlalchemy as sa
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
-import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -63,7 +63,7 @@ class MockExamQuestionRead(BaseModel):
     correct_index: int | None
     trap_index: int | None          # revealed only after answering
     trap_explanation: str | None    # revealed only after answering — shown when trap option chosen
-    explanation: str | None         # revealed only after answering — shown when any wrong option chosen
+    explanation: str | None         # revealed only after answering — shown when any wrong option chosen  # noqa: E501
     difficulty: float
     response: dict | None           # {selected_index: N} or null
     score: float | None
@@ -71,7 +71,7 @@ class MockExamQuestionRead(BaseModel):
     is_trap_selected: bool          # true when answered response matches trap_index
 
     @classmethod
-    def from_orm(cls, q: MockExamQuestion, *, reveal: bool = False) -> "MockExamQuestionRead":
+    def from_orm(cls, q: MockExamQuestion, *, reveal: bool = False) -> MockExamQuestionRead:
         answered = q.score is not None
         selected_idx = (q.response or {}).get("selected_index")
         trap_idx = q.answer_key.get("trap_index")
@@ -233,7 +233,7 @@ async def _pick_recycled_questions(
     domain_focus: str | None,
     current_session_id: str,
     slots: int,
-    db: "AsyncSession",
+    db: AsyncSession,
 ) -> list[MockExamQuestion]:
     """Return up to `slots` recycled MockExamQuestion rows for a new exam.
 
@@ -444,11 +444,11 @@ async def _generate_exam_questions_bg(
                         db.add(question)
 
                     batch_count = len(copied) + len(llm_specs)
-                    await db.commit()  # commit this domain's batch — frontend can now see these questions
+                    await db.commit()  # commit this domain's batch — frontend can now see these questions  # noqa: E501
                     seq_offset += batch_count
                     _bg_log.info(
-                        "mock_exam_bg: batch %d/%d done — %d questions (%d recycled + %d new, running total=%d)",
-                        batch_idx + 1, total_batches, batch_count, len(copied), len(llm_specs), seq_offset,
+                        "mock_exam_bg: batch %d/%d done — %d questions (%d recycled + %d new, running total=%d)",  # noqa: E501
+                        batch_idx + 1, total_batches, batch_count, len(copied), len(llm_specs), seq_offset,  # noqa: E501
                     )
 
                 except Exception as exc:
@@ -565,7 +565,7 @@ async def start_mock_exam(
     if not cert.exam_question_count or not cert.exam_duration_minutes:
         raise HTTPException(
             status_code=400,
-            detail=f"Certification {cert.code!r} has no exam configuration (question count / duration).",
+            detail=f"Certification {cert.code!r} has no exam configuration (question count / duration).",  # noqa: E501
         )
 
     # Load domains ordered by sequence_order
@@ -772,7 +772,7 @@ async def answer_question(
     if exam_session.status != "in_progress":
         raise HTTPException(
             status_code=400,
-            detail=f"Session is {exam_session.status!r} — answers can only be submitted to an in_progress session.",
+            detail=f"Session is {exam_session.status!r} — answers can only be submitted to an in_progress session.",  # noqa: E501
         )
 
     # Find the question

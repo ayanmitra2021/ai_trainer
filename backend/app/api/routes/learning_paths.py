@@ -16,28 +16,31 @@ Step 5.2 — Auth applied:
   - GET  /items → require_any_authenticated
   - POST /attempts → require_any_authenticated + body self-enforcement
   - GET  /attempts/{id} → require_any_authenticated + ownership check (self or admin)
-"""
+"""  # noqa: E501
 
 import random
 import uuid
 from datetime import UTC, datetime
-from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import func as sa_func
-from sqlalchemy import select, update as sa_update
+from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.agents.base import ModelClient
 from app.agents.model_client import create_model_client
+from app.agents.quiz_batch_generator import (
+    QuizBatchGeneratorAgent,
+    QuizBatchGeneratorInput,
+    SkillQuizSpec,
+)
 from app.api.deps.plan import get_plan_enforcer
 from app.api.deps.session import (
     SessionInfo,
     enforce_self_or_admin,
     require_any_authenticated,
 )
-from app.config import settings
 from app.db.models import (
     Attempt,
     ByteSizedLesson,
@@ -53,14 +56,16 @@ from app.db.models import (
     SkillProfileEvent,
     SkillProfileSnapshot,
 )
-from app.agents.quiz_batch_generator import (
-    QuizBatchGeneratorAgent,
-    QuizBatchGeneratorInput,
-    SkillQuizSpec,
-)
 from app.db.session import AsyncSessionLocal, get_db
 from app.schemas.cert_domain_versions import CertificationDomainScoreRead
-from app.schemas.items import AttemptCreate, AttemptRead, GraderInput, GraderOutput, ItemRead, MCQAnswerKey
+from app.schemas.items import (
+    AttemptCreate,
+    AttemptRead,
+    GraderInput,
+    GraderOutput,
+    ItemRead,
+    MCQAnswerKey,
+)
 from app.schemas.learning_paths import (
     GenerateLearningPathRequest,
     GenerateLearningPathResponse,
@@ -172,7 +177,6 @@ async def _build_quiz_spec_list(
     Does NOT call _assign_question_counts — caller is responsible.
     avg_score_by_skill: when provided, mastery is adjusted per skill for difficulty.
     """
-    import logging as _log
 
     if not skill_ids:
         return [], "UNKNOWN", "Unknown Certification", None
@@ -331,7 +335,7 @@ async def _generate_quizzes_progressively(
                             answer_key=quiz_item.answer_key.model_dump(),
                             trap_explanation=quiz_item.trap_explanation,
                             difficulty=quiz_item.difficulty,
-                            calibration_stats={"attempt_count": 0, "total_score": 0.0, "trap_selection_count": 0},
+                            calibration_stats={"attempt_count": 0, "total_score": 0.0, "trap_selection_count": 0},  # noqa: E501
                             certification_domain_id=quiz_item.certification_domain_id,
                             is_cert_evaluated=quiz_item.is_cert_evaluated,
                             generation=gen,
@@ -379,7 +383,7 @@ async def _generate_quizzes_progressively(
             # never stay stuck in 'pending' forever.
             skill_ids = [s.skill_id for s in skill_specs]
             _bg_log.error(
-                "quiz_progress: top-level task failure for path=%s: %s — marking all pending as failed",
+                "quiz_progress: top-level task failure for path=%s: %s — marking all pending as failed",  # noqa: E501
                 learning_path_id, top_exc, exc_info=True,
             )
             try:
@@ -400,7 +404,7 @@ async def _generate_quizzes_progressively(
 
 # ── Learning path generation ───────────────────────────────────────────────────
 
-@router.post("/learning-paths/generate", response_model=GenerateLearningPathResponse, status_code=202)
+@router.post("/learning-paths/generate", response_model=GenerateLearningPathResponse, status_code=202)  # noqa: E501
 async def generate_learning_path(
     body: GenerateLearningPathRequest,
     background_tasks: BackgroundTasks,
@@ -486,8 +490,9 @@ async def generate_learning_path(
         response.quiz_skipped_reason = "already_generated"
 
     # ── Phase 18.3: byte-sized lesson generation (always runs on new path) ─────
-    from app.api.routes.byte_sized_lessons import _generate_byte_sized_lessons
     import uuid as _uuid_mod
+
+    from app.api.routes.byte_sized_lessons import _generate_byte_sized_lessons
 
     max_seq_q = await db.execute(
         select(sa_func.max(ByteSizedLesson.path_generation_seq)).where(
@@ -496,17 +501,17 @@ async def generate_learning_path(
     )
     lesson_seq = (max_seq_q.scalar() or 0) + 1
 
-    skills_q = await db.execute(select(Skill).where(Skill.id.in_(new_skill_ids)))
+    skills_q = await db.execute(select(Skill).where(Skill.id.in_(all_skill_ids)))
     skills_map = {s.id: s for s in skills_q.scalars().all()}
     snaps_q = await db.execute(
         select(SkillProfileSnapshot).where(
             SkillProfileSnapshot.practitioner_id == practitioner_id,
-            SkillProfileSnapshot.skill_id.in_(new_skill_ids),
+            SkillProfileSnapshot.skill_id.in_(all_skill_ids),
         )
     )
     mastery_map = {s.skill_id: float(s.mastery_score) for s in snaps_q.scalars().all()}
 
-    for sid in new_skill_ids:
+    for sid in all_skill_ids:
         sk = skills_map.get(sid)
         mastery = mastery_map.get(sid, 0.0)
         db.add(ByteSizedLesson(
@@ -778,7 +783,7 @@ async def get_certification_domain_scores(
             continue  # no score yet for this domain
 
         mastery_score = float(score.mastery_score)
-        previous = float(score.previous_mastery_score) if score.previous_mastery_score is not None else None
+        previous = float(score.previous_mastery_score) if score.previous_mastery_score is not None else None  # noqa: E501
         mastery_delta: float | None = None
         trend: str = "new"
 
@@ -880,7 +885,6 @@ async def submit_attempt(
     # ── Fallback: GraderAgent for free-text or legacy MCQ items ──────────────
     if grader_output is None:
         from app.agents.grader import GraderAgent
-        from app.agents.model_client import AllProvidersUnavailableError, ProviderUnavailableError
 
         model_client = create_model_client()
         grader_input = GraderInput(

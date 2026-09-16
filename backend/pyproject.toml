@@ -79,6 +79,15 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+"alembic/versions/*.py" = ["E501"]
+"seed/*.py" = ["E501"]
+"tools/*.py" = ["E501"]
+"tests/scenarios/*.py" = ["E501", "F841", "F811"]
+"app/main.py" = ["E402"]
+"app/api/routes/profiles.py" = ["E402"]
+"app/agents/model_client.py" = ["E402"]
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]

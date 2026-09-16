@@ -28,7 +28,6 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.base import ModelClient
 from app.agents.model_client import create_model_client
 from app.api.deps.session import (
     SessionInfo,
@@ -37,7 +36,6 @@ from app.api.deps.session import (
     require_admin_or_leadership,
     require_any_authenticated,
 )
-from app.config import settings
 from app.db.models import (
     Attempt,
     Certification,
@@ -136,7 +134,7 @@ async def _get_aggregate_kpi(db: AsyncSession) -> dict[str, Any]:
             skill_names[skill.id] = skill.name
 
     skill_gap_summary = [
-        {"skill_name": skill_names.get(sid, sid), "avg_gap_score": round(avg, 3), "practitioner_count": pc}
+        {"skill_name": skill_names.get(sid, sid), "avg_gap_score": round(avg, 3), "practitioner_count": pc}  # noqa: E501
         for sid, avg, pc in skill_gap_rows
     ]
 
@@ -145,7 +143,7 @@ async def _get_aggregate_kpi(db: AsyncSession) -> dict[str, Any]:
 
     # Near cert ready (mastery avg >= 80%)
     near_ready_result = await db.execute(
-        select(SkillProfileSnapshot.practitioner_id, func.avg(SkillProfileSnapshot.mastery_score).label("avg"))
+        select(SkillProfileSnapshot.practitioner_id, func.avg(SkillProfileSnapshot.mastery_score).label("avg"))  # noqa: E501
         .group_by(SkillProfileSnapshot.practitioner_id)
         .having(func.avg(SkillProfileSnapshot.mastery_score) >= 0.8)
     )
@@ -258,7 +256,7 @@ async def list_nudge_categories(
     return [NudgeCategoryRead.model_validate(c) for c in cats]
 
 
-@router.post("/nudges/categories/{category_id}/preview-recipients", response_model=PreviewRecipientsResponse)
+@router.post("/nudges/categories/{category_id}/preview-recipients", response_model=PreviewRecipientsResponse)  # noqa: E501
 async def preview_recipients(
     category_id: str,
     db: AsyncSession = Depends(get_db),
@@ -452,7 +450,7 @@ async def mark_nudge_read(
     return NudgeMarkReadResponse.model_validate(nudge)
 
 
-@router.get("/practitioners/{practitioner_id}/nudges/unread-count", response_model=UnreadCountResponse)
+@router.get("/practitioners/{practitioner_id}/nudges/unread-count", response_model=UnreadCountResponse)  # noqa: E501
 async def get_unread_nudge_count(
     practitioner_id: str,
     db: AsyncSession = Depends(get_db),
@@ -473,7 +471,7 @@ async def get_unread_nudge_count(
 
 # ── Mastery history ─────────────────────────────────────────────────────────────
 
-@router.get("/practitioners/{practitioner_id}/mastery-history", response_model=MasteryHistoryResponse)
+@router.get("/practitioners/{practitioner_id}/mastery-history", response_model=MasteryHistoryResponse)  # noqa: E501
 async def get_mastery_history(
     practitioner_id: str,
     db: AsyncSession = Depends(get_db),
@@ -517,7 +515,7 @@ async def get_mastery_history(
 
 # ── Adoption trends (real-time, no nightly batch) ─────────────────────────────
 
-@router.get("/practitioners/{practitioner_id}/adoption-trends", response_model=AdoptionTrendsResponse)
+@router.get("/practitioners/{practitioner_id}/adoption-trends", response_model=AdoptionTrendsResponse)  # noqa: E501
 async def get_adoption_trends(
     practitioner_id: str,
     db: AsyncSession = Depends(get_db),
@@ -670,10 +668,13 @@ async def send_teams_nudge(
 
     Guards: admin-only, enterprise plan with teams_notifications_enabled.
     """
-    import httpx
     import logging as _logging
 
+    import httpx
+
     _log = _logging.getLogger(__name__)
+
+    from sqlalchemy import select as _select
 
     from app.db.models import (
         AdminUser,
@@ -681,7 +682,6 @@ async def send_teams_nudge(
         OrgNotificationSettings,
         SubscriptionPlan,
     )
-    from sqlalchemy import select as _select
 
     admin = await db.get(AdminUser, session.admin_user_id)
     if admin is None or admin.organization_id is None:

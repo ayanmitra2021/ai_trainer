@@ -10,8 +10,9 @@ attempts to DB.
 from __future__ import annotations
 
 import json
-import pydantic
 from typing import Any
+
+import pydantic
 
 from app.agents.base import Agent
 from app.agents.model_client import _extract_parsed
@@ -93,7 +94,7 @@ class GraderAgent(Agent[GraderInput, GraderOutput]):
         if raw is None:
             raise ValueError(
                 f"Agent '{self.name}': no parsed output found in response. "
-                f"Content types: {[getattr(b, 'type', '?') for b in getattr(response, 'content', [])]}"
+                f"Content types: {[getattr(b, 'type', '?') for b in getattr(response, 'content', [])]}"  # noqa: E501
             )
 
         if not isinstance(raw, self.output_model):

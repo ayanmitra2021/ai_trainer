@@ -36,7 +36,6 @@ from app.api.deps.session import (
 from app.db.models import Base
 from tests.fixtures.stub_claude_client import StubClaudeClient
 
-
 # ── Database fixtures ─────────────────────────────────────────────────────────
 
 @pytest_asyncio.fixture(scope="function")

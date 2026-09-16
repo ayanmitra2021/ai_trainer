@@ -25,8 +25,7 @@ import sys
 from pathlib import Path
 
 import pytest
-import pytest_asyncio
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import create_async_engine
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent  # backend/

@@ -21,6 +21,7 @@ import uuid
 
 import bcrypt
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "024"

@@ -47,6 +47,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 import sqlalchemy as sa
+
 # JSONB and UUID were previously imported here; sa.JSON is used instead for
 # cross-database compatibility (SQLite in tests, Postgres in production).
 # The migration DDL uses JSONB directly where performance matters.
@@ -240,7 +241,7 @@ class SkillProfileEvent(Base):
 
     __table_args__ = (
         sa.CheckConstraint(
-            "source IN ('certification','self_assessment','quiz_attempt','project_history','mock_exam')",
+            "source IN ('certification','self_assessment','quiz_attempt','project_history','mock_exam')",  # noqa: E501
             name="ck_skill_profile_events_source",
         ),
         sa.CheckConstraint(
@@ -1876,17 +1877,17 @@ class ByteSizedLesson(Base):
 
     id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
     practitioner_id: Mapped[str] = mapped_column(
-        sa.String(36), sa.ForeignKey("practitioners.id", ondelete="CASCADE"), nullable=False, index=True
+        sa.String(36), sa.ForeignKey("practitioners.id", ondelete="CASCADE"), nullable=False, index=True  # noqa: E501
     )
     learning_path_id: Mapped[str] = mapped_column(
-        sa.String(36), sa.ForeignKey("learning_paths.id", ondelete="CASCADE"), nullable=False, index=True
+        sa.String(36), sa.ForeignKey("learning_paths.id", ondelete="CASCADE"), nullable=False, index=True  # noqa: E501
     )
     skill_id: Mapped[str] = mapped_column(
         sa.String(36), sa.ForeignKey("skills.id", ondelete="CASCADE"), nullable=False
     )
     skill_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
     gap_pct: Mapped[float] = mapped_column(sa.Float, nullable=False)
-    target_pct: Mapped[float] = mapped_column(sa.Float, nullable=False, server_default="0.85", default=0.85)
+    target_pct: Mapped[float] = mapped_column(sa.Float, nullable=False, server_default="0.85", default=0.85)  # noqa: E501
     what_missing: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     content_md: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     external_links: Mapped[list | None] = mapped_column(sa.JSON, nullable=True)
@@ -1896,11 +1897,11 @@ class ByteSizedLesson(Base):
         sa.String(20), nullable=False, server_default="pending", default="pending"
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False  # noqa: E501
     )
 
     practitioner: Mapped["Practitioner"] = relationship(back_populates="byte_sized_lessons")
-    reads: Mapped[list["LessonRead"]] = relationship(back_populates="lesson", cascade="all, delete-orphan")
+    reads: Mapped[list["LessonRead"]] = relationship(back_populates="lesson", cascade="all, delete-orphan")  # noqa: E501
 
 
 class LessonRead(Base):
@@ -1910,7 +1911,7 @@ class LessonRead(Base):
 
     id: Mapped[str] = mapped_column(sa.String(36), primary_key=True, default=_uuid)
     lesson_id: Mapped[str] = mapped_column(
-        sa.String(36), sa.ForeignKey("byte_sized_lessons.id", ondelete="CASCADE"), nullable=False, index=True
+        sa.String(36), sa.ForeignKey("byte_sized_lessons.id", ondelete="CASCADE"), nullable=False, index=True  # noqa: E501
     )
     practitioner_id: Mapped[str] = mapped_column(
         sa.String(36), sa.ForeignKey("practitioners.id", ondelete="CASCADE"), nullable=False
@@ -1918,7 +1919,7 @@ class LessonRead(Base):
     started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
     duration_seconds: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False  # noqa: E501
     )
 
     lesson: Mapped["ByteSizedLesson"] = relationship(back_populates="reads")
@@ -1944,19 +1945,19 @@ class SubscriptionPlan(Base):
     max_practitioners_per_org: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     allow_cert_recycling: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
     nudges_enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
-    teams_notifications_enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
+    teams_notifications_enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)  # noqa: E501
     is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False  # noqa: E501
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False  # noqa: E501
     )
 
     organizations: Mapped[list["Organization"]] = relationship(back_populates="plan")
 
     __table_args__ = (
-        sa.CheckConstraint("tier IN ('free','paid','enterprise')", name="ck_subscription_plans_tier"),
+        sa.CheckConstraint("tier IN ('free','paid','enterprise')", name="ck_subscription_plans_tier"),  # noqa: E501
     )
 
     def __repr__(self) -> str:
@@ -1978,10 +1979,10 @@ class Organization(Base):
     billing_email: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False  # noqa: E501
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False  # noqa: E501
     )
 
     plan: Mapped["SubscriptionPlan"] = relationship(back_populates="organizations")
@@ -2017,7 +2018,7 @@ class OrgEnrollmentCode(Base):
     code: Mapped[str] = mapped_column(sa.String(16), nullable=False, unique=True)
     is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False  # noqa: E501
     )
 
     organization: Mapped["Organization"] = relationship(back_populates="enrollment_codes")
@@ -2052,7 +2053,7 @@ class ProductAdminUser(Base):
         sa.DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False  # noqa: E501
     )
 
     def __repr__(self) -> str:
@@ -2073,7 +2074,7 @@ class OrgNotificationSettings(Base):
     teams_channel_name: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     email_enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=False)
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False
+        sa.DateTime(timezone=True), server_default=sa.text("now()"), default=_now_utc, nullable=False  # noqa: E501
     )
 
     organization: Mapped["Organization"] = relationship(back_populates="notification_settings")

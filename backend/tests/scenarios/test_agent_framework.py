@@ -47,8 +47,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 import pydantic
+import pytest
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +56,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.base import Agent
 from app.db.models import AgentRun
 from tests.fixtures.stub_claude_client import StubClaudeClient
-
 
 # ── Minimal concrete agent for testing ────────────────────────────────────────
 

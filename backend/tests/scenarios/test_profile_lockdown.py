@@ -18,7 +18,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,14 +25,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import (
     Certification,
     CertificationProvider,
+    Practitioner,
     PractitionerProfile,
     Skill,
 )
-from app.db.models import Practitioner
 from app.db.session import get_db
 from app.main import app
-from tests.conftest import apply_admin_auth_overrides, admin_session_info  # noqa: F401
-
+from tests.conftest import admin_session_info, apply_admin_auth_overrides  # noqa: F401
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 

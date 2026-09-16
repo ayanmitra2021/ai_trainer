@@ -15,17 +15,15 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-import pytest
-import pytest_asyncio
 import bcrypt as _bcrypt_lib
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import AdminUser
 from app.db.session import get_db
 from app.main import app
-from tests.conftest import apply_admin_auth_overrides, apply_leadership_auth_overrides, SessionInfo
-
+from tests.conftest import SessionInfo, apply_admin_auth_overrides, apply_leadership_auth_overrides
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 

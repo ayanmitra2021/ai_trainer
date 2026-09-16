@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,9 +14,6 @@ from app.db.models import (
     CertificationDomainVersion,
     CertificationProvider,
     CertificationSkill,
-    Practitioner,
-    PractitionerProfile,
-    ProfileSkillAssessment,
     Skill,
 )
 

@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 from app.agents.base import Agent
 from app.schemas.items import MCQAnswerKey
 
-
 # ── I/O models ────────────────────────────────────────────────────────────────
 
 
@@ -33,8 +32,8 @@ class SkillQuizSpec(BaseModel):
     certification_domain_name: str | None = None
     is_cert_evaluated: bool = False
     prior_generation_count: int = 0
-    question_count: int = Field(1, ge=1, le=2, description="1 or 2 MCQs for this skill — assigned by caller")
-    prior_prompts: list[str] = Field(default_factory=list, description="Existing question texts for this skill; LLM must not produce semantically similar questions")
+    question_count: int = Field(1, ge=1, le=2, description="1 or 2 MCQs for this skill — assigned by caller")  # noqa: E501
+    prior_prompts: list[str] = Field(default_factory=list, description="Existing question texts for this skill; LLM must not produce semantically similar questions")  # noqa: E501
 
 
 class BatchQuizItem(BaseModel):
@@ -84,7 +83,7 @@ class QuizBatchGeneratorAgent(Agent[QuizBatchGeneratorInput, QuizBatchGeneratorO
     name = "quiz_batch_generator"
     model = "claude-sonnet-5"
     output_model = QuizBatchGeneratorOutput
-    max_tokens = 3000  # Phase 17.11: per-skill calls only (1-2 questions ≈ 700-1400 tokens); 3000 gives safe headroom
+    max_tokens = 3000  # Phase 17.11: per-skill calls only (1-2 questions ≈ 700-1400 tokens); 3000 gives safe headroom  # noqa: E501
 
     def _build_messages(self, input: QuizBatchGeneratorInput) -> list[dict[str, Any]]:
         skill_specs = []

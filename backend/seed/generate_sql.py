@@ -7,13 +7,10 @@ Usage (from backend/):
     py -m seed.generate_sql
 """
 
+# Pull constants from generate.py without importing the async/SQLAlchemy parts
 import uuid
-import sys
 from datetime import date
 from pathlib import Path
-
-# Pull constants from generate.py without importing the async/SQLAlchemy parts
-import importlib.util, types
 
 # ── Inline the constants from generate.py ────────────────────────────────────
 
@@ -365,7 +362,7 @@ def gen_sql() -> str:
         lines.append(
             f"INSERT INTO certification_providers (id, name, website, notes) VALUES "
             f"({q(provider_ids[pspec['name']])}, {q(pspec['name'])}, {q(pspec.get('website'))}, {q(pspec.get('notes'))});"
-        )
+        )  # nosec B608
 
     lines.append("")
 
@@ -385,7 +382,7 @@ def gen_sql() -> str:
             f"{q(cspec.get('typical_audience'))}, {q(cspec.get('focus_area'))}, "
             f"{q(cspec.get('exam_format'))}, {q(cspec.get('eligibility_notes'))}, "
             f"{q(cspec.get('external_url'))}, TRUE, {q(today)});"
-        )
+        )  # nosec B608
 
     lines.append("")
 
@@ -401,7 +398,7 @@ def gen_sql() -> str:
             lines.append(
                 f"INSERT INTO certification_skills (certification_id, skill_id, weight) VALUES "
                 f"({q(cid)}, {q(sid)}, {round(weight, 3)});"
-            )
+            )  # nosec B608
 
     lines.append("")
 

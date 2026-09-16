@@ -10,11 +10,11 @@ Mastery score:     ceiling(N) × weighted_accuracy
 
 from __future__ import annotations
 
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

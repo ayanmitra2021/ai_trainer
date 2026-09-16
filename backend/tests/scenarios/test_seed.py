@@ -21,16 +21,12 @@ Scenarios
 
 from __future__ import annotations
 
-import os
-
 import pytest
-import pytest_asyncio
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker
 
 from app.db.models import Practitioner, SkillProfileEvent
-from seed.generate import seed, SEED_EMAIL_DOMAIN, PRACTITIONER_NAMES
-
+from seed.generate import PRACTITIONER_NAMES, SEED_EMAIL_DOMAIN, seed
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

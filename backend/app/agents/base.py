@@ -23,14 +23,14 @@ import uuid
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
+from typing import Any, Generic, TypeVar
 
 import pydantic
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import AgentRun
 from app.agents.model_client import ModelClient, _extract_parsed
+from app.db.models import AgentRun
 
 # ── Type parameters ───────────────────────────────────────────────────────────
 
@@ -239,7 +239,7 @@ class Agent(ABC, Generic[TInput, TOutput]):
         if raw is None:
             raise ValueError(
                 f"Agent '{self.name}': no parsed output found in response. "
-                f"Content types: {[getattr(b, 'type', '?') for b in getattr(response, 'content', [])]}"
+                f"Content types: {[getattr(b, 'type', '?') for b in getattr(response, 'content', [])]}"  # noqa: E501
             )
 
         # Validate the parsed output against our schema.

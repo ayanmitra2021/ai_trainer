@@ -22,7 +22,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
@@ -46,7 +45,6 @@ from tests.conftest import (  # noqa: F401
     apply_admin_auth_overrides,
     make_practitioner_session,
 )
-
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

@@ -22,17 +22,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
     AdminUser,
-    OrgEnrollmentCode,
     Organization,
+    OrgEnrollmentCode,
     Practitioner,
     PractitionerProfile,
     ProductAdminUser,
-    Session as SessionModel,
     SubscriptionPlan,
+)
+from app.db.models import (
+    Session as SessionModel,
 )
 from app.db.session import get_db
 from app.main import app
-
 
 # ── Shared fixtures ────────────────────────────────────────────────────────────
 

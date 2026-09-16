@@ -78,7 +78,7 @@ async def resolve_recipients(
     if criteria.get("profile_unrated") is True or criteria.get("profile_unrated") == "true":
         profile_with_ratings_result = await db.execute(
             select(PractitionerProfile.practitioner_id)
-            .join(ProfileSkillAssessment, ProfileSkillAssessment.profile_id == PractitionerProfile.id)
+            .join(ProfileSkillAssessment, ProfileSkillAssessment.profile_id == PractitionerProfile.id)  # noqa: E501
             .where(PractitionerProfile.is_active.is_(True))
             .distinct()
         )

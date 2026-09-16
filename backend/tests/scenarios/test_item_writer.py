@@ -8,12 +8,10 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
-import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.item_writer import ItemWriterAgent
-from app.schemas.items import ItemWriterInput, ItemWriterOutput
+from app.schemas.items import ItemWriterInput
 from tests.fixtures.stub_claude_client import StubClaudeClient
 
 

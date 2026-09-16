@@ -7,7 +7,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 # ── NudgeCategory Agent I/O ──────────────────────────────────────────────────
 
 class SkillGapSummaryItem(BaseModel):

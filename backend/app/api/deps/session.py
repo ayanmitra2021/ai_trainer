@@ -29,8 +29,7 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.db.models import AdminUser
-from app.db.models import ProductAdminUser
+from app.db.models import AdminUser, ProductAdminUser
 from app.db.models import Session as SessionModel
 from app.db.session import get_db
 

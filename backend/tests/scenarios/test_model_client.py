@@ -17,7 +17,6 @@ from app.agents.model_client import (
 from app.config import get_settings
 from tests.fixtures.stub_claude_client import StubClaudeClient, StubNVIDIAModelClient
 
-
 # ── Test Models ────────────────────────────────────────────────────────────────
 
 class _TestOutput(BaseModel):

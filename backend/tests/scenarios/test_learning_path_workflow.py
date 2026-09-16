@@ -21,12 +21,10 @@ from app.db.models import (
     Practitioner,
     Skill,
     SkillProfileEvent,
-    SkillProfileSnapshot,
     WorkflowRun,
 )
 from app.workflows.generate_learning_path import run_generate_learning_path
 from tests.fixtures.stub_claude_client import StubClaudeClient
-
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────
 

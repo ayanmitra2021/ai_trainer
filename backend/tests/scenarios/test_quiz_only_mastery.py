@@ -20,18 +20,14 @@ Scenario 3: Existing self_assessment events in the DB are ignored.
 
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
-import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import (
-    Attempt,
-    Item,
     Practitioner,
     PractitionerProfile,
     ProfileSkillAssessment,
@@ -39,10 +35,8 @@ from app.db.models import (
     SkillProfileEvent,
     SkillProfileSnapshot,
 )
-from app.schemas.learning_paths import SkillProfilerInput
 from app.workflows.generate_learning_path import run_generate_learning_path
 from tests.fixtures.stub_claude_client import StubClaudeClient
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -367,8 +361,6 @@ class TestSelfAssessmentEventsInDbAreIgnored:
         )
         # This call fails at the planner step — but that's OK; we only care about
         # what the profiler received.
-        import pytest
-        from app.agents.skill_profiler import SkillProfilerAgent
         # Directly run the profiler agent after recreating the same events list
         # that the workflow would produce (i.e. only quiz_attempt events).
         from sqlalchemy import select as sa_select

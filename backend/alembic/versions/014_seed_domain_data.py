@@ -33,16 +33,17 @@ Create Date: 2026-08-11
 """
 
 import uuid
-from datetime import datetime, timezone
-from typing import Sequence, Union
+from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "014"
-down_revision: Union[str, None] = "013"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "013"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 _BOOTSTRAP_LABEL = "bootstrap-step-10.1"
 _SOURCE_NOTES = (
@@ -686,7 +687,7 @@ def upgrade() -> None:
     Idempotent — safe to run on a DB that already has domain data.
     """
     bind = op.get_bind()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     for code, domains in _DOMAINS_BY_CERT_CODE.items():
         # ── 1. Look up the certification ──────────────────────────────────────

@@ -9,8 +9,9 @@ deleting data. is_active = false blocks the /auth/practitioner-login endpoint
 with HTTP 403. All data is preserved; the account can be reactivated at any time.
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers
 revision = "023"

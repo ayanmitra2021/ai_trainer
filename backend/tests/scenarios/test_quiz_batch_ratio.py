@@ -5,14 +5,11 @@ from __future__ import annotations
 import logging
 import uuid
 
-import pytest
-import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.quiz_batch_generator import (
     QuizBatchGeneratorAgent,
     QuizBatchGeneratorInput,
-    QuizBatchGeneratorOutput,
     SkillQuizSpec,
 )
 from tests.fixtures.stub_claude_client import StubClaudeClient
