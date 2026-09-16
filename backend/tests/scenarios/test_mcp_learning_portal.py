@@ -17,6 +17,7 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
@@ -39,6 +40,7 @@ def _server_params() -> StdioServerParameters:
     )
 
 
+@pytest.mark.mcp_roundtrip
 class TestGetCertificationsKnownPractitioner:
     async def test_known_practitioner_certification_returned(self):
         """
@@ -69,6 +71,7 @@ class TestGetCertificationsKnownPractitioner:
                 assert len(certs[0]["covered_skills"]) > 0
 
 
+@pytest.mark.mcp_roundtrip
 class TestUnknownPractitionerReturnsEmptyLists:
     async def test_all_tools_return_empty_for_unknown_practitioner(self):
         """

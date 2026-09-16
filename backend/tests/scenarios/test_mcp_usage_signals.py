@@ -17,6 +17,7 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
@@ -39,6 +40,7 @@ def _server_params() -> StdioServerParameters:
     )
 
 
+@pytest.mark.mcp_roundtrip
 class TestMappedSessionProducesSkillMapping:
     async def test_rag_session_maps_to_rag_fundamentals(self):
         """
@@ -68,6 +70,7 @@ class TestMappedSessionProducesSkillMapping:
                 assert rag["confidence"] is not None
 
 
+@pytest.mark.mcp_roundtrip
 class TestAmbiguousSessionReturnedUnmapped:
     async def test_neutral_session_has_null_skill_mapping(self):
         """
