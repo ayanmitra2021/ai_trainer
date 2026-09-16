@@ -75,7 +75,7 @@
       "passes": false
     },
     {
-      "status": "implementing",
+      "status": "done",
       "id": "F-MOD-002",
       "title": "Profile Name Inline Edit UI",
       "module_ref": "MOD-002",
