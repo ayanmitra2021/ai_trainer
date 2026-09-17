@@ -1,0 +1,11 @@
+feedback_id: "UF-01-03"
+wave: 1
+source: "user"
+started_at: "2026-09-17T00:00:00Z"
+feedback_details: "Backend fails to start with ERR_CDR_78_EX_CONFIG: Missing required environment variable(s): DATABASE_URL. env_check.py checks os.environ, but pydantic-settings loads .env only into the Settings object, not os.environ. Even with .env present and DATABASE_URL configured, check_env() raises because os.environ is never populated. Fix: call load_dotenv() in main.py before any module reads os.environ."
+steps:
+  - phase: direct_repair
+    input: "Add load_dotenv() call in backend/app/main.py before other imports. The Path-based project root calculation is the same as config.py: Path(__file__).resolve().parent.parent.parent / '.env'. This ensures os.environ is populated from .env before check_env() runs, regardless of how uvicorn is started."
+    output: "Added load_dotenv(Path(__file__).resolve().parent.parent.parent / '.env') in backend/app/main.py before the deferred imports. This populates os.environ from .env before check_env() runs, fixing the startup failure. ruff: all checks passed. Commit: 1dc1ec4 on develop."
+    completed_at: "2026-09-17T00:10:00Z"
+status: completed
