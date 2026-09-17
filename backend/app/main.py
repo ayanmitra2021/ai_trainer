@@ -2,11 +2,17 @@
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+# Populate os.environ from .env before env_check or pydantic-settings run.
+# This makes `uvicorn app.main:app` work without --env-file or uv run wrappers.
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 _log = logging.getLogger("mastery_pulse")
 
